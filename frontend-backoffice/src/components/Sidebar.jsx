@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiHome, FiSend, FiCalendar, FiFileText, FiCpu, FiUsers, FiBarChart2, FiLogOut, FiUserPlus, FiMap, FiUser, FiShield } from 'react-icons/fi';
+import { FiHome, FiSend, FiCalendar, FiFileText, FiCpu, FiUsers, FiBarChart2, FiLogOut, FiUserPlus, FiMap, FiUser, FiShield, FiCreditCard } from 'react-icons/fi';
 
 const Sidebar = () => {
   const { usuario, cerrarSesion } = useAuth();
@@ -13,6 +13,7 @@ const Sidebar = () => {
     { path: '/vuelos', icon: FiSend, label: 'Vuelos' },
     { path: '/aeropuertos', icon: FiMap, label: 'Aeropuertos' },
     { path: '/reservas', icon: FiCalendar, label: 'Reservas' },
+    { path: '/pagos', icon: FiCreditCard, label: 'Pagos' },
     { path: '/dte', icon: FiFileText, label: 'Facturación DTE' },
     { path: '/aeronaves', icon: FiCpu, label: 'Aeronaves' },
     { path: '/empleados', icon: FiUsers, label: 'Empleados' },

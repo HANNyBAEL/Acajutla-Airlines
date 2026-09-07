@@ -15,6 +15,7 @@ import Aeronaves from './pages/Aeronaves';
 import Empleados from './pages/Empleados';
 import Reportes from './pages/Reportes';
 import Auditoria from './pages/Auditoria';
+import Pagos from './pages/Pagos';
 
 function App() {
   return (
@@ -35,6 +36,7 @@ function App() {
             <Route path="empleados" element={<Empleados />} />
             <Route path="reportes" element={<Reportes />} />
             <Route path="auditoria" element={<Auditoria />} />
+            <Route path="pagos" element={<Pagos />} />
           </Route>
         </Routes>
         <Toaster position="top-right" />
