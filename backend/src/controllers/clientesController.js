@@ -11,6 +11,25 @@ const listarClientes = async (req, res) => {
   }
 };
 
+const buscarClientePorDocumento = async (req, res) => {
+  try {
+    const { documento } = req.query;
+    if (!documento) {
+      return res.status(400).json({ error: 'El parámetro documento es requerido' });
+    }
+    const [rows] = await pool.query(
+      `SELECT id, first_names, last_names, document_type, document_number, email, phone, nationality
+       FROM customers 
+       WHERE document_number LIKE ? AND status = 'active'
+       LIMIT 10`,
+      [`%${documento}%`]
+    );
+    res.json({ exito: true, datos: rows });
+  } catch (error) {
+    res.status(500).json({ error: 'Error interno' });
+  }
+};
+
 const crearCliente = async (req, res) => {
   try {
     const { first_names, last_names, document_type = 'DUI', document_number, email, phone } = req.body;
@@ -31,4 +50,4 @@ const crearCliente = async (req, res) => {
   }
 };
 
-module.exports = { listarClientes, crearCliente };
+module.exports = { listarClientes, buscarClientePorDocumento, crearCliente };
