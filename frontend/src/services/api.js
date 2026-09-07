@@ -34,4 +34,11 @@ export const authAPI = {
   logout: () => api.post('/auth/logout'),
 };
 
+// Endpoints de Clientes
+export const clientesAPI = {
+  listar: () => api.get('/clientes'),
+  buscar: (documento) => api.get(`/clientes/buscar?documento=${encodeURIComponent(documento)}`),
+  crear: (data) => api.post('/clientes', data),
+};
+
 export default api;
