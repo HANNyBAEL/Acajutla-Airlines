@@ -55,6 +55,12 @@ app.use('/api/comercial', require('./routes/comercialRoutes'));
 
 app.use('/api/dte-export', require('./routes/dteExportRoutes'));
 
+app.use('/api/fiscal', require('./routes/fiscalRoutes'));
+
+app.use('/api/operaciones', require('./routes/operacionesRoutes'));
+
+app.use('/api/qa', require('./routes/qaRoutes'));
+
 app.listen(PORT, () => {
   console.log(`🚀 Servidor SkyManager corriendo en http://localhost:${PORT}`);
   console.log(`📡 Ambiente: ${process.env.NODE_ENV || 'development'}`);
