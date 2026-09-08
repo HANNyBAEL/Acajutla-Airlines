@@ -8,7 +8,7 @@ const procesarPago = async (datos, usuario) => {
     const [rows] = await connection.query('SELECT * FROM reservations WHERE id = ? FOR UPDATE', [datos.reservation_id]);
     if (rows.length === 0) throw new Error('Reserva no encontrada');
     const reserva = rows[0];
-    if (reserva.status === 'cancelled' || reserva.status === 'completed') throw new Error('La reserva está cancelada o finalizada');
+    if (reserva.status === 'cancelled' || reserva.status === 'completed') throw new Error('La reserva estÃ¡ cancelada o finalizada');
 
     const pendiente = parseFloat(reserva.estimated_total) - parseFloat(reserva.paid_total || 0);
     const monto = parseFloat(datos.amount || pendiente);
@@ -24,7 +24,7 @@ const procesarPago = async (datos, usuario) => {
     } else if (datos.method === 'cash') {
       gateway = await PaymentGateway.procesarEfectivo({});
     } else {
-      throw new Error('Método de pago no soportado');
+      throw new Error('MÃ©todo de pago no soportado');
     }
 
     const status = gateway.exito ? (gateway.codigo === 'PENDING_CONFIRMATION' ? 'pending_confirmation' : 'approved') : 'rejected';
@@ -61,7 +61,7 @@ const confirmarTransferencia = async (paymentId, usuario) => {
   try {
     await connection.beginTransaction();
     const [rows] = await connection.query('SELECT * FROM payments WHERE id = ? AND status = ? FOR UPDATE', [paymentId, 'pending_confirmation']);
-    if (rows.length === 0) throw new Error('Pago pendiente de confirmación no encontrado');
+    if (rows.length === 0) throw new Error('Pago pendiente de confirmaciÃ³n no encontrado');
     const pago = rows[0];
     await connection.query('UPDATE payments SET status = ?, confirmed_by = ?, confirmation_date = NOW() WHERE id = ?', ['approved', usuario && usuario.id ? usuario.id : null, paymentId]);
     const [res] = await connection.query('SELECT * FROM reservations WHERE id = ? FOR UPDATE', [pago.reservation_id]);
@@ -89,9 +89,9 @@ const reembolsar = async (paymentId, monto, reason, usuario) => {
     if (rows.length === 0) throw new Error('Pago aprobado no encontrado');
     const pago = rows[0];
     const montoRef = parseFloat(monto || pago.amount);
-    if (montoRef <= 0 || montoRef > parseFloat(pago.amount)) throw new Error('Monto de reembolso inválido');
+    if (montoRef <= 0 || montoRef > parseFloat(pago.amount)) throw new Error('Monto de reembolso invÃ¡lido');
     const gateway = await PaymentGateway.reembolsar(pago.external_reference, montoRef, reason);
-    if (!gateway.exito) throw new Error(gateway.mensaje || 'La pasarela rechazó el reembolso');
+    if (!gateway.exito) throw new Error(gateway.mensaje || 'La pasarela rechazÃ³ el reembolso');
     await connection.query(
       `INSERT INTO payments (reservation_id, original_payment_id, method, amount, currency, status, type, external_reference, reason, processed_by, payment_date)
        VALUES (?, ?, ?, ?, ?, 'refunded', 'refund', ?, ?, ?, NOW())`,
