@@ -21,10 +21,17 @@ const FlightSegment = {
   },
 
   validarDisponibilidad: async (flight_id, fare_class, connection = pool) => {
+    // Contar solo segmentos de reservas activas (confirmed o paid), excluyendo expiradas/canceladas
     const [rows] = await connection.query(
       `SELECT f.flight_number, at.total_capacity,
-              (SELECT COUNT(*) FROM flight_segments fs WHERE fs.flight_id = f.id) AS occupied_seats
-       FROM flights f JOIN aircraft ac ON f.aircraft_id = ac.id JOIN aircraft_types at ON ac.type_id = at.id WHERE f.id = ?`,
+              (SELECT COUNT(*) 
+               FROM flight_segments fs 
+               INNER JOIN reservations r ON r.id = fs.reservation_id 
+               WHERE fs.flight_id = f.id AND r.status IN ('confirmed', 'paid')) AS occupied_seats
+       FROM flights f 
+       JOIN aircraft ac ON f.aircraft_id = ac.id 
+       JOIN aircraft_types at ON ac.type_id = at.id 
+       WHERE f.id = ?`,
       [flight_id]
     );
     if (!rows[0]) throw new Error('Vuelo no encontrado');

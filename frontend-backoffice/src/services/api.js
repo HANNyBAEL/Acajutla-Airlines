@@ -58,7 +58,13 @@ export const dteAPI = {
   listar: (params) => api.get('/dte', { params: params }),
   emitir: (data) => api.post('/dte/emitir', data),
   obtener: (uuid) => api.get('/dte/' + uuid),
+  obtenerPDF: (uuid) => api.get('/dte/' + uuid + '/pdf', { responseType: 'blob' }),
+  obtenerJSON: (uuid) => api.get('/dte/' + uuid + '/json'),
   kpis: (params) => api.get('/dte/kpis', { params: params }),
+};
+
+export const correosAPI = {
+  enviarDTE: (uuid, email) => api.post('/correos/dte', { uuid, email }),
 };
 
 export const pagosAPI = {

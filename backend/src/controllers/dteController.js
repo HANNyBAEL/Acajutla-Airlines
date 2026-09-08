@@ -38,6 +38,30 @@ const obtenerDTE = async (req, res) => {
   }
 };
 
+// Nuevos handlers para PDF y JSON
+const obtenerPDF = async (req, res) => {
+  try {
+    const dte = await DTE.obtenerCompleto(req.params.uuid);
+    if (!dte) return res.status(404).json({ error: 'DTE no encontrado' });
+    // Generar PDF simulado - en producción usar librería como pdfkit
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="DTE-${req.params.uuid}.pdf"`);
+    res.send('Simulación de PDF para DTE: ' + req.params.uuid);
+  } catch (error) {
+    res.status(500).json({ error: 'Error interno al generar PDF' });
+  }
+};
+
+const obtenerJSON = async (req, res) => {
+  try {
+    const dte = await DTE.obtenerCompleto(req.params.uuid);
+    if (!dte) return res.status(404).json({ error: 'DTE no encontrado' });
+    res.json({ exito: true, datos: dte });
+  } catch (error) {
+    res.status(500).json({ error: 'Error interno' });
+  }
+};
+
 const dtesPorReserva = async (req, res) => {
   try {
     const reserva = await Reserva.buscarPorPNR(req.params.pnr);
@@ -69,4 +93,4 @@ const conciliacionFiscal = async (req, res) => {
   }
 };
 
-module.exports = { emitirDTE, listarDTEs, obtenerDTE, dtesPorReserva, kpisFiscales, conciliacionFiscal };
+module.exports = { emitirDTE, listarDTEs, obtenerDTE, obtenerPDF, obtenerJSON, dtesPorReserva, kpisFiscales, conciliacionFiscal };

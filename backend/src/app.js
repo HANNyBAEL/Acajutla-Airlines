@@ -28,6 +28,7 @@ const pasajerosRoutes = require('./routes/pasajerosRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const dteRoutes = require('./routes/dteRoutes');
 
+// Rutas principales
 app.use('/api/auth', authRoutes);
 app.use('/api/vuelos', vuelosRoutes);
 app.use('/api/aeropuertos', require('./routes/airportsRoutes'));
@@ -39,13 +40,20 @@ app.use('/api/dte', dteRoutes);
 app.use('/api/auditoria', require('./routes/auditRoutes'));
 app.use('/api/empleados', require('./routes/empleadosRoutes'));
 app.use('/api/aeronaves', require('./routes/aircraftRoutes'));
+app.use('/api/checkin', require('./routes/checkinRoutes'));
+app.use('/api/correos', require('./routes/correosRoutes'));
+app.use('/api/comercial', require('./routes/comercialRoutes'));
+app.use('/api/fiscal', require('./routes/fiscalRoutes'));
+app.use('/api/operaciones', require('./routes/operacionesRoutes'));
+app.use('/api/qa', require('./routes/qaRoutes'));
 
-// Manejo de errores
-app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
+// Manejo de errores - DEBE IR DESPUÉS DE TODAS LAS RUTAS
 app.use((err, req, res, next) => {
   console.error('❌ Error global:', err);
   res.status(500).json({ error: 'Error interno del servidor' });
 });
+
+app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor SkyManager corriendo en http://localhost:${PORT}`);

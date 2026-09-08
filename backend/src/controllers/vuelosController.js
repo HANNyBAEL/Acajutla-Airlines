@@ -123,7 +123,7 @@ const reprogramarVuelo = async (req, res) => {
     const id = parseInt(req.params.id, 10);
     const { departure_datetime, arrival_datetime, aircraft_id, gate } = req.body || {};
 
-    const [vuelos] = await pool.query('SELECT id, flight_number, status, departure_datetime FROM flights WHERE id = ?', [id]);
+    const [vuelos] = await pool.query('SELECT id, flight_number, status, departure_datetime, aircraft_id FROM flights WHERE id = ?', [id]);
     if (vuelos.length === 0) return res.status(404).json({ error: 'Vuelo no encontrado' });
     const vuelo = vuelos[0];
 
@@ -135,6 +135,40 @@ const reprogramarVuelo = async (req, res) => {
     }
     if (new Date(arrival_datetime) <= new Date(departure_datetime)) {
       return res.status(400).json({ error: 'La llegada debe ser posterior a la salida' });
+    }
+
+    // Validar conflicto de aeronave si se cambia el avión o las fechas
+    const nuevoAircraftId = aircraft_id || vuelo.aircraft_id;
+    const nuevaSalida = new Date(departure_datetime);
+    const nuevaLlegada = new Date(arrival_datetime);
+    
+    // Calcular turnaround mínimo (30 minutos antes y después)
+    const margenMinutos = 30;
+    const salidaConMargen = new Date(nuevaSalida.getTime() - margenMinutos * 60000);
+    const llegadaConMargen = new Date(nuevaLlegada.getTime() + margenMinutos * 60000);
+    
+    // Verificar si la aeronave tiene otro vuelo en ese rango de tiempo
+    const [conflictos] = await pool.query(
+      `SELECT id, flight_number, departure_datetime, arrival_datetime 
+       FROM flights 
+       WHERE aircraft_id = ? 
+         AND id != ?
+         AND status NOT IN ('cancelled', 'completed')
+         AND (
+           (departure_datetime BETWEEN ? AND ?) OR
+           (arrival_datetime BETWEEN ? AND ?) OR
+           (departure_datetime <= ? AND arrival_datetime >= ?)
+         )`,
+      [nuevoAircraftId, id, salidaConMargen.toISOString(), llegadaConMargen.toISOString(), 
+       salidaConMargen.toISOString(), llegadaConMargen.toISOString(),
+       nuevaSalida.toISOString(), nuevaLlegada.toISOString()]
+    );
+    
+    if (conflictos.length > 0) {
+      return res.status(409).json({ 
+        error: 'Conflicto de aeronave: la aeronave ya tiene asignado otro vuelo en ese horario', 
+        conflictos: conflictos.map(c => ({ flight_number: c.flight_number, departure: c.departure_datetime, arrival: c.arrival_datetime }))
+      });
     }
 
     const nuevoStatus = vuelo.status === 'cancelled' ? 'scheduled' : vuelo.status;
