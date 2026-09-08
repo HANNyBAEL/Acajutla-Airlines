@@ -44,6 +44,11 @@ app.use('/api/reportes', require('./routes/reportesRoutes'));
 app.use('/api/dte-eventos', require('./routes/eventosRoutes'));
 app.use('/api/checkin', require('./routes/checkinRoutes'));
 app.use('/api/correos', require('./routes/correosRoutes'));
+app.use('/api/comercial', require('./routes/comercialRoutes'));
+app.use('/api/dte-export', require('./routes/dteExportRoutes'));
+app.use('/api/fiscal', require('./routes/fiscalRoutes'));
+app.use('/api/operaciones', require('./routes/operacionesRoutes'));
+app.use('/api/qa', require('./routes/qaRoutes'));
 
 // Manejo de errores
 app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
@@ -51,15 +56,6 @@ app.use((err, req, res, next) => {
   console.error('âŒ Error global:', err);
   res.status(500).json({ error: 'Error interno del servidor' });
 });
-app.use('/api/comercial', require('./routes/comercialRoutes'));
-
-app.use('/api/dte-export', require('./routes/dteExportRoutes'));
-
-app.use('/api/fiscal', require('./routes/fiscalRoutes'));
-
-app.use('/api/operaciones', require('./routes/operacionesRoutes'));
-
-app.use('/api/qa', require('./routes/qaRoutes'));
 
 app.listen(PORT, () => {
   console.log(`ðŸš€ Servidor SkyManager corriendo en http://localhost:${PORT}`);

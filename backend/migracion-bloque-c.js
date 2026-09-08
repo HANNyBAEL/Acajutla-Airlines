@@ -22,6 +22,22 @@ require('dotenv').config();
     KEY wl_flight (flight_id), KEY wl_status (status)
   )`);
 
+  // Compatibilidad con la versión anterior de waitlist (migracion-comercial.js).
+  // CREATE TABLE IF NOT EXISTS no agrega columnas cuando la tabla ya existía.
+  const waitlistColumns = new Set((await pool.query('SHOW COLUMNS FROM waitlist'))[0].map((column) => column.Field));
+  const missingWaitlistColumns = [
+    ['passenger_email', 'VARCHAR(120) NULL'],
+    ['passenger_doc', 'VARCHAR(30) NULL'],
+    ['doc_type', 'VARCHAR(20) NULL'],
+    ['requested_class', 'VARCHAR(10) NULL'],
+    ['position', 'INT NOT NULL DEFAULT 0'],
+    ['notified_at', 'DATETIME NULL']
+  ];
+  for (const [name, definition] of missingWaitlistColumns) {
+    if (!waitlistColumns.has(name)) await pool.query(`ALTER TABLE waitlist ADD COLUMN ${name} ${definition}`);
+  }
+  await pool.query("ALTER TABLE waitlist MODIFY COLUMN status ENUM('waiting','offered','confirmed','notified','converted','expired','cancelled') NOT NULL DEFAULT 'waiting'");
+
   await pool.query(`CREATE TABLE IF NOT EXISTS ancillaries (
     id INT AUTO_INCREMENT PRIMARY KEY,
     code VARCHAR(20) NOT NULL UNIQUE,

@@ -41,12 +41,19 @@ function App() {
             <Route path="aeropuertos" element={<Aeropuertos />} />
             <Route path="reservas" element={<Reservas />} />
             <Route path="pagos" element={<Pagos />} />
-            <Route path="dte" element={<DTE />} />`n            <Route path="notas" element={<NotasCredito />} />
+            <Route path="dte" element={<DTE />} />
+            <Route path="notas" element={<NotasCredito />} />
             <Route path="contingencia" element={<ContingenciaDTE />} />
             <Route path="aeronaves" element={<Aeronaves />} />
             <Route path="empleados" element={<Empleados />} />
             <Route path="reportes" element={<Reportes />} />
-            <Route path="comercial" element={<Comercial />} />`n            <Route path="auditoria" element={<Auditoria />} />`n            <Route path="cierre-qa" element={<CierreQA />} />`n            <Route path="operaciones" element={<Operaciones />} />`n            <Route path="cumplimiento" element={<CumplimientoFiscal />} />`n            <Route path="dte-export" element={<DteExport />} />`n            <Route path="correos" element={<Correos />} />
+            <Route path="comercial" element={<Comercial />} />
+            <Route path="auditoria" element={<Auditoria />} />
+            <Route path="cierre-qa" element={<CierreQA />} />
+            <Route path="operaciones" element={<Operaciones />} />
+            <Route path="cumplimiento" element={<CumplimientoFiscal />} />
+            <Route path="dte-export" element={<DteExport />} />
+            <Route path="correos" element={<Correos />} />
             <Route path="checkin" element={<Checkin />} />
           </Route>
         </Routes>
