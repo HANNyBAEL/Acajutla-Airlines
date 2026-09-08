@@ -95,6 +95,7 @@ const NuevaReserva = () => {
         time_limit_minutes: 30,
       });
       setPnrCreado(r.data.datos.pnr);
+      api.post('/correos/confirmacion-reserva', { reservation_id: r.data.datos.reservation_id }).catch(() => {});
       toast.success('Reserva creada');
     } catch (e) {
       const mensaje = e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al crear la reserva';

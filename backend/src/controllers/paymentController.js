@@ -1,12 +1,28 @@
-const pool = require('../config/db');
 const PaymentService = require('../services/paymentService');
+const pagoDteService = require('../services/pagoDteService');
+const pool = require('../config/db');
 
 const procesarPago = async (req, res) => {
   try {
-    const { reservation_id, method, amount, card, referencia } = req.body;
-    if (!reservation_id || !method) return res.status(400).json({ error: 'reservation_id y method son obligatorios' });
-    const resultado = await PaymentService.procesarPago({ reservation_id: reservation_id, method: method, amount: amount, card: card, referencia: referencia }, req.usuario);
-    res.status(201).json({ exito: true, mensaje: 'Pago procesado', datos: resultado });
+    const body = Object.assign({}, req.body);
+    const tipo_dte = body.tipo_dte || null;
+    const receptor = body.receptor || null;
+    delete body.tipo_dte;
+    delete body.receptor;
+    const resultado = await PaymentService.procesarPago(body, req.usuario);
+    const [pago] = await pool.query('SELECT * FROM payments WHERE reservation_id = ? ORDER BY id DESC LIMIT 1', [body.reservation_id]);
+    let dteInfo = null;
+    if (pago.length) {
+      if (tipo_dte) await pool.query('UPDATE payments SET tipo_dte = ? WHERE id = ?', [tipo_dte, pago[0].id]);
+      if (tipo_dte && pago[0].status === 'approved') {
+        try {
+          dteInfo = await pagoDteService.emitirYEnviar(pago[0].reservation_id, tipo_dte, receptor);
+        } catch (e) {
+          dteInfo = { error: e.message };
+        }
+      }
+    }
+    res.status(201).json({ exito: true, datos: resultado, dte: dteInfo });
   } catch (e) {
     console.error('Error procesar pago:', e);
     res.status(400).json({ error: e.message });
@@ -16,8 +32,18 @@ const procesarPago = async (req, res) => {
 const confirmarTransferencia = async (req, res) => {
   try {
     const resultado = await PaymentService.confirmarTransferencia(parseInt(req.params.id, 10), req.usuario);
-    res.json({ exito: true, mensaje: 'Transferencia confirmada', datos: resultado });
+    const [pago] = await pool.query('SELECT * FROM payments WHERE id = ?', [req.params.id]);
+    let dteInfo = null;
+    if (pago.length && pago[0].tipo_dte && pago[0].status === 'approved') {
+      try {
+        dteInfo = await pagoDteService.emitirYEnviar(pago[0].reservation_id, pago[0].tipo_dte, null);
+      } catch (e) {
+        dteInfo = { error: e.message };
+      }
+    }
+    res.json({ exito: true, datos: resultado, dte: dteInfo });
   } catch (e) {
+    console.error('Error confirmar transferencia:', e);
     res.status(400).json({ error: e.message });
   }
 };
@@ -27,13 +53,13 @@ const reembolsar = async (req, res) => {
     const { amount, reason } = req.body;
     if (!reason) return res.status(400).json({ error: 'Indique el motivo del reembolso' });
     const resultado = await PaymentService.reembolsar(parseInt(req.params.id, 10), amount, reason, req.usuario);
-    res.json({ exito: true, mensaje: 'Reembolso procesado', datos: resultado });
+    res.json({ exito: true, datos: resultado });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
 };
 
-const listarPagos = async (req, res) => {
+const listar = async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT p.*, r.pnr, u.username AS procesado_por
@@ -44,7 +70,6 @@ const listarPagos = async (req, res) => {
     );
     res.json({ exito: true, total: rows.length, datos: rows });
   } catch (e) {
-    console.error('Error listar pagos:', e);
     res.status(500).json({ error: 'Error interno' });
   }
 };
@@ -52,9 +77,9 @@ const listarPagos = async (req, res) => {
 const reservasPendientes = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT r.id, r.pnr, r.status, r.estimated_total, r.paid_total, r.time_limit, r.created_at,
+      `SELECT r.id, r.pnr, r.status, r.estimated_total, r.paid_total, r.time_limit,
               (r.estimated_total - r.paid_total) AS balance,
-              c.first_names, c.last_names
+              c.first_names, c.last_names, c.email
        FROM reservations r
        LEFT JOIN customers c ON c.id = r.customer_id
        WHERE r.status IN ('pending','confirmed') AND (r.estimated_total - r.paid_total) > 0.009
@@ -62,7 +87,6 @@ const reservasPendientes = async (req, res) => {
     );
     res.json({ exito: true, total: rows.length, datos: rows });
   } catch (e) {
-    console.error('Error reservas pendientes:', e);
     res.status(500).json({ error: 'Error interno' });
   }
 };
@@ -82,4 +106,4 @@ const kpis = async (req, res) => {
   }
 };
 
-module.exports = { procesarPago: procesarPago, confirmarTransferencia: confirmarTransferencia, reembolsar: reembolsar, listarPagos: listarPagos, reservasPendientes: reservasPendientes, kpis: kpis };
+module.exports = { procesarPago: procesarPago, confirmarTransferencia: confirmarTransferencia, reembolsar: reembolsar, listar: listar, reservasPendientes: reservasPendientes, kpis: kpis };

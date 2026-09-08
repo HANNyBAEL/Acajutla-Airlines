@@ -1,72 +1,61 @@
-const DTEService = require('../services/dte/dteService');
-const DTE = require('../models/DTE');
-const Reserva = require('../models/Reserva');
+const pool = require('../config/db');
+const DTEService = require('../services/dteService');
 
-const emitirDTE = async (req, res) => {
+const emitir = async (req, res) => {
   try {
-    const { dte_type, pnr, receiver, payment_method, payment_condition, payment_reference } = req.body;
-    const reserva = await Reserva.obtenerDetalleCompleto(pnr);
-    if (!reserva) return res.status(404).json({ error: 'Reserva no encontrada' });
-    if (!['paid', 'confirmed'].includes(reserva.status)) return res.status(400).json({ error: 'La reserva debe estar pagada o confirmada' });
-    const vuelo = reserva.passengers[0];
-    const vueloData = { flight_number: vuelo.flight_number, origin: vuelo.origin, destination: vuelo.destination, departure_datetime: vuelo.departure_datetime };
-    const pago = { forma_pago: payment_method || '03', condicion_operacion: payment_condition || '1', referencia: payment_reference || null };
-    const resultado = await DTEService.emitirDTE(dte_type, reserva, vueloData, receiver, pago);
-    res.status(201).json({ exito: true, mensaje: 'DTE emitido', datos: resultado });
-  } catch (error) {
-    console.error('❌ Error al emitir DTE:', error);
-    res.status(500).json({ error: 'Error al emitir DTE', detalle: error.message });
+    const { reservation_id, tipo_dte, receptor } = req.body;
+    if (!reservation_id || !tipo_dte) return res.status(400).json({ error: 'reservation_id y tipo_dte son obligatorios' });
+    const r = await DTEService.emitirDTE({ reservation_id: reservation_id, tipo_dte: tipo_dte, receptor: receptor });
+    res.status(201).json({
+      exito: true,
+      mensaje: r.estado === 'accepted' ? 'DTE emitido y sellado por MH' : 'DTE generado pero RECHAZADO por MH',
+      datos: r
+    });
+  } catch (e) {
+    console.error('Error emitir DTE:', e);
+    res.status(400).json({ error: e.message });
   }
 };
 
-const listarDTEs = async (req, res) => {
+const listar = async (req, res) => {
   try {
-    const dtes = await DTEService.listar(req.query);
-    res.json({ exito: true, total: dtes.length, datos: dtes });
-  } catch (error) {
+    let sql = `SELECT h.*, r.pnr FROM dte_headers h LEFT JOIN reservations r ON r.id = h.reservation_id WHERE 1=1`;
+    const vals = [];
+    if (req.query.tipo) { sql += ' AND h.dte_type = ?'; vals.push(req.query.tipo); }
+    if (req.query.estado) { sql += ' AND h.transmission_status = ?'; vals.push(req.query.estado); }
+    sql += ' ORDER BY h.id DESC LIMIT 200';
+    const [rows] = await pool.query(sql, vals);
+    res.json({ exito: true, total: rows.length, datos: rows });
+  } catch (e) {
     res.status(500).json({ error: 'Error interno' });
   }
 };
 
-const obtenerDTE = async (req, res) => {
+const obtener = async (req, res) => {
   try {
-    const dte = await DTE.obtenerCompleto(req.params.uuid);
-    if (!dte) return res.status(404).json({ error: 'DTE no encontrado' });
-    res.json({ exito: true, datos: dte });
-  } catch (error) {
+    const [h] = await pool.query('SELECT h.*, r.pnr FROM dte_headers h LEFT JOIN reservations r ON r.id = h.reservation_id WHERE h.uuid_generation = ?', [req.params.uuid]);
+    if (h.length === 0) return res.status(404).json({ error: 'DTE no encontrado' });
+    const [items] = await pool.query('SELECT * FROM dte_items WHERE header_id = ? ORDER BY item_number', [h[0].id]);
+    res.json({ exito: true, datos: Object.assign({}, h[0], { items: items }) });
+  } catch (e) {
     res.status(500).json({ error: 'Error interno' });
   }
 };
 
-const dtesPorReserva = async (req, res) => {
+const kpis = async (req, res) => {
   try {
-    const reserva = await Reserva.buscarPorPNR(req.params.pnr);
-    if (!reserva) return res.status(404).json({ error: 'Reserva no encontrada' });
-    const dtes = await DTE.buscarPorReserva(reserva.id);
-    res.json({ exito: true, datos: dtes });
-  } catch (error) {
+    const [rows] = await pool.query(
+      `SELECT COUNT(*) AS total,
+              SUM(transmission_status = 'accepted') AS aceptados,
+              SUM(transmission_status = 'rejected') AS rechazados,
+              SUM(transmission_status = 'transmitted') AS pendientes,
+              SUM(CASE WHEN DATE(emission_date) = CURDATE() THEN total_to_pay ELSE 0 END) AS facturado_hoy
+       FROM dte_headers`
+    );
+    res.json({ exito: true, datos: rows[0] });
+  } catch (e) {
     res.status(500).json({ error: 'Error interno' });
   }
 };
 
-const kpisFiscales = async (req, res) => {
-  try {
-    const fecha = req.query.fecha || new Date().toISOString().split('T')[0];
-    const kpis = await DTE.obtenerKPIs(fecha);
-    res.json({ exito: true, datos: kpis });
-  } catch (error) {
-    res.status(500).json({ error: 'Error interno' });
-  }
-};
-
-const conciliacionFiscal = async (req, res) => {
-  try {
-    const { fecha_desde, fecha_hasta } = req.query;
-    const reporte = await DTE.conciliacionFiscal(fecha_desde, fecha_hasta);
-    res.json({ exito: true, datos: reporte });
-  } catch (error) {
-    res.status(500).json({ error: 'Error interno' });
-  }
-};
-
-module.exports = { emitirDTE, listarDTEs, obtenerDTE, dtesPorReserva, kpisFiscales, conciliacionFiscal };
+module.exports = { emitir: emitir, listar: listar, obtener: obtener, kpis: kpis };

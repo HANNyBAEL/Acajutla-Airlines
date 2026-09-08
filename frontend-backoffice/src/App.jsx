@@ -5,17 +5,23 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
-import Vuelos from './pages/Vuelos';
-import Reservas from './pages/Reservas';
-import NuevaReserva from './pages/NuevaReserva';
 import Clientes from './pages/Clientes';
+import NuevaReserva from './pages/NuevaReserva';
+import Vuelos from './pages/Vuelos';
 import Aeropuertos from './pages/Aeropuertos';
+import Reservas from './pages/Reservas';
+import Pagos from './pages/Pagos';
 import DTE from './pages/DTE';
+import NotasCredito from './pages/NotasCredito';
+import ContingenciaDTE from './pages/ContingenciaDTE';
 import Aeronaves from './pages/Aeronaves';
 import Empleados from './pages/Empleados';
 import Reportes from './pages/Reportes';
 import Auditoria from './pages/Auditoria';
-import Pagos from './pages/Pagos';
+import DteExport from './pages/DteExport';
+import Comercial from './pages/Comercial';
+import Correos from './pages/Correos';
+import Checkin from './pages/Checkin';
 
 function App() {
   return (
@@ -31,12 +37,14 @@ function App() {
             <Route path="vuelos" element={<Vuelos />} />
             <Route path="aeropuertos" element={<Aeropuertos />} />
             <Route path="reservas" element={<Reservas />} />
-            <Route path="dte" element={<DTE />} />
+            <Route path="pagos" element={<Pagos />} />
+            <Route path="dte" element={<DTE />} />`n            <Route path="notas" element={<NotasCredito />} />
+            <Route path="contingencia" element={<ContingenciaDTE />} />
             <Route path="aeronaves" element={<Aeronaves />} />
             <Route path="empleados" element={<Empleados />} />
             <Route path="reportes" element={<Reportes />} />
-            <Route path="auditoria" element={<Auditoria />} />
-            <Route path="pagos" element={<Pagos />} />
+            <Route path="comercial" element={<Comercial />} />`n            <Route path="auditoria" element={<Auditoria />} />`n            <Route path="dte-export" element={<DteExport />} />`n            <Route path="correos" element={<Correos />} />
+            <Route path="checkin" element={<Checkin />} />
           </Route>
         </Routes>
         <Toaster position="top-right" />

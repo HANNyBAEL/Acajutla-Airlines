@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
-import { FiDollarSign, FiCheckCircle, FiRefreshCw } from 'react-icons/fi';
+import { FiDollarSign, FiCheckCircle, FiRefreshCw, FiX, FiFileText } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const Pagos = () => {
@@ -8,7 +8,7 @@ const Pagos = () => {
   const [pagos, setPagos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({ method: 'card', amount: '', numero: '', expiracion: '', cvv: '', referencia: '' });
+  const [form, setForm] = useState({ method: 'card', amount: '', numero: '', expiracion: '', cvv: '', referencia: '', tipo_dte: '01', receptor_nit: '', receptor_nrc: '' });
   const [procesando, setProcesando] = useState(false);
 
   const cargar = () => {
@@ -20,26 +20,38 @@ const Pagos = () => {
       .catch(() => toast.error('Error al cargar pagos'))
       .finally(() => setCargando(false));
   };
-
   useEffect(() => { cargar(); }, []);
 
   const abrirCobro = (r) => {
     setModal(r);
-    setForm({ method: 'card', amount: r.balance, numero: '', expiracion: '', cvv: '', referencia: '' });
+    setForm({ method: 'card', amount: r.balance, numero: '', expiracion: '', cvv: '', referencia: '', tipo_dte: '01', receptor_nit: '', receptor_nrc: '' });
   };
 
   const procesar = async () => {
     if (!form.amount || parseFloat(form.amount) <= 0) return toast.error('Indique un monto válido');
+    if (form.tipo_dte === '03' && !form.receptor_nit) return toast.error('Para CCFE el NIT del receptor es obligatorio (RN-FIS-02)');
     setProcesando(true);
     try {
-      const payload = { reservation_id: modal.id, method: form.method, amount: parseFloat(form.amount) };
+      const payload = { reservation_id: modal.id, method: form.method, amount: parseFloat(form.amount), tipo_dte: form.tipo_dte };
       if (form.method === 'card') payload.card = { numero: form.numero, expiracion: form.expiracion, cvv: form.cvv };
       if (form.method === 'transfer') payload.referencia = form.referencia;
+      if (form.tipo_dte === '03') payload.receptor = { nit: form.receptor_nit, nrc: form.receptor_nrc || null };
       const r = await api.post('/pagos/procesar', payload);
       const st = r.data.datos.status;
-      if (st === 'approved') toast.success('Pago aprobado. Reserva actualizada.');
-      else if (st === 'pending_confirmation') toast.success('Pago registrado. Pendiente confirmar transferencia.');
-      else toast.error('Pago rechazado por la pasarela');
+      if (st === 'approved') {
+        toast.success('Pago aprobado y reserva pagada');
+        if (r.data.dte && r.data.dte.envio && r.data.dte.envio.enviado) {
+          toast.success('DTE ' + r.data.dte.numeroControl + ' emitido. Correo enviado con PDF y JSON' + (r.data.dte.envio.simulado ? ' (simulado, ver storage/correos)' : ''));
+        } else if (r.data.dte && r.data.dte.error) {
+          toast.error('Pago OK, pero el DTE falló: ' + r.data.dte.error);
+        } else if (r.data.dte) {
+          toast.error('DTE emitido pero el correo no se envió: ' + (r.data.dte.envio ? r.data.dte.envio.motivo : 'sin correo'));
+        }
+      } else if (st === 'pending_confirmation') {
+        toast.success('Pago registrado. Al confirmar la transferencia se emitirá y enviará el DTE.');
+      } else {
+        toast.error('Pago rechazado por la pasarela');
+      }
       setModal(null);
       cargar();
     } catch (e) {
@@ -48,14 +60,17 @@ const Pagos = () => {
   };
 
   const confirmar = async (p) => {
-    if (!window.confirm('¿Confirmar la transferencia del pago #' + p.id + ' (PNR ' + p.pnr + ')?')) return;
+    if (!window.confirm('¿Confirmar la transferencia del pago #' + p.id + ' (PNR ' + p.pnr + ')? Se emitirá y enviará el DTE.')) return;
     try {
-      await api.post('/pagos/' + p.id + '/confirmar', {});
+      const r = await api.post('/pagos/' + p.id + '/confirmar', {});
       toast.success('Transferencia confirmada');
+      if (r.data.dte && r.data.dte.envio && r.data.dte.envio.enviado) {
+        toast.success('DTE ' + r.data.dte.numeroControl + ' emitido y enviado con PDF y JSON');
+      } else if (r.data.dte && r.data.dte.error) {
+        toast.error('Confirmado, pero el DTE falló: ' + r.data.dte.error);
+      }
       cargar();
-    } catch (e) {
-      toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al confirmar');
-    }
+    } catch (e) { toast.error(e.response && e.response.data ? e.response.data.error : 'Error al confirmar'); }
   };
 
   const reembolsar = async (p) => {
@@ -65,9 +80,7 @@ const Pagos = () => {
       await api.post('/pagos/' + p.id + '/reembolsar', { amount: p.amount, reason: reason });
       toast.success('Reembolso procesado');
       cargar();
-    } catch (e) {
-      toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al reembolsar');
-    }
+    } catch (e) { toast.error(e.response && e.response.data ? e.response.data.error : 'Error al reembolsar'); }
   };
 
   const badge = (s) => ({
@@ -84,14 +97,11 @@ const Pagos = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-800">Procesamiento de Pagos</h1>
-        <p className="text-gray-500 mt-1">Cobro de reservas, confirmaciones y reembolsos</p>
+        <p className="text-gray-500 mt-1">Cobro con emisión automática de DTE y envío de correo con PDF y JSON</p>
       </div>
 
       <div className="card overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center space-x-2">
-          <FiDollarSign className="text-primary-600" />
-          <h2 className="text-lg font-semibold text-gray-800">Cobros pendientes</h2>
-        </div>
+        <div className="px-6 py-4 border-b border-gray-100"><h2 className="text-lg font-semibold text-gray-800">Cobros pendientes</h2></div>
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
@@ -99,25 +109,21 @@ const Pagos = () => {
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Cliente</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Total</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Saldo</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Time limit</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Acción</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {cargando ? (
-              <tr><td colSpan="6" className="text-center py-8 text-gray-500">Cargando...</td></tr>
+              <tr><td colSpan="5" className="text-center py-8 text-gray-500">Cargando...</td></tr>
             ) : pendientes.length === 0 ? (
-              <tr><td colSpan="6" className="text-center py-8 text-gray-500">No hay cobros pendientes</td></tr>
+              <tr><td colSpan="5" className="text-center py-8 text-gray-500">No hay cobros pendientes</td></tr>
             ) : pendientes.map((r) => (
               <tr key={r.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 font-mono font-bold text-primary-700">{r.pnr}</td>
                 <td className="px-6 py-4 text-sm">{r.first_names} {r.last_names}</td>
                 <td className="px-6 py-4 text-sm">${parseFloat(r.estimated_total).toFixed(2)}</td>
                 <td className="px-6 py-4 text-sm font-semibold text-orange-600">${parseFloat(r.balance).toFixed(2)}</td>
-                <td className="px-6 py-4 text-sm text-gray-600">{r.time_limit ? new Date(r.time_limit).toLocaleString('es-SV') : '-'}</td>
-                <td className="px-6 py-4">
-                  <button onClick={() => abrirCobro(r)} className="btn-primary py-1 px-3 text-sm">Cobrar</button>
-                </td>
+                <td className="px-6 py-4"><button className="btn-primary py-1 px-3 text-sm" onClick={() => abrirCobro(r)}>Cobrar</button></td>
               </tr>
             ))}
           </tbody>
@@ -125,10 +131,7 @@ const Pagos = () => {
       </div>
 
       <div className="card overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center space-x-2">
-          <FiCheckCircle className="text-primary-600" />
-          <h2 className="text-lg font-semibold text-gray-800">Historial de pagos</h2>
-        </div>
+        <div className="px-6 py-4 border-b border-gray-100"><h2 className="text-lg font-semibold text-gray-800">Historial de pagos</h2></div>
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
@@ -136,8 +139,8 @@ const Pagos = () => {
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">PNR</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Método</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Monto</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">DTE</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Fecha</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Acciones</th>
             </tr>
           </thead>
@@ -150,8 +153,8 @@ const Pagos = () => {
                 <td className="px-6 py-4 font-mono text-sm text-primary-700">{p.pnr}</td>
                 <td className="px-6 py-4 text-sm">{metodoLabel(p.method)}{p.card_last_digits ? ' ••••' + p.card_last_digits : ''}</td>
                 <td className="px-6 py-4 text-sm font-semibold">{p.type === 'refund' ? '-' : ''}${parseFloat(p.amount).toFixed(2)}</td>
+                <td className="px-6 py-4 text-sm">{p.tipo_dte ? (p.tipo_dte === '01' ? 'FE' : p.tipo_dte === '03' ? 'CCFE' : p.tipo_dte) : '-'}</td>
                 <td className="px-6 py-4"><span className={'px-3 py-1 rounded-full text-xs font-medium ' + badge(p.status)[1]}>{badge(p.status)[0]}</span></td>
-                <td className="px-6 py-4 text-sm text-gray-600">{new Date(p.payment_date).toLocaleString('es-SV')}</td>
                 <td className="px-6 py-4">
                   <div className="flex items-center space-x-3">
                     {p.status === 'pending_confirmation' && (
@@ -174,10 +177,10 @@ const Pagos = () => {
 
       {modal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-800">Cobrar reserva {modal.pnr}</h2>
-              <button onClick={() => setModal(null)} className="text-gray-500 hover:text-gray-700"><FiX size={22} /></button>
+              <button onClick={() => setModal(null)} className="text-gray-500"><FiX size={22} /></button>
             </div>
             <div className="space-y-3">
               <div>
@@ -192,6 +195,25 @@ const Pagos = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Monto (USD) *</label>
                 <input type="number" step="0.01" className="input-field" value={form.amount} onChange={(e) => setForm(Object.assign({}, form, { amount: e.target.value }))} />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de DTE a emitir *</label>
+                <select className="input-field" value={form.tipo_dte} onChange={(e) => setForm(Object.assign({}, form, { tipo_dte: e.target.value }))}>
+                  <option value="01">01 - Factura Electrónica (FE)</option>
+                  <option value="03">03 - Comprobante de Crédito Fiscal (CCFE)</option>
+                </select>
+              </div>
+              {form.tipo_dte === '03' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">NIT receptor *</label>
+                    <input className="input-field" value={form.receptor_nit} onChange={(e) => setForm(Object.assign({}, form, { receptor_nit: e.target.value }))} placeholder="06149999999999" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">NRC receptor</label>
+                    <input className="input-field" value={form.receptor_nrc} onChange={(e) => setForm(Object.assign({}, form, { receptor_nrc: e.target.value }))} placeholder="9000000" />
+                  </div>
+                </div>
+              )}
               {form.method === 'card' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
@@ -215,7 +237,8 @@ const Pagos = () => {
                 </div>
               )}
               <div className="bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-lg p-3">
-                Pruebas: tarjeta aprobada 4111111111111111 · rechazada 4000000000000002 · CVV y expiración cualesquiera (futura).
+                Al aprobarse el pago se emitirá el DTE seleccionado y se enviará correo al cliente con PDF y JSON adjuntos.
+                Tarjeta de prueba aprobada: 4111111111111111.
               </div>
             </div>
             <div className="flex justify-end space-x-2 mt-6">

@@ -36,9 +36,14 @@ app.use('/api/clientes', require('./routes/clientesRoutes'));
 app.use('/api/pasajeros', pasajerosRoutes);
 app.use('/api/pagos', paymentRoutes);
 app.use('/api/dte', dteRoutes);
+app.use('/api/notas', require('./routes/notasRoutes'));
 app.use('/api/auditoria', require('./routes/auditRoutes'));
 app.use('/api/empleados', require('./routes/empleadosRoutes'));
 app.use('/api/aeronaves', require('./routes/aircraftRoutes'));
+app.use('/api/reportes', require('./routes/reportesRoutes'));
+app.use('/api/dte-eventos', require('./routes/eventosRoutes'));
+app.use('/api/checkin', require('./routes/checkinRoutes'));
+app.use('/api/correos', require('./routes/correosRoutes'));
 
 // Manejo de errores
 app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
@@ -46,6 +51,9 @@ app.use((err, req, res, next) => {
   console.error('❌ Error global:', err);
   res.status(500).json({ error: 'Error interno del servidor' });
 });
+app.use('/api/comercial', require('./routes/comercialRoutes'));
+
+app.use('/api/dte-export', require('./routes/dteExportRoutes'));
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor SkyManager corriendo en http://localhost:${PORT}`);
