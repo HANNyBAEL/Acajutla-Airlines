@@ -57,6 +57,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
+app.get('/health', (req, res) => res.json({ ok: true, service: 'skymanager-api' }));
 app.listen(PORT, () => {
   console.log(`ðŸš€ Servidor SkyManager corriendo en http://localhost:${PORT}`);
   console.log(`ðŸ“¡ Ambiente: ${process.env.NODE_ENV || 'development'}`);
