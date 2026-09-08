@@ -51,11 +51,11 @@ const SearchResults = () => {
   };
 
   const vuelosOrdenados = [...vuelos].sort((a, b) => {
-    if (orden === 'precio') return a.precio_base - b.precio_base;
-    if (orden === 'salida') return new Date(a.fecha_hora_salida) - new Date(b.fecha_hora_salida);
+    if (orden === 'precio') return a.base_price - b.base_price;
+    if (orden === 'salida') return new Date(a.departure_datetime) - new Date(b.departure_datetime);
     if (orden === 'duracion') {
-      const durA = new Date(a.fecha_hora_llegada) - new Date(a.fecha_hora_salida);
-      const durB = new Date(b.fecha_hora_llegada) - new Date(b.fecha_hora_salida);
+      const durA = new Date(a.arrival_datetime) - new Date(a.departure_datetime);
+      const durB = new Date(b.arrival_datetime) - new Date(b.departure_datetime);
       return durA - durB;
     }
     return 0;
@@ -63,7 +63,7 @@ const SearchResults = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header con búsqueda */}
+      {/* Header con bÃºsqueda */}
       <div className="bg-gradient-to-br from-primary-700 to-sky-600 py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <button
@@ -78,14 +78,14 @@ const SearchResults = () => {
 
       {/* Resultados */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Info de búsqueda */}
+        {/* Info de bÃºsqueda */}
         {busqueda && !cargando && (
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900">
-              {busqueda.origen} → {busqueda.destino}
+              {busqueda.origen} â†’ {busqueda.destino}
             </h1>
             <p className="text-gray-600">
-              {formatearFecha(busqueda.fecha, "EEEE dd 'de' MMMM, yyyy")} • {busqueda.pasajeros} pasajero(s)
+              {formatearFecha(busqueda.fecha, "EEEE dd 'de' MMMM, yyyy")} â€¢ {busqueda.pasajeros} pasajero(s)
             </p>
           </div>
         )}
@@ -103,7 +103,7 @@ const SearchResults = () => {
               >
                 <option value="precio">Precio (menor a mayor)</option>
                 <option value="salida">Hora de salida</option>
-                <option value="duracion">Duración</option>
+                <option value="duracion">DuraciÃ³n</option>
               </select>
             </div>
             <p className="text-sm text-gray-600">
@@ -123,15 +123,15 @@ const SearchResults = () => {
         {/* Sin resultados */}
         {!cargando && !error && vuelos.length === 0 && (
           <div className="text-center py-16">
-            <div className="text-6xl mb-4">✈️</div>
+            <div className="text-6xl mb-4">âœˆï¸</div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">
               No encontramos vuelos disponibles
             </h3>
             <p className="text-gray-600 mb-6">
-              Intenta cambiar las fechas o el destino de tu búsqueda
+              Intenta cambiar las fechas o el destino de tu bÃºsqueda
             </p>
             <button onClick={() => navigate('/')} className="btn-primary">
-              Nueva búsqueda
+              Nueva bÃºsqueda
             </button>
           </div>
         )}

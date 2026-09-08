@@ -1,12 +1,12 @@
 import axios from 'axios';
 
-// Configuración base de Axios
+// ConfiguraciÃ³n base de Axios
 const api = axios.create({
   baseURL: '/api', // Gracias al proxy de Vite, esto va a localhost:3000/api
   timeout: 10000,
 });
 
-// Interceptor para agregar el token JWT en cada petición
+// Interceptor para agregar el token JWT en cada peticiÃ³n
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('bo_token');
   if (token) {
@@ -15,7 +15,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Interceptor para manejar errores de autenticación
+// Interceptor para manejar errores de autenticaciÃ³n
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -27,7 +27,7 @@ api.interceptors.response.use(
   }
 );
 
-// Endpoints de Autenticación
+// Endpoints de AutenticaciÃ³n
 export const authAPI = {
   login: (data) => api.post('/auth/login', data),
   perfil: () => api.get('/auth/perfil'),
@@ -35,3 +35,14 @@ export const authAPI = {
 };
 
 export default api;
+export const vuelosAPI = {
+  buscar: (origen, destino, fecha) => 
+    axios.get(/api/vuelos/buscar?origen=\&destino=\&fecha=\),
+  detalle: (id) => axios.get(/api/vuelos/\),
+};
+
+export const reservasAPI = {
+  crear: (data) => axios.post('/api/reservas', data),
+  obtenerPorPNR: (pnr) => axios.get(/api/reservas/pnr/\),
+  cancelar: (id) => axios.put(/api/reservas/\/cancelar),
+};

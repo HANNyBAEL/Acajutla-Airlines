@@ -1,17 +1,18 @@
+// NOTA: Se debe agregar FOR UPDATE en la consulta de disponibilidad para evitar sobreventa
 const pool = require('../config/db');
 
 const FlightSegment = {
   asignar: async (data, connection = pool) => {
     const { reservation_id, passenger_id, flight_id, fare_class = 'economy', seat } = data;
-    // La reserva y el pasajero pueden estar aún sin confirmar dentro de una
-    // transacción. Usar esa misma conexión evita que la FK no los encuentre.
+    // La reserva y el pasajero pueden estar aÃºn sin confirmar dentro de una
+    // transacciÃ³n. Usar esa misma conexiÃ³n evita que la FK no los encuentre.
     const disponible = await FlightSegment.validarDisponibilidad(flight_id, fare_class, connection);
     if (!disponible.disponible) {
       throw new Error(`No hay asientos disponibles en el vuelo ${disponible.flight_number}. Disponibles: ${disponible.available_seats}`);
     }
     if (seat) {
       const ocupado = await FlightSegment.validarAsiento(flight_id, seat, connection);
-      if (ocupado) throw new Error(`El asiento ${seat} ya está ocupado en este vuelo`);
+      if (ocupado) throw new Error(`El asiento ${seat} ya estÃ¡ ocupado en este vuelo`);
     }
     const [result] = await connection.query(
       `INSERT INTO flight_segments (reservation_id, passenger_id, flight_id, fare_class, seat) VALUES (?, ?, ?, ?, ?)`,

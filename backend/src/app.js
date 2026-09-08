@@ -17,7 +17,7 @@ app.use(enmascararDatosSensibles);
 
 // Ruta de prueba
 app.get('/', (req, res) => {
-  res.json({ nombre: 'SkyManager API - Acajutla Airlines', version: '1.0.0', estado: '✅ Operativo', timestamp: new Date().toISOString() });
+  res.json({ nombre: 'SkyManager API - Acajutla Airlines', version: '1.0.0', estado: 'âœ… Operativo', timestamp: new Date().toISOString() });
 });
 
 // Rutas
@@ -48,7 +48,7 @@ app.use('/api/correos', require('./routes/correosRoutes'));
 // Manejo de errores
 app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
 app.use((err, req, res, next) => {
-  console.error('❌ Error global:', err);
+  console.error('âŒ Error global:', err);
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 app.use('/api/comercial', require('./routes/comercialRoutes'));
@@ -62,6 +62,6 @@ app.use('/api/operaciones', require('./routes/operacionesRoutes'));
 app.use('/api/qa', require('./routes/qaRoutes'));
 
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor SkyManager corriendo en http://localhost:${PORT}`);
-  console.log(`📡 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`ðŸš€ Servidor SkyManager corriendo en http://localhost:${PORT}`);
+  console.log(`ðŸ“¡ Ambiente: ${process.env.NODE_ENV || 'development'}`);
 });
