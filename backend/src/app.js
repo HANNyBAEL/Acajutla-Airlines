@@ -4,9 +4,21 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const allowedOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 // Middlewares globales
-app.use(cors());
+app.use(cors({
+  origin(origin, callback) {
+    // Las solicitudes sin Origin incluyen comprobaciones del propio hosting.
+    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Origen no permitido por CORS'));
+  }
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -19,6 +31,7 @@ app.use(enmascararDatosSensibles);
 app.get('/', (req, res) => {
   res.json({ nombre: 'SkyManager API - Acajutla Airlines', version: '1.0.0', estado: 'âœ… Operativo', timestamp: new Date().toISOString() });
 });
+app.get('/health', (req, res) => res.json({ ok: true, service: 'skymanager-api' }));
 
 // Rutas
 const authRoutes = require('./routes/authRoutes');
@@ -57,7 +70,6 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
-app.get('/health', (req, res) => res.json({ ok: true, service: 'skymanager-api' }));
 app.listen(PORT, () => {
   console.log(`ðŸš€ Servidor SkyManager corriendo en http://localhost:${PORT}`);
   console.log(`ðŸ“¡ Ambiente: ${process.env.NODE_ENV || 'development'}`);
