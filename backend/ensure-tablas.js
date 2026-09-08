@@ -1,13 +1,11 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
-
 (async () => {
   const pool = mysql.createPool({
     host: process.env.DB_HOST, port: process.env.DB_PORT,
     user: process.env.DB_USER, password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME, ssl: { rejectUnauthorized: false }
   });
-
   await pool.query(`CREATE TABLE IF NOT EXISTS payments (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     reservation_id INT UNSIGNED NOT NULL,
@@ -27,10 +25,8 @@ require('dotenv').config();
     confirmed_by INT UNSIGNED DEFAULT NULL,
     confirmation_date DATETIME DEFAULT NULL,
     payment_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    KEY idx_pay_reservation (reservation_id)
+    PRIMARY KEY (id), KEY idx_pay_reservation (reservation_id)
   )`);
-
   await pool.query(`CREATE TABLE IF NOT EXISTS dte_headers (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     uuid_generation CHAR(36) NOT NULL,
@@ -58,12 +54,9 @@ require('dotenv').config();
     total_vat DECIMAL(11,2) NOT NULL DEFAULT 0.00,
     total_to_pay DECIMAL(11,2) NOT NULL DEFAULT 0.00,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_uuid (uuid_generation),
-    UNIQUE KEY uk_control (control_number),
+    PRIMARY KEY (id), UNIQUE KEY uk_uuid (uuid_generation), UNIQUE KEY uk_control (control_number),
     KEY idx_dte_reservation (reservation_id)
   )`);
-
   await pool.query(`CREATE TABLE IF NOT EXISTS dte_items (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     header_id INT UNSIGNED NOT NULL,
@@ -79,10 +72,8 @@ require('dotenv').config();
     sale_taxable DECIMAL(11,8) NOT NULL DEFAULT 0,
     vat_item DECIMAL(11,8) NOT NULL DEFAULT 0,
     tribute_code CHAR(2) DEFAULT NULL,
-    PRIMARY KEY (id),
-    KEY idx_item_header (header_id)
+    PRIMARY KEY (id), KEY idx_item_header (header_id)
   )`);
-
   console.log('Tablas payments / dte_headers / dte_items verificadas');
   process.exit(0);
 })().catch((e) => { console.error('Error:', e.message); process.exit(1); });

@@ -8,9 +8,8 @@ const procesarPago = async (datos, usuario) => {
     const [rows] = await connection.query('SELECT * FROM reservations WHERE id = ? FOR UPDATE', [datos.reservation_id]);
     if (rows.length === 0) throw new Error('Reserva no encontrada');
     const reserva = rows[0];
-    if (reserva.status === 'cancelled' || reserva.status === 'completed') {
-      throw new Error('La reserva está cancelada o finalizada');
-    }
+    if (reserva.status === 'cancelled' || reserva.status === 'completed') throw new Error('La reserva está cancelada o finalizada');
+
     const pendiente = parseFloat(reserva.estimated_total) - parseFloat(reserva.paid_total || 0);
     const monto = parseFloat(datos.amount || pendiente);
     if (isNaN(monto) || monto <= 0) throw new Error('El monto debe ser mayor a 0');
@@ -28,23 +27,15 @@ const procesarPago = async (datos, usuario) => {
       throw new Error('Método de pago no soportado');
     }
 
-    const status = gateway.exito
-      ? (gateway.codigo === 'PENDING_CONFIRMATION' ? 'pending_confirmation' : 'approved')
-      : 'rejected';
+    const status = gateway.exito ? (gateway.codigo === 'PENDING_CONFIRMATION' ? 'pending_confirmation' : 'approved') : 'rejected';
 
     const [r] = await connection.query(
       `INSERT INTO payments (reservation_id, method, amount, currency, status, type, external_reference, authorization_code, card_last_digits, card_brand, gateway_data, reason, processed_by, payment_date)
        VALUES (?, ?, ?, ?, ?, 'payment', ?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [
-        reserva.id, datos.method, monto, reserva.currency || 'USD', status,
-        gateway.transaction_id || gateway.referencia || null,
-        gateway.authorization_code || null,
-        gateway.ultimos_digitos || null,
-        gateway.marca_tarjeta || null,
-        JSON.stringify(gateway),
-        datos.referencia || null,
-        usuario && usuario.id ? usuario.id : null
-      ]
+      [reserva.id, datos.method, monto, reserva.currency || 'USD', status,
+       gateway.transaction_id || gateway.referencia || null, gateway.authorization_code || null,
+       gateway.ultimos_digitos || null, gateway.marca_tarjeta || null, JSON.stringify(gateway),
+       datos.referencia || null, usuario && usuario.id ? usuario.id : null]
     );
 
     if (status === 'approved') {
