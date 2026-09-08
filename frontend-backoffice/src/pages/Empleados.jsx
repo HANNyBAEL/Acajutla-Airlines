@@ -175,7 +175,7 @@ const Empleados = () => {
                   <option value="operations">Operaciones</option>
                   <option value="cashier">Cajero</option>
                   <option value="airport_staff">Personal Aeroportuario</option>
-                  <option value="auditor">Auditor</option>
+                  <option value="auditor">Auditor</option>`n                  <option value="agent">Agente de Viajes/Corporativo</option>
                 </select></div>
             </div>
 

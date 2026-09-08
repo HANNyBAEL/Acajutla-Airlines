@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiHome, FiSend, FiCalendar, FiFileText, FiFileMinus, FiCpu, FiUsers, FiBarChart2, FiLogOut, FiUserPlus, FiMap, FiUser, FiShield, FiCreditCard, FiAlertTriangle, FiUserCheck, FiMail, FiShoppingBag, FiGlobe } from 'react-icons/fi';
+import { FiHome, FiSend, FiCalendar, FiFileText, FiFileMinus, FiCpu, FiUsers, FiBarChart2, FiLogOut, FiUserPlus, FiMap, FiUser, FiShield, FiCreditCard, FiAlertTriangle, FiUserCheck, FiMail, FiShoppingBag, FiGlobe, FiSettings, FiCheckSquare } from 'react-icons/fi';
 
 const Sidebar = () => {
   const { usuario, cerrarSesion } = useAuth();
@@ -23,7 +23,10 @@ const Sidebar = () => {
     { path: '/reportes', icon: FiBarChart2, label: 'Reportes' },
     { path: '/correos', icon: FiMail, label: 'Correos' },
     { path: '/comercial', icon: FiShoppingBag, label: 'Comercial / Waitlist' },
+    { path: '/operaciones', icon: FiSettings, label: 'Operaciones' },
     { path: '/auditoria', icon: FiShield, label: 'Auditoría' },
+    { path: '/cierre-qa', icon: FiCheckSquare, label: 'Cierre QA' },
+    { path: '/cumplimiento', icon: FiShield, label: 'Cumplimiento Fiscal' },
     { path: '/dte-export', icon: FiGlobe, label: 'FEXE / FSEE' },
   ];
 

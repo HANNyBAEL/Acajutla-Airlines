@@ -69,6 +69,16 @@ const crearVuelo = async (req, res) => {
       routeId = nr.insertId;
     }
 
+    // ===== RN-OP-02: turnaround mínimo de aeronave entre vuelos =====
+    const [cfgT] = await pool.query("SELECT param_value FROM config_params WHERE param_key='turnaround_min'");
+    const tmin = parseInt(cfgT.length ? cfgT[0].param_value : '45', 10);
+    const [confTurn] = await pool.query(
+      'SELECT flight_number FROM flights WHERE aircraft_id = ? AND NOT (? >= DATE_ADD(arrival_datetime, INTERVAL ? MINUTE) OR ? <= DATE_SUB(departure_datetime, INTERVAL ? MINUTE))',
+      [aircraft_id, departure_datetime, tmin, arrival_datetime, tmin]
+    );
+    if (confTurn.length) return res.status(409).json({ error: 'RN-OP-02: turnaround insuficiente con el vuelo ' + confTurn[0].flight_number });
+    // ===== FIN RN-OP-02 =====
+
     const [result] = await pool.query(
       'INSERT INTO flights (route_id, aircraft_id, flight_number, departure_datetime, arrival_datetime, status, base_price, gate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       [routeId, aircraft_id, flight_number.toUpperCase(), departure_datetime, arrival_datetime, 'scheduled', base_price, gate || null]
@@ -159,4 +169,4 @@ const reprogramarVuelo = async (req, res) => {
   }
 };
 
-module.exports = { buscarVuelos: buscarVuelos, listarVuelos: listarVuelos, obtenerVuelo: obtenerVuelo, listarAeronaves: listarAeronaves, crearVuelo: crearVuelo, cancelarVuelo: cancelarVuelo, reprogramarVuelo: reprogramarVuelo };
+module.exports = { buscarVuelos, listarVuelos, obtenerVuelo, listarAeronaves, crearVuelo, cancelarVuelo, reprogramarVuelo };
