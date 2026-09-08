@@ -57,9 +57,10 @@ const Reservas = () => {
     }
   };
 
-  const pnrDetalle = detalle ? (detalle.pnr || (detalle.reserva ? detalle.reserva.pnr : '')) : '';
-  const pasajeros = detalle ? (detalle.pasajeros || []) : [];
-  const segmentos = detalle ? (detalle.segmentos || detalle.flight_segments || []) : [];
+  const reservaDetalle = detalle ? (detalle.reserva || detalle) : null;
+  const pnrDetalle = reservaDetalle ? reservaDetalle.pnr : '';
+  const pasajeros = detalle ? (detalle.pasajeros || detalle.passengers || []) : [];
+  const segmentos = detalle ? (detalle.segmentos || detalle.segments || detalle.flight_segments || []) : [];
 
   const cancelar = async () => {
     const motivo = window.prompt('Motivo de cancelación de la reserva ' + pnrDetalle + ':');

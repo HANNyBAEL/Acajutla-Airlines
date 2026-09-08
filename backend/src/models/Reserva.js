@@ -16,7 +16,9 @@ const Reserva = {
 
   buscarPorPNR: async (pnr) => {
     const [rows] = await pool.query(
-      `SELECT r.*, c.first_names AS customer_first_names, c.last_names AS customer_last_names, c.email AS customer_email
+      `SELECT r.*, c.first_names AS customer_first_names, c.last_names AS customer_last_names,
+              c.document_type AS customer_document_type, c.document_number AS customer_document_number,
+              c.email AS customer_email
        FROM reservations r LEFT JOIN customers c ON r.customer_id = c.id WHERE r.pnr = ?`,
       [pnr.toUpperCase()]
     );
@@ -25,7 +27,9 @@ const Reserva = {
 
   obtenerDetalleCompleto: async (pnr) => {
     const [reserva] = await pool.query(
-      `SELECT r.*, c.first_names AS customer_first_names, c.last_names AS customer_last_names, c.email AS customer_email, c.phone AS customer_phone
+      `SELECT r.*, c.first_names AS customer_first_names, c.last_names AS customer_last_names,
+              c.document_type AS customer_document_type, c.document_number AS customer_document_number,
+              c.email AS customer_email, c.phone AS customer_phone
        FROM reservations r LEFT JOIN customers c ON r.customer_id = c.id WHERE r.pnr = ?`,
       [pnr.toUpperCase()]
     );
@@ -46,7 +50,25 @@ const Reserva = {
     );
 
     const [pagos] = await pool.query(`SELECT * FROM payments WHERE reservation_id = ? ORDER BY payment_date DESC`, [reserva[0].id]);
-    return { ...reserva[0], passengers: pasajeros, payments: pagos };
+    const [segmentos] = await pool.query(
+      `SELECT fs.*, f.flight_number, f.departure_datetime, f.arrival_datetime,
+              ao.iata_code AS origin, ad.iata_code AS destination
+       FROM flight_segments fs
+       JOIN flights f ON f.id = fs.flight_id
+       JOIN routes rt ON rt.id = f.route_id
+       JOIN airports ao ON ao.id = rt.origin_id
+       JOIN airports ad ON ad.id = rt.destination_id
+       WHERE fs.reservation_id = ? ORDER BY f.departure_datetime ASC`,
+      [reserva[0].id]
+    );
+    return {
+      ...reserva[0],
+      passengers: pasajeros,
+      pasajeros,
+      segments: segmentos,
+      segmentos,
+      payments: pagos
+    };
   },
 
   actualizarEstado: async (id, status, datosExtra = {}) => {
@@ -59,7 +81,8 @@ const Reserva = {
   },
 
   listar: async (filtros = {}) => {
-    let sql = `SELECT r.*, c.first_names AS customer_first_names, c.last_names AS customer_last_names,
+    let sql = `SELECT r.*, c.first_names AS customer_first, c.last_names AS customer_last,
+                      c.document_type AS customer_document_type, c.document_number AS customer_doc,
                       (SELECT COUNT(*) FROM passengers p WHERE p.reservation_id = r.id) AS total_passengers
                FROM reservations r LEFT JOIN customers c ON r.customer_id = c.id WHERE 1=1`;
     const valores = [];
