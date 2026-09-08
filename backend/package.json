@@ -5,7 +5,8 @@
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
-    "dev": "nodemon src/app.js"
+    "dev": "nodemon src/app.js",
+    "migrate:features": "node migracion-bloque-c.js && node migracion-bloque-e.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

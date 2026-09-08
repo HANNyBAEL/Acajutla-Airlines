@@ -257,7 +257,7 @@ const dashboardKPIs = async (req, res) => {
        LEFT JOIN (SELECT flight_id, COUNT(DISTINCT passenger_id) AS ocupados FROM flight_segments GROUP BY flight_id) fs ON fs.flight_id = f.id
        WHERE DATE(f.departure_datetime) = ?`, [hoy]);
     const [ventasHoy] = await pool.query(
-      `SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE DATE(created_at) = ?`, [hoy]);
+      `SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE DATE(payment_date) = ?`, [hoy]);
     const [dteHoy] = await pool.query(
       `SELECT transmission_status, COUNT(*) AS c FROM dte_headers WHERE DATE(created_at) = ? GROUP BY transmission_status`, [hoy]);
     const [contingencia] = await pool.query(
