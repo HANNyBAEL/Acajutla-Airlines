@@ -10,6 +10,7 @@ const DTE = () => {
   const [modal, setModal] = useState(false);
   const [emitiendo, setEmitiendo] = useState(false);
   const [form, setForm] = useState({ reservation_id: '', tipo_dte: '01', nit: '', nrc: '' });
+  const [filtroRes, setFiltroRes] = useState('');
   const [visor, setVisor] = useState(null);
 
   const cargar = () => {
@@ -147,10 +148,10 @@ const DTE = () => {
             ) : (
               <div className="space-y-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Reserva pagada *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Reserva pagada *</label>`n                <input className="input-field mb-2" placeholder="Filtrar: PNR o nombre..." value={filtroRes} onChange={(e) => setFiltroRes(e.target.value)} />
                   <select className="input-field" value={form.reservation_id} onChange={(e) => setForm(Object.assign({}, form, { reservation_id: e.target.value }))}>
                     <option value="">-- Selecciona --</option>
-                    {facturables.map((r) => (
+                    {facturables.filter((r) => ((r.pnr || '') + ' ' + (r.customer_first_names || '') + ' ' + (r.customer_last_names || '')).toLowerCase().includes(filtroRes.toLowerCase())).map((r) => (
                       <option key={r.id} value={r.id}>{r.pnr} - {r.customer_first_names} {r.customer_last_names} (${parseFloat(r.estimated_total).toFixed(2)})</option>
                     ))}
                   </select>

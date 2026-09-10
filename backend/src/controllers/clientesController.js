@@ -31,4 +31,19 @@ const crearCliente = async (req, res) => {
   }
 };
 
-module.exports = { listarClientes, crearCliente };
+const buscar = async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    if (!q) return res.json({ exito: true, datos: [] });
+    const like = '%' + q + '%';
+    const [rows] = await pool.query(
+      `SELECT id, first_names, last_names, document_type, document_number, email, phone
+       FROM customers
+       WHERE first_names LIKE ? OR last_names LIKE ? OR CONCAT(first_names,' ',last_names) LIKE ? OR document_number LIKE ? OR email LIKE ?
+       ORDER BY first_names LIMIT 10`,
+      [like, like, like, like, like]
+    );
+    res.json({ exito: true, datos: rows });
+  } catch (e) { res.status(500).json({ error: 'Error interno' }); }
+};
+module.exports = { listarClientes, crearCliente, buscar };

@@ -18,6 +18,7 @@ import Aeronaves from './pages/Aeronaves';
 import Empleados from './pages/Empleados';
 import Reportes from './pages/Reportes';
 import Auditoria from './pages/Auditoria';
+import Notificaciones from './pages/Notificaciones';
 import CierreQA from './pages/CierreQA';
 import Operaciones from './pages/Operaciones';
 import CumplimientoFiscal from './pages/CumplimientoFiscal';
@@ -48,7 +49,7 @@ function App() {
             <Route path="empleados" element={<Empleados />} />
             <Route path="reportes" element={<Reportes />} />
             <Route path="comercial" element={<Comercial />} />
-            <Route path="auditoria" element={<Auditoria />} />
+            <Route path="auditoria" element={<Auditoria />} />`n            <Route path="notificaciones" element={<Notificaciones />} />
             <Route path="cierre-qa" element={<CierreQA />} />
             <Route path="operaciones" element={<Operaciones />} />
             <Route path="cumplimiento" element={<CumplimientoFiscal />} />

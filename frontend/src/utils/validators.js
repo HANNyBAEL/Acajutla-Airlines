@@ -111,6 +111,13 @@ export const validarBusqueda = (datos) => {
     errores.fecha = 'La fecha no puede ser en el pasado';
   }
 
+  if (!datos.soloIda) {
+    if (!datos.fechaRegreso) {
+      errores.fechaRegreso = 'La fecha de regreso es requerida para ida y vuelta';
+    } else if (new Date(datos.fechaRegreso) < new Date(datos.fecha)) {
+      errores.fechaRegreso = 'La fecha de regreso no puede ser anterior a la salida';
+    }
+  }
   if (!datos.pasajeros || datos.pasajeros < 1) {
     errores.pasajeros = 'Debe haber al menos 1 pasajero';
   }

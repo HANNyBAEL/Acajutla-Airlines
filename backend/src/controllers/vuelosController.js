@@ -169,4 +169,34 @@ const reprogramarVuelo = async (req, res) => {
   }
 };
 
-module.exports = { buscarVuelos, listarVuelos, obtenerVuelo, listarAeronaves, crearVuelo, cancelarVuelo, reprogramarVuelo };
+const buscarItinerarios = async (req, res) => {
+  try {
+    const { origen, destino, fecha } = req.query;
+    if (!origen || !destino || !fecha) return res.status(400).json({ error: 'origen, destino y fecha son obligatorios' });
+    const o = origen.toUpperCase(); const d = destino.toUpperCase();
+    const dur = (a, b) => Math.round((new Date(b) - new Date(a)) / 60000);
+    const addMin = (s, m) => new Date(new Date(s).getTime() + m * 60000).toISOString().slice(0, 19).replace('T', ' ');
+    const SQL_VUELO = `SELECT f.id, f.flight_number, f.departure_datetime, f.arrival_datetime, f.base_price,
+              ao.iata_code AS origin_iata, ad.iata_code AS destination_iata, at.model AS aircraft_model, at.total_capacity,
+              (at.total_capacity - COALESCE((SELECT COUNT(*) FROM flight_segments fs JOIN reservations r ON r.id = fs.reservation_id WHERE fs.flight_id = f.id AND r.status IN ('confirmed','paid')), 0)) AS available_seats
+       FROM flights f JOIN routes rt ON rt.id = f.route_id
+       JOIN airports ao ON ao.id = rt.origin_id JOIN airports ad ON ad.id = rt.destination_id
+       JOIN aircraft ac ON ac.id = f.aircraft_id JOIN aircraft_types at ON at.id = ac.type_id`;
+    const directos = (await Vuelo.buscarDisponibles(o, d, fecha)).map((v) => Object.assign({}, v, { tipo: 'directo', duracion_min: dur(v.departure_datetime, v.arrival_datetime), vuelos: [v] }));
+    const conexiones = [];
+    const [legs1] = await pool.query(SQL_VUELO + ` WHERE ao.iata_code = ? AND ad.iata_code <> ? AND DATE(f.departure_datetime) = ? AND f.status IN ('scheduled','confirmed') AND ao.active = 1 AND ad.active = 1 ORDER BY f.departure_datetime LIMIT 15`, [o, d, fecha]);
+    for (const l1 of legs1) {
+      if (conexiones.length >= 6) break;
+      const [legs2] = await pool.query(SQL_VUELO + ` WHERE ao.iata_code = ? AND ad.iata_code = ? AND f.departure_datetime BETWEEN ? AND ? AND f.status IN ('scheduled','confirmed') AND ao.active = 1 AND ad.active = 1 ORDER BY f.departure_datetime LIMIT 5`, [l1.destination_iata, d, addMin(l1.arrival_datetime, 45), addMin(l1.arrival_datetime, 360)]);
+      for (const l2 of legs2) {
+        conexiones.push({ tipo: 'conexion', escala_en: l1.destination_iata, layover_min: dur(l1.arrival_datetime, l2.departure_datetime), duracion_min: dur(l1.departure_datetime, l2.arrival_datetime), base_price: Number(l1.base_price) + Number(l2.base_price), available_seats: Math.min(l1.available_seats, l2.available_seats), vuelos: [l1, l2] });
+      }
+    }
+    conexiones.sort((a, b) => a.duracion_min - b.duracion_min);
+    res.json({ exito: true, datos: { directos: directos, conexiones: conexiones.slice(0, 5) } });
+  } catch (error) {
+    console.error('Error buscar itinerarios:', error);
+    res.status(500).json({ error: 'Error interno' });
+  }
+};
+module.exports = { buscarVuelos, listarVuelos, obtenerVuelo, listarAeronaves, crearVuelo, cancelarVuelo, reprogramarVuelo, buscarItinerarios };

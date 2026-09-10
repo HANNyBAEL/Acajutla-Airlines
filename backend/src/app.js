@@ -62,6 +62,7 @@ app.use('/api/dte-export', require('./routes/dteExportRoutes'));
 app.use('/api/fiscal', require('./routes/fiscalRoutes'));
 app.use('/api/operaciones', require('./routes/operacionesRoutes'));
 app.use('/api/qa', require('./routes/qaRoutes'));
+app.use('/api/notificaciones', require('./routes/notificacionesRoutes'));
 
 // Manejo de errores
 app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
