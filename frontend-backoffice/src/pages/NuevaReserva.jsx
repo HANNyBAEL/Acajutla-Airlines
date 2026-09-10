@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
+import Autocomplete from '../components/Autocomplete';
 import { FiSearch, FiUserPlus, FiTrash2, FiCheckCircle } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -10,33 +11,38 @@ const aeropuertos = [
   { code: 'TGU', name: 'Tegucigalpa' }, { code: 'MGA', name: 'Managua' },
 ];
 const nacionalidades = ['SV', 'US', 'GT', 'HN', 'NI', 'CR', 'PA', 'MX'];
-
+const MAP_DOC = { DUI: '13', NIT: '36', Passport: '3', '13': '13', '36': '36', '3': '3' };
 const pasajeroVacio = () => ({
   passenger_type: 'adult', first_names: '', last_names: '',
   document_type: '13', document_number: '', birth_date: '', nationality: 'SV',
 });
+const tipoPorEdad = (birth) => {
+  if (!birth) return null;
+  const b = new Date(birth); const hoy = new Date();
+  let e = hoy.getFullYear() - b.getFullYear();
+  const m = hoy.getMonth() - b.getMonth();
+  if (m < 0 || (m === 0 && hoy.getDate() < b.getDate())) e--;
+  if (e < 2) return 'infant';
+  if (e < 12) return 'child';
+  return 'adult';
+};
 
 const NuevaReserva = () => {
-  const [clientes, setClientes] = useState([]);
   const [clienteId, setClienteId] = useState('');
+  const [clienteSel, setClienteSel] = useState(null);
   const [nuevoCliente, setNuevoCliente] = useState(false);
   const [clienteForm, setClienteForm] = useState({ first_names: '', last_names: '', document_type: 'DUI', document_number: '', email: '', phone: '' });
-
+  const [autoRellenar, setAutoRellenar] = useState(true);
   const [origen, setOrigen] = useState('SAL');
   const [destino, setDestino] = useState('MIA');
   const [fecha, setFecha] = useState('');
   const [vuelos, setVuelos] = useState([]);
   const [vueloId, setVueloId] = useState(null);
   const [buscando, setBuscando] = useState(false);
-
   const [pasajeros, setPasajeros] = useState([pasajeroVacio()]);
   const [clase, setClase] = useState('economy');
   const [guardando, setGuardando] = useState(false);
   const [pnrCreado, setPnrCreado] = useState(null);
-
-  useEffect(() => {
-    api.get('/clientes').then((r) => setClientes(r.data.datos || [])).catch(() => {});
-  }, []);
 
   const buscarVuelos = async () => {
     if (!fecha) return toast.error('Selecciona una fecha');
@@ -46,15 +52,38 @@ const NuevaReserva = () => {
       const r = await api.get('/vuelos/buscar', { params: { origen: origen, destino: destino, fecha: fecha } });
       setVuelos(r.data.datos || []);
       if ((r.data.datos || []).length === 0) toast.error('No hay vuelos para esa fecha');
-    } catch (e) {
-      toast.error('Error al buscar vuelos');
-    } finally {
-      setBuscando(false);
-    }
+    } catch (e) { toast.error('Error al buscar vuelos'); }
+    finally { setBuscando(false); }
   };
 
   const setPax = (i, campo, valor) => {
-    setPasajeros(pasajeros.map((p, idx) => (idx === i ? Object.assign({}, p, { [campo]: valor }) : p)));
+    setPasajeros((prev) => prev.map((p, idx) => {
+      if (idx !== i) return p;
+      const np = Object.assign({}, p, { [campo]: valor });
+      if (campo === 'birth_date') {
+        const t = tipoPorEdad(valor);
+        if (t) np.passenger_type = t;
+      }
+      return np;
+    }));
+  };
+
+  const seleccionarCliente = (c) => {
+    setClienteSel(c);
+    setClienteId(c ? c.id : '');
+    if (c && autoRellenar) {
+      setPasajeros((prev) => prev.map((p, idx) => idx === 0 ? Object.assign({}, p, {
+        first_names: c.first_names || '',
+        last_names: c.last_names || '',
+        document_type: MAP_DOC[c.document_type] || '13',
+        document_number: c.document_number || '',
+      }) : p));
+    }
+  };
+
+  const toggleAuto = (checked) => {
+    setAutoRellenar(checked);
+    if (checked && clienteSel) seleccionarCliente(clienteSel);
   };
 
   const vueloSel = vuelos.find((v) => v.id === vueloId);
@@ -81,7 +110,7 @@ const NuevaReserva = () => {
           toast.success('Cliente creado');
         } catch (clientError) {
           if (clientError.response && clientError.response.status === 409) {
-            toast.error('Ya existe un cliente con ese documento o email. Busca el cliente en el menú "Clientes" o usa uno existente.');
+            toast.error('Ya existe un cliente con ese documento o email. Busca el cliente o usa uno existente.');
             setGuardando(false);
             return;
           }
@@ -100,9 +129,7 @@ const NuevaReserva = () => {
     } catch (e) {
       const mensaje = e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al crear la reserva';
       toast.error(mensaje + (e.response && e.response.data && e.response.data.detalle ? ' → ' + e.response.data.detalle : ''));
-    } finally {
-      setGuardando(false);
-    }
+    } finally { setGuardando(false); }
   };
 
   if (pnrCreado) {
@@ -116,7 +143,7 @@ const NuevaReserva = () => {
           <p className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-6">
             Reserva en estado PENDIENTE con time limit de 30 minutos (RN-COM-01). Sigue al módulo de Pagos.
           </p>
-          <button className="btn-primary mt-6" onClick={() => { setPnrCreado(null); setPasajeros([pasajeroVacio()]); setVueloId(null); }}>
+          <button className="btn-primary mt-6" onClick={() => { setPnrCreado(null); setPasajeros([pasajeroVacio()]); setVueloId(null); setClienteSel(null); }}>
             Crear otra reserva
           </button>
         </div>
@@ -145,12 +172,24 @@ const NuevaReserva = () => {
               <input className="input-field" placeholder="Teléfono" value={clienteForm.phone} onChange={(e) => setClienteForm(Object.assign({}, clienteForm, { phone: e.target.value }))} />
             </div>
           ) : (
-            <select className="input-field" value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-              <option value="">-- Selecciona un cliente --</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>{c.first_names} {c.last_names} ({c.document_number})</option>
-              ))}
-            </select>
+            <div className="space-y-3">
+              <Autocomplete
+                placeholder="Escribe nombre, apellido, documento o email (mínimo 2 letras)..."
+                fetcher={(q) => api.get('/clientes/buscar', { params: { q: q } }).then((r) => r.data.datos)}
+                renderLabel={(c) => c.first_names + ' ' + c.last_names}
+                renderSub={(c) => c.document_type + ' ' + c.document_number + (c.email ? ' · ' + c.email : '')}
+                onSelect={seleccionarCliente}
+              />
+              <label className="flex items-center space-x-2 text-sm text-gray-700">
+                <input type="checkbox" checked={autoRellenar} onChange={(e) => toggleAuto(e.target.checked)} />
+                <span>Rellenar automáticamente el Pasajero 1 con los datos del cliente</span>
+              </label>
+              {clienteSel && (
+                <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg p-2">
+                  Cliente seleccionado: {clienteSel.first_names} {clienteSel.last_names} ({clienteSel.document_number})
+                </p>
+              )}
+            </div>
           )}
         </div>
 
@@ -221,7 +260,10 @@ const NuevaReserva = () => {
                     <option value="13">DUI (CAT-022: 13)</option><option value="36">NIT (CAT-022: 36)</option><option value="3">Pasaporte (CAT-022: 3)</option>
                   </select>
                   <input className="input-field" placeholder="N° documento" value={p.document_number} onChange={(e) => setPax(i, 'document_number', e.target.value)} />
-                  <input type="date" className="input-field" value={p.birth_date} onChange={(e) => setPax(i, 'birth_date', e.target.value)} />
+                  <div>
+                    <input type="date" className="input-field" value={p.birth_date} onChange={(e) => setPax(i, 'birth_date', e.target.value)} />
+                    <p className="text-[11px] text-gray-500 mt-1">Fecha de nacimiento: define tipo de pasajero y valida filas de salida de emergencia (RN-OP-03).</p>
+                  </div>
                   <select className="input-field" value={p.nationality} onChange={(e) => setPax(i, 'nationality', e.target.value)}>
                     {nacionalidades.map((n) => <option key={n} value={n}>{n}</option>)}
                   </select>
