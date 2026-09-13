@@ -23,15 +23,16 @@ const FlightSegment = {
 
   validarDisponibilidad: async (flight_id, fare_class, connection = pool) => {
     const [rows] = await connection.query(
-      `SELECT f.flight_number, at.total_capacity,
+      `SELECT f.flight_number, f.status, f.departure_datetime, at.total_capacity,
               (SELECT COUNT(*) FROM flight_segments fs WHERE fs.flight_id = f.id) AS occupied_seats
        FROM flights f JOIN aircraft ac ON f.aircraft_id = ac.id JOIN aircraft_types at ON ac.type_id = at.id WHERE f.id = ?`,
       [flight_id]
     );
     if (!rows[0]) throw new Error('Vuelo no encontrado');
-    const { flight_number, total_capacity, occupied_seats } = rows[0];
+    const { flight_number, status, departure_datetime, total_capacity, occupied_seats } = rows[0];
     const available_seats = total_capacity - occupied_seats;
-    return { disponible: available_seats > 0, available_seats, flight_number };
+    const vigente = new Date(departure_datetime) > new Date() && ['scheduled', 'confirmed'].includes(status);
+    return { disponible: vigente && available_seats > 0, available_seats, flight_number };
   },
 
   validarAsiento: async (flight_id, seat, connection = pool) => {

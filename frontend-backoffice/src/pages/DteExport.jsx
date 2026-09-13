@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api, { reservasAPI } from '../services/api';
+import SearchableSelect from '../components/SearchableSelect';
 import { FiGlobe, FiPlus } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -107,10 +108,8 @@ const DteExport = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Reserva pagada *</label>
-                <select className="input-field" value={form.reservation_id} onChange={(e) => set('reservation_id', e.target.value)}>
-                  <option value="">-- Selecciona --</option>
-                  {reservas.map((r) => <option key={r.id} value={r.id}>{r.pnr} · ${Number(r.estimated_total).toFixed(2)}</option>)}
-                </select>
+                <SearchableSelect value={form.reservation_id} onChange={(valor) => set('reservation_id', valor)} placeholder="Escribe PNR o cliente..."
+                  options={reservas.map((r) => ({ value: r.id, label: r.pnr + ' · $' + Number(r.estimated_total).toFixed(2), searchText: r.pnr + ' ' + (r.customer_first_names || '') + ' ' + (r.customer_last_names || '') }))} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Monto (default: total reserva)</label>

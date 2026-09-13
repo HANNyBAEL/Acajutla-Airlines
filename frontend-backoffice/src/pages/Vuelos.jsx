@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
+import SearchableSelect from '../components/SearchableSelect';
 import { FiPlus, FiSearch, FiX, FiXCircle, FiRefreshCw } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -125,13 +126,15 @@ const Vuelos = () => {
   const estadoBadge = (e) => ({
     scheduled: 'bg-blue-100 text-blue-700', confirmed: 'bg-green-100 text-green-700',
     delayed: 'bg-orange-100 text-orange-700', cancelled: 'bg-red-100 text-red-700',
-    completed: 'bg-gray-100 text-gray-700', in_progress: 'bg-yellow-100 text-yellow-700',
+    completed: 'bg-gray-100 text-gray-700', in_progress: 'bg-yellow-100 text-yellow-700', deployed: 'bg-slate-200 text-slate-700',
   }[e] || 'bg-gray-100 text-gray-700');
 
   const estadoLabel = (e) => ({
     scheduled: 'Programado', confirmed: 'Confirmado', in_progress: 'En curso',
-    delayed: 'Retrasado', completed: 'Finalizado', cancelled: 'Cancelado',
+    delayed: 'Retrasado', completed: 'Finalizado', cancelled: 'Cancelado', deployed: 'Desplegado',
   }[e] || e);
+
+  const estadoDe = (vuelo) => vuelo.display_status || vuelo.status;
 
   const sePuedeCancelar = (e) => ['scheduled', 'confirmed', 'delayed'].includes(e);
   const sePuedeReprogramar = (e) => ['cancelled', 'delayed'].includes(e);
@@ -180,21 +183,21 @@ const Vuelos = () => {
                   <td className="px-6 py-4 text-sm text-gray-600" title={new Date(v.departure_datetime).toLocaleString('es-SV')}>{new Date(v.departure_datetime).toLocaleString('es-SV')}</td>
                   <td className="px-6 py-4 text-sm text-gray-600" title={v.aircraft || ''}>{v.aircraft || '-'}</td>
                   <td className="px-6 py-4">
-                    <span className={'px-3 py-1 rounded-full text-xs font-medium ' + estadoBadge(v.status)}>{estadoLabel(v.status)}</span>
+                    <span className={'px-3 py-1 rounded-full text-xs font-medium ' + estadoBadge(estadoDe(v))}>{estadoLabel(estadoDe(v))}</span>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center space-x-3">
-                      {sePuedeCancelar(v.status) && (
+                      {sePuedeCancelar(estadoDe(v)) && (
                         <button onClick={() => cancelarVuelo(v)} className="text-red-600 hover:text-red-800 flex items-center space-x-1">
                           <FiXCircle size={16} /><span className="text-sm">Cancelar</span>
                         </button>
                       )}
-                      {sePuedeReprogramar(v.status) && (
+                      {sePuedeReprogramar(estadoDe(v)) && (
                         <button onClick={() => abrirReprog(v)} className="text-primary-600 hover:text-primary-800 flex items-center space-x-1">
                           <FiRefreshCw size={16} /><span className="text-sm">Reprogramar</span>
                         </button>
                       )}
-                      {!sePuedeCancelar(v.status) && !sePuedeReprogramar(v.status) && (
+                      {!sePuedeCancelar(estadoDe(v)) && !sePuedeReprogramar(estadoDe(v)) && (
                         <span className="text-xs text-gray-400">—</span>
                       )}
                     </div>
@@ -217,20 +220,11 @@ const Vuelos = () => {
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Número de vuelo *</label>
                 <input className="input-field" value={form.flight_number} onChange={(e) => setCampo('flight_number', e.target.value)} placeholder="AA-210" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Aeronave *</label>
-                <select className="input-field" value={form.aircraft_id} onChange={(e) => setCampo('aircraft_id', e.target.value)}>
-                  <option value="">-- Selecciona --</option>
-                  {aeronaves.map((a) => <option key={a.id} value={a.id}>{a.registration} · {a.model}</option>)}
-                </select></div>
+                <SearchableSelect options={aeronaves.map((a) => ({ value: a.id, label: a.registration + ' · ' + a.model, searchText: a.registration + ' ' + a.model }))} value={form.aircraft_id} onChange={(valor) => setCampo('aircraft_id', valor)} placeholder="Matrícula o modelo..." /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Origen *</label>
-                <select className="input-field" value={form.origen_iata} onChange={(e) => setCampo('origen_iata', e.target.value)}>
-                  <option value="">-- Selecciona --</option>
-                  {aeropuertos.map((a) => <option key={a.id} value={a.code}>{a.code} - {a.name}</option>)}
-                </select></div>
+                <SearchableSelect options={aeropuertos.map((a) => ({ value: a.code, label: a.code + ' - ' + a.name, searchText: a.code + ' ' + a.name }))} value={form.origen_iata} onChange={(valor) => setCampo('origen_iata', valor)} placeholder="Código o ciudad..." /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Destino *</label>
-                <select className="input-field" value={form.destino_iata} onChange={(e) => setCampo('destino_iata', e.target.value)}>
-                  <option value="">-- Selecciona --</option>
-                  {aeropuertos.map((a) => <option key={a.id} value={a.code}>{a.code} - {a.name}</option>)}
-                </select></div>
+                <SearchableSelect options={aeropuertos.map((a) => ({ value: a.code, label: a.code + ' - ' + a.name, searchText: a.code + ' ' + a.name }))} value={form.destino_iata} onChange={(valor) => setCampo('destino_iata', valor)} placeholder="Código o ciudad..." /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha y hora de salida *</label>
                 <input type="datetime-local" className="input-field" value={form.departure_datetime} onChange={(e) => setCampo('departure_datetime', e.target.value)} /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha y hora de llegada *</label>
@@ -264,10 +258,7 @@ const Vuelos = () => {
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Nueva fecha y hora de llegada *</label>
                 <input type="datetime-local" className="input-field" value={formReprog.arrival_datetime} onChange={(e) => setFormReprog(Object.assign({}, formReprog, { arrival_datetime: e.target.value }))} /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Aeronave</label>
-                <select className="input-field" value={formReprog.aircraft_id} onChange={(e) => setFormReprog(Object.assign({}, formReprog, { aircraft_id: e.target.value }))}>
-                  <option value="">-- Mantener aeronave actual --</option>
-                  {aeronaves.map((a) => <option key={a.id} value={a.id}>{a.registration} · {a.model}</option>)}
-                </select></div>
+                <SearchableSelect options={aeronaves.map((a) => ({ value: a.id, label: a.registration + ' · ' + a.model, searchText: a.registration + ' ' + a.model }))} value={formReprog.aircraft_id} onChange={(valor) => setFormReprog(Object.assign({}, formReprog, { aircraft_id: valor }))} placeholder="Mantener actual o buscar..." /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Puerta de embarque</label>
                 <input className="input-field" value={formReprog.gate} onChange={(e) => setFormReprog(Object.assign({}, formReprog, { gate: e.target.value }))} placeholder="A12" /></div>
             </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
-import { FiDollarSign, FiCheckCircle, FiRefreshCw, FiX, FiFileText } from 'react-icons/fi';
+import { FiDollarSign, FiCheckCircle, FiRefreshCw, FiX, FiFileText, FiSearch } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const Pagos = () => {
@@ -10,6 +10,8 @@ const Pagos = () => {
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({ method: 'card', amount: '', numero: '', expiracion: '', cvv: '', referencia: '', tipo_dte: '01', receptor_nit: '', receptor_nrc: '' });
   const [procesando, setProcesando] = useState(false);
+  const [buscarPendientes, setBuscarPendientes] = useState('');
+  const [buscarPagos, setBuscarPagos] = useState('');
 
   const cargar = () => {
     Promise.all([api.get('/pagos/reservas-pendientes'), api.get('/pagos')])
@@ -41,7 +43,7 @@ const Pagos = () => {
       if (st === 'approved') {
         toast.success('Pago aprobado y reserva pagada');
         if (r.data.dte && r.data.dte.envio && r.data.dte.envio.enviado) {
-          toast.success('DTE ' + r.data.dte.numeroControl + ' emitido. Correo enviado con PDF y JSON' + (r.data.dte.envio.simulado ? ' (simulado, ver storage/correos)' : ''));
+          toast.success('DTE ' + r.data.dte.numeroControl + ' emitido. Correo enviado con PDF y ZIP que contiene el JSON' + (r.data.dte.envio.simulado ? ' (simulado, ver storage/correos)' : ''));
         } else if (r.data.dte && r.data.dte.error) {
           toast.error('Pago OK, pero el DTE falló: ' + r.data.dte.error);
         } else if (r.data.dte) {
@@ -65,7 +67,7 @@ const Pagos = () => {
       const r = await api.post('/pagos/' + p.id + '/confirmar', {});
       toast.success('Transferencia confirmada');
       if (r.data.dte && r.data.dte.envio && r.data.dte.envio.enviado) {
-        toast.success('DTE ' + r.data.dte.numeroControl + ' emitido y enviado con PDF y JSON');
+        toast.success('DTE ' + r.data.dte.numeroControl + ' emitido y enviado con PDF y ZIP que contiene el JSON');
       } else if (r.data.dte && r.data.dte.error) {
         toast.error('Confirmado, pero el DTE falló: ' + r.data.dte.error);
       }
@@ -92,6 +94,9 @@ const Pagos = () => {
   }[s] || [s, 'bg-gray-100 text-gray-700']);
 
   const metodoLabel = (m) => ({ card: 'Tarjeta', transfer: 'Transferencia', cash: 'Efectivo', paypal: 'PayPal' }[m] || m);
+  const coincide = (valor, texto) => !texto || JSON.stringify(valor).toLowerCase().includes(texto.trim().toLowerCase());
+  const pendientesFiltrados = pendientes.filter((r) => coincide(r, buscarPendientes));
+  const pagosFiltrados = pagos.filter((p) => coincide(p, buscarPagos));
 
   return (
     <div className="space-y-6">
@@ -101,7 +106,13 @@ const Pagos = () => {
       </div>
 
       <div className="card overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100"><h2 className="text-lg font-semibold text-gray-800">Cobros pendientes</h2></div>
+        <div className="px-6 py-4 border-b border-gray-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-lg font-semibold text-gray-800">Cobros pendientes</h2>
+          <label className="relative block sm:w-80">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input className="input-field pl-9" value={buscarPendientes} onChange={(e) => setBuscarPendientes(e.target.value)} placeholder="Buscar PNR, cliente o correo..." />
+          </label>
+        </div>
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
@@ -115,9 +126,9 @@ const Pagos = () => {
           <tbody className="divide-y divide-gray-100">
             {cargando ? (
               <tr><td colSpan="5" className="text-center py-8 text-gray-500">Cargando...</td></tr>
-            ) : pendientes.length === 0 ? (
-              <tr><td colSpan="5" className="text-center py-8 text-gray-500">No hay cobros pendientes</td></tr>
-            ) : pendientes.map((r) => (
+            ) : pendientesFiltrados.length === 0 ? (
+              <tr><td colSpan="5" className="text-center py-8 text-gray-500">{pendientes.length ? 'No hay cobros que coincidan con la búsqueda' : 'No hay cobros pendientes'}</td></tr>
+            ) : pendientesFiltrados.map((r) => (
               <tr key={r.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 font-mono font-bold text-primary-700">{r.pnr}</td>
                 <td className="px-6 py-4 text-sm">{r.first_names} {r.last_names}</td>
@@ -131,7 +142,13 @@ const Pagos = () => {
       </div>
 
       <div className="card overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100"><h2 className="text-lg font-semibold text-gray-800">Historial de pagos</h2></div>
+        <div className="px-6 py-4 border-b border-gray-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-lg font-semibold text-gray-800">Historial de pagos</h2>
+          <label className="relative block sm:w-80">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input className="input-field pl-9" value={buscarPagos} onChange={(e) => setBuscarPagos(e.target.value)} placeholder="Buscar PNR, método, estado o monto..." />
+          </label>
+        </div>
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
@@ -145,9 +162,9 @@ const Pagos = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {pagos.length === 0 ? (
-              <tr><td colSpan="7" className="text-center py-8 text-gray-500">Sin pagos registrados</td></tr>
-            ) : pagos.map((p) => (
+            {pagosFiltrados.length === 0 ? (
+              <tr><td colSpan="7" className="text-center py-8 text-gray-500">{pagos.length ? 'No hay pagos que coincidan con la búsqueda' : 'Sin pagos registrados'}</td></tr>
+            ) : pagosFiltrados.map((p) => (
               <tr key={p.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 text-sm text-gray-600">{p.id}</td>
                 <td className="px-6 py-4 font-mono text-sm text-primary-700">{p.pnr}</td>
@@ -237,7 +254,7 @@ const Pagos = () => {
                 </div>
               )}
               <div className="bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-lg p-3">
-                Al aprobarse el pago se emitirá el DTE seleccionado y se enviará correo al cliente con PDF y JSON adjuntos.
+        Al aprobarse el pago se emitirá el DTE seleccionado y se enviará correo al cliente con el PDF y un ZIP que contiene el JSON adjuntos.
                 Tarjeta de prueba aprobada: 4111111111111111.
               </div>
             </div>

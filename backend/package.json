@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
-    "migrate:features": "node migracion-bloque-c.js && node migracion-bloque-e.js"
+    "migrate:features": "node migracion-bloque-c.js && node migracion-bloque-e.js",
+    "migrate:mh": "node migracion-mh-simulado.js",
+    "migrate:clientes-fecha": "node migracion-clientes-fecha-nacimiento.js"
   },
   "dependencies": {
     "axios": "^1.7.4",

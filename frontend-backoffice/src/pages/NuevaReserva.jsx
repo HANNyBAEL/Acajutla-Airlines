@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
 import Autocomplete from '../components/Autocomplete';
+import SearchableSelect from '../components/SearchableSelect';
 import { FiSearch, FiUserPlus, FiTrash2, FiCheckCircle } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -10,6 +11,7 @@ const aeropuertos = [
   { code: 'MEX', name: 'Cd. de México' }, { code: 'PTY', name: 'Panamá' },
   { code: 'TGU', name: 'Tegucigalpa' }, { code: 'MGA', name: 'Managua' },
 ];
+const opcionesAeropuerto = aeropuertos.map((a) => ({ value: a.code, label: a.code + ' - ' + a.name, searchText: a.code + ' ' + a.name }));
 const nacionalidades = ['SV', 'US', 'GT', 'HN', 'NI', 'CR', 'PA', 'MX'];
 const MAP_DOC = { DUI: '13', NIT: '36', Passport: '3', '13': '13', '36': '36', '3': '3' };
 const pasajeroVacio = () => ({
@@ -26,34 +28,58 @@ const tipoPorEdad = (birth) => {
   if (e < 12) return 'child';
   return 'adult';
 };
+const fechaMinima = () => {
+  const ahora = new Date();
+  const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+  const dia = String(ahora.getDate()).padStart(2, '0');
+  return ahora.getFullYear() + '-' + mes + '-' + dia;
+};
 
 const NuevaReserva = () => {
   const [clienteId, setClienteId] = useState('');
   const [clienteSel, setClienteSel] = useState(null);
   const [nuevoCliente, setNuevoCliente] = useState(false);
-  const [clienteForm, setClienteForm] = useState({ first_names: '', last_names: '', document_type: 'DUI', document_number: '', email: '', phone: '' });
+  const [clienteForm, setClienteForm] = useState({ first_names: '', last_names: '', document_type: 'DUI', document_number: '', birth_date: '', email: '', phone: '' });
   const [autoRellenar, setAutoRellenar] = useState(true);
-  const [origen, setOrigen] = useState('SAL');
-  const [destino, setDestino] = useState('MIA');
-  const [fecha, setFecha] = useState('');
-  const [vuelos, setVuelos] = useState([]);
-  const [vueloId, setVueloId] = useState(null);
-  const [buscando, setBuscando] = useState(false);
+  const [tipoViaje, setTipoViaje] = useState('ida');
+  const [trayectos, setTrayectos] = useState([{ origen: 'SAL', destino: 'MIA', fecha: '', vuelos: [], vueloId: null, buscando: false }]);
   const [pasajeros, setPasajeros] = useState([pasajeroVacio()]);
   const [clase, setClase] = useState('economy');
   const [guardando, setGuardando] = useState(false);
   const [pnrCreado, setPnrCreado] = useState(null);
 
-  const buscarVuelos = async () => {
-    if (!fecha) return toast.error('Selecciona una fecha');
-    setBuscando(true);
-    setVueloId(null);
+  const actualizarTrayecto = (indice, campo, valor) => {
+    setTrayectos((actuales) => actuales.map((t, i) => i === indice
+      ? Object.assign({}, t, { [campo]: valor, vuelos: campo === 'vueloId' ? t.vuelos : [], vueloId: campo === 'vueloId' ? valor : null })
+      : t));
+  };
+
+  const cambiarTipoViaje = (tipo) => {
+    setTipoViaje(tipo);
+    setTrayectos((actuales) => {
+      const ida = actuales[0] || { origen: 'SAL', destino: 'MIA', fecha: '', vuelos: [], vueloId: null, buscando: false };
+      if (tipo === 'ida') return [ida];
+      if (tipo === 'regreso') return [ida, { origen: ida.destino, destino: ida.origen, fecha: '', vuelos: [], vueloId: null, buscando: false }];
+      return actuales.length > 1 ? actuales : [ida, { origen: ida.destino, destino: 'GUA', fecha: '', vuelos: [], vueloId: null, buscando: false }];
+    });
+  };
+
+  const agregarTrayecto = () => setTrayectos((actuales) => {
+    const anterior = actuales[actuales.length - 1];
+    return actuales.concat([{ origen: anterior.destino, destino: 'MIA', fecha: '', vuelos: [], vueloId: null, buscando: false }]);
+  });
+
+  const buscarVuelos = async (indice) => {
+    const trayecto = trayectos[indice];
+    if (!trayecto.fecha) return toast.error('Selecciona la fecha del trayecto ' + (indice + 1));
+    setTrayectos((actuales) => actuales.map((t, i) => i === indice ? Object.assign({}, t, { buscando: true, vueloId: null }) : t));
     try {
-      const r = await api.get('/vuelos/buscar', { params: { origen: origen, destino: destino, fecha: fecha } });
-      setVuelos(r.data.datos || []);
-      if ((r.data.datos || []).length === 0) toast.error('No hay vuelos para esa fecha');
+      const r = await api.get('/vuelos/buscar', { params: { origen: trayecto.origen, destino: trayecto.destino, fecha: trayecto.fecha } });
+      const resultados = r.data.datos || [];
+      setTrayectos((actuales) => actuales.map((t, i) => i === indice ? Object.assign({}, t, { vuelos: resultados, buscando: false }) : t));
+      if (!resultados.length) toast.error('No hay vuelos para ese trayecto y fecha');
     } catch (e) { toast.error('Error al buscar vuelos'); }
-    finally { setBuscando(false); }
+    finally { setTrayectos((actuales) => actuales.map((t, i) => i === indice ? Object.assign({}, t, { buscando: false }) : t)); }
   };
 
   const setPax = (i, campo, valor) => {
@@ -77,6 +103,7 @@ const NuevaReserva = () => {
         last_names: c.last_names || '',
         document_type: MAP_DOC[c.document_type] || '13',
         document_number: c.document_number || '',
+        birth_date: c.birth_date ? String(c.birth_date).slice(0, 10) : '',
       }) : p));
     }
   };
@@ -86,15 +113,15 @@ const NuevaReserva = () => {
     if (checked && clienteSel) seleccionarCliente(clienteSel);
   };
 
-  const vueloSel = vuelos.find((v) => v.id === vueloId);
-  const totalEstimado = vueloSel ? vueloSel.base_price * pasajeros.length : 0;
+  const vuelosSeleccionados = trayectos.map((t) => t.vuelos.find((v) => v.id === t.vueloId)).filter(Boolean);
+  const totalEstimado = vuelosSeleccionados.reduce((total, vuelo) => total + Number(vuelo.base_price || 0), 0) * pasajeros.length;
 
   const guardar = async () => {
     if (nuevoCliente) {
-      if (!clienteForm.first_names || !clienteForm.last_names || !clienteForm.document_number)
+      if (!clienteForm.first_names || !clienteForm.last_names || !clienteForm.document_number || !clienteForm.birth_date)
         return toast.error('Completa los datos del nuevo cliente');
     } else if (!clienteId) return toast.error('Selecciona un cliente');
-    if (!vueloSel) return toast.error('Selecciona un vuelo');
+    if (trayectos.some((t) => !t.vueloId)) return toast.error('Selecciona un vuelo para cada trayecto');
     for (let i = 0; i < pasajeros.length; i++) {
       const p = pasajeros[i];
       if (!p.first_names || !p.last_names || !p.document_number || !p.birth_date)
@@ -119,7 +146,7 @@ const NuevaReserva = () => {
       }
       const r = await api.post('/reservas', {
         customer_id: Number(cid),
-        vuelos: [{ flight_id: vueloSel.id, fare_class: clase }],
+        vuelos: trayectos.map((t) => ({ flight_id: t.vueloId, fare_class: clase })),
         pasajeros: pasajeros,
         time_limit_minutes: 30,
       });
@@ -143,7 +170,7 @@ const NuevaReserva = () => {
           <p className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-6">
             Reserva en estado PENDIENTE con time limit de 30 minutos (RN-COM-01). Sigue al módulo de Pagos.
           </p>
-          <button className="btn-primary mt-6" onClick={() => { setPnrCreado(null); setPasajeros([pasajeroVacio()]); setVueloId(null); setClienteSel(null); }}>
+          <button className="btn-primary mt-6" onClick={() => { setPnrCreado(null); setPasajeros([pasajeroVacio()]); setTrayectos([{ origen: 'SAL', destino: 'MIA', fecha: '', vuelos: [], vueloId: null, buscando: false }]); setClienteSel(null); }}>
             Crear otra reserva
           </button>
         </div>
@@ -168,6 +195,7 @@ const NuevaReserva = () => {
                 <option value="DUI">DUI</option><option value="NIT">NIT</option><option value="Passport">Pasaporte</option>
               </select>
               <input className="input-field" placeholder="Número de documento" value={clienteForm.document_number} onChange={(e) => setClienteForm(Object.assign({}, clienteForm, { document_number: e.target.value }))} />
+              <input type="date" className="input-field" value={clienteForm.birth_date} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setClienteForm(Object.assign({}, clienteForm, { birth_date: e.target.value }))} />
               <input className="input-field" placeholder="Email" value={clienteForm.email} onChange={(e) => setClienteForm(Object.assign({}, clienteForm, { email: e.target.value }))} />
               <input className="input-field" placeholder="Teléfono" value={clienteForm.phone} onChange={(e) => setClienteForm(Object.assign({}, clienteForm, { phone: e.target.value }))} />
             </div>
@@ -195,37 +223,46 @@ const NuevaReserva = () => {
 
         <div className="card p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">2. Vuelo</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-            <select className="input-field" value={origen} onChange={(e) => setOrigen(e.target.value)}>
-              {aeropuertos.map((a) => <option key={a.code} value={a.code}>{a.code} - {a.name}</option>)}
-            </select>
-            <select className="input-field" value={destino} onChange={(e) => setDestino(e.target.value)}>
-              {aeropuertos.map((a) => <option key={a.code} value={a.code}>{a.code} - {a.name}</option>)}
-            </select>
-            <input type="date" className="input-field" value={fecha} onChange={(e) => setFecha(e.target.value)} />
-            <button className="btn-primary flex items-center justify-center space-x-2" onClick={buscarVuelos} disabled={buscando}>
-              <FiSearch /><span>{buscando ? 'Buscando...' : 'Buscar'}</span>
-            </button>
+          <div className="flex flex-wrap gap-2 mb-5">
+            {[['ida', 'Solo ida'], ['regreso', 'Ida y regreso'], ['multiple', 'Múltiples trayectos']].map(([valor, etiqueta]) => (
+              <button key={valor} type="button" onClick={() => cambiarTipoViaje(valor)} className={'px-4 py-2 rounded-lg text-sm font-medium border ' + (tipoViaje === valor ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-700 border-gray-300')}>
+                {etiqueta}
+              </button>
+            ))}
           </div>
-          {vuelos.length > 0 && (
-            <div className="space-y-2">
-              {vuelos.map((v) => (
-                <label key={v.id} className={'flex items-center justify-between p-3 rounded-lg border cursor-pointer ' + (vueloId === v.id ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:bg-gray-50')}>
-                  <div className="flex items-center space-x-3">
-                    <input type="radio" name="vuelo" checked={vueloId === v.id} onChange={() => setVueloId(v.id)} />
-                    <div>
-                      <p className="font-semibold text-gray-800">{v.flight_number}</p>
-                      <p className="text-xs text-gray-500">{v.origin_iata} → {v.destination_iata} · {new Date(v.departure_datetime).toLocaleString('es-SV')}</p>
-                    </div>
+          <div className="space-y-5">
+            {trayectos.map((t, indice) => (
+              <div key={indice} className="rounded-lg border border-gray-200 p-4 bg-gray-50">
+                <div className="flex justify-between items-center mb-3">
+                  <p className="font-semibold text-gray-700">Trayecto {indice + 1}{tipoViaje === 'regreso' && indice === 1 ? ' · Regreso' : ''}</p>
+                  {tipoViaje === 'multiple' && trayectos.length > 2 && <button type="button" className="text-sm text-red-600" onClick={() => setTrayectos((actuales) => actuales.filter((_, i) => i !== indice))}>Eliminar</button>}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <SearchableSelect options={opcionesAeropuerto} value={t.origen} onChange={(valor) => actualizarTrayecto(indice, 'origen', valor)} placeholder="Desde: código o ciudad..." />
+                  <SearchableSelect options={opcionesAeropuerto} value={t.destino} onChange={(valor) => actualizarTrayecto(indice, 'destino', valor)} placeholder="Hasta: código o ciudad..." />
+                  <input type="date" className="input-field" min={fechaMinima()} value={t.fecha} onChange={(e) => actualizarTrayecto(indice, 'fecha', e.target.value)} />
+                  <button className="btn-primary flex items-center justify-center space-x-2" onClick={() => buscarVuelos(indice)} disabled={t.buscando || t.origen === t.destino}>
+                    <FiSearch /><span>{t.buscando ? 'Buscando...' : 'Buscar'}</span>
+                  </button>
+                </div>
+                {t.origen === t.destino && <p className="text-xs text-red-600 mt-2">El origen y el destino deben ser diferentes.</p>}
+                {t.vuelos.length > 0 && (
+                  <div className="space-y-2 mt-3">
+                    {t.vuelos.map((v) => (
+                      <label key={v.id} className={'flex items-center justify-between p-3 rounded-lg border cursor-pointer ' + (t.vueloId === v.id ? 'border-primary-500 bg-primary-50' : 'border-gray-200 bg-white hover:bg-gray-50')}>
+                        <div className="flex items-center space-x-3">
+                          <input type="radio" name={'vuelo-' + indice} checked={t.vueloId === v.id} onChange={() => actualizarTrayecto(indice, 'vueloId', v.id)} />
+                          <div><p className="font-semibold text-gray-800">{v.flight_number}</p><p className="text-xs text-gray-500">{v.origin_iata} → {v.destination_iata} · {new Date(v.departure_datetime).toLocaleString('es-SV')}</p></div>
+                        </div>
+                        <div className="text-right"><p className="font-bold text-primary-700">${v.base_price}</p><p className="text-xs text-gray-500">{v.available_seats} asientos</p></div>
+                      </label>
+                    ))}
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-primary-700">${v.base_price}</p>
-                    <p className="text-xs text-gray-500">{v.available_seats} asientos</p>
-                  </div>
-                </label>
-              ))}
-            </div>
-          )}
+                )}
+              </div>
+            ))}
+          </div>
+          {tipoViaje === 'multiple' && <button type="button" className="btn-secondary mt-4 flex items-center space-x-2" onClick={agregarTrayecto}><FiUserPlus /><span>Agregar trayecto</span></button>}
         </div>
 
         <div className="card p-6">
@@ -278,8 +315,8 @@ const NuevaReserva = () => {
         <div className="card p-6 sticky top-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Resumen</h2>
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500">Vuelo</span><span className="font-medium">{vueloSel ? vueloSel.flight_number : '—'}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Ruta</span><span className="font-medium">{vueloSel ? vueloSel.origin_iata + ' → ' + vueloSel.destination_iata : '—'}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Modalidad</span><span className="font-medium">{tipoViaje === 'ida' ? 'Solo ida' : tipoViaje === 'regreso' ? 'Ida y regreso' : 'Múltiples trayectos'}</span></div>
+            <div className="border-b pb-2 space-y-1">{vuelosSeleccionados.length ? vuelosSeleccionados.map((v, i) => <div key={v.id} className="flex justify-between gap-2"><span className="text-gray-500">T{i + 1}: {v.origin_iata} → {v.destination_iata}</span><span className="font-medium">{v.flight_number}</span></div>) : <span className="text-gray-500">Aún no hay vuelos seleccionados</span>}</div>
             <div className="flex justify-between"><span className="text-gray-500">Pasajeros</span><span className="font-medium">{pasajeros.length}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Clase</span><span className="font-medium capitalize">{clase}</span></div>
             <div className="border-t pt-2 mt-2 flex justify-between text-base">

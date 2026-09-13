@@ -20,6 +20,7 @@ const Vuelo = {
       JOIN aircraft_types at ON ac.type_id = at.id
       WHERE ao.iata_code = ? AND ad.iata_code = ?
         AND DATE(f.departure_datetime) = ?
+        AND f.departure_datetime > NOW()
         AND f.status IN ('scheduled', 'confirmed')
         AND ao.active = 1 AND ad.active = 1
       ORDER BY f.departure_datetime ASC
@@ -35,7 +36,11 @@ const Vuelo = {
 
   listarTodos: async () => {
     const [rows] = await pool.query(`
-      SELECT f.*, ao.iata_code AS origin, ad.iata_code AS destination, at.model AS aircraft
+      SELECT f.*, ao.iata_code AS origin, ad.iata_code AS destination, at.model AS aircraft,
+             CASE
+               WHEN f.departure_datetime <= NOW() AND f.status IN ('scheduled', 'confirmed', 'delayed') THEN 'deployed'
+               ELSE f.status
+             END AS display_status
       FROM flights f
       JOIN routes rt ON f.route_id = rt.id
       JOIN airports ao ON rt.origin_id = ao.id

@@ -1,5 +1,6 @@
 const svc = require('../services/dteEventosService');
 const dteService = require('../services/dteService');
+const mhSimulator = require('../services/mhSimulatorService');
 
 const pendientes = async (req, res) => {
   try { res.json({ exito: true, datos: await svc.listarPendientes() }); }
@@ -8,6 +9,7 @@ const pendientes = async (req, res) => {
 
 const eventoContingencia = async (req, res) => {
   try {
+    if (!(await mhSimulator.estaOperativo())) return res.status(409).json({ error: 'MH sigue caído; no es posible transmitir el lote todavía' });
     const r = await svc.transmitirEventoContingencia(req.body);
     res.json({ exito: true, mensaje: 'Evento de contingencia transmitido y aceptado', datos: r });
   } catch (e) { res.status(400).json({ error: e.message }); }
@@ -36,4 +38,16 @@ const emitirContingencia = async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 };
 
-module.exports = { pendientes, eventoContingencia, invalidar, eventos, emitirContingencia };
+const estadoMH = async (req, res) => {
+  try { res.json({ exito: true, datos: await mhSimulator.obtenerEstado() }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+const cambiarEstadoMH = async (req, res) => {
+  try {
+    if (typeof req.body.operativo !== 'boolean') return res.status(400).json({ error: 'operativo debe ser booleano' });
+    res.json({ exito: true, datos: await mhSimulator.cambiarEstado(req.body.operativo) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+module.exports = { pendientes, eventoContingencia, invalidar, eventos, emitirContingencia, estadoMH, cambiarEstadoMH };

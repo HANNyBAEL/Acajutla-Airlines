@@ -5,6 +5,7 @@ const buscarVuelos = async (req, res) => {
   try {
     const { origen, destino, fecha, clase } = req.query;
     if (!origen || !destino || !fecha) return res.status(400).json({ error: 'origen, destino y fecha son obligatorios' });
+    if (new Date(fecha + 'T23:59:59') < new Date()) return res.status(400).json({ error: 'No se pueden consultar vuelos para fechas anteriores' });
     const vuelos = await Vuelo.buscarDisponibles(origen.toUpperCase(), destino.toUpperCase(), fecha, clase);
     res.json({ exito: true, total: vuelos.length, datos: vuelos });
   } catch (error) {
@@ -98,12 +99,12 @@ const cancelarVuelo = async (req, res) => {
     const motivo = body.motivo || 'Cancelado por operaciones';
     const confirmar = body.confirmar === true;
 
-    const [vuelos] = await pool.query('SELECT id, flight_number, status FROM flights WHERE id = ?', [id]);
+    const [vuelos] = await pool.query('SELECT id, flight_number, status, departure_datetime FROM flights WHERE id = ?', [id]);
     if (vuelos.length === 0) return res.status(404).json({ error: 'Vuelo no encontrado' });
     const vuelo = vuelos[0];
 
     if (vuelo.status === 'cancelled') return res.status(400).json({ error: 'El vuelo ya está cancelado' });
-    if (vuelo.status === 'in_progress' || vuelo.status === 'completed') {
+    if (new Date(vuelo.departure_datetime) <= new Date() || vuelo.status === 'in_progress' || vuelo.status === 'completed') {
       return res.status(400).json({ error: 'No se puede cancelar un vuelo en curso o finalizado' });
     }
 
@@ -137,7 +138,7 @@ const reprogramarVuelo = async (req, res) => {
     if (vuelos.length === 0) return res.status(404).json({ error: 'Vuelo no encontrado' });
     const vuelo = vuelos[0];
 
-    if (vuelo.status === 'in_progress' || vuelo.status === 'completed') {
+    if (new Date(vuelo.departure_datetime) <= new Date() || vuelo.status === 'in_progress' || vuelo.status === 'completed') {
       return res.status(400).json({ error: 'No se puede reprogramar un vuelo en curso o finalizado' });
     }
     if (!departure_datetime || !arrival_datetime) {
@@ -184,10 +185,10 @@ const buscarItinerarios = async (req, res) => {
        JOIN aircraft ac ON ac.id = f.aircraft_id JOIN aircraft_types at ON at.id = ac.type_id`;
     const directos = (await Vuelo.buscarDisponibles(o, d, fecha)).map((v) => Object.assign({}, v, { tipo: 'directo', duracion_min: dur(v.departure_datetime, v.arrival_datetime), vuelos: [v] }));
     const conexiones = [];
-    const [legs1] = await pool.query(SQL_VUELO + ` WHERE ao.iata_code = ? AND ad.iata_code <> ? AND DATE(f.departure_datetime) = ? AND f.status IN ('scheduled','confirmed') AND ao.active = 1 AND ad.active = 1 ORDER BY f.departure_datetime LIMIT 15`, [o, d, fecha]);
+    const [legs1] = await pool.query(SQL_VUELO + ` WHERE ao.iata_code = ? AND ad.iata_code <> ? AND DATE(f.departure_datetime) = ? AND f.departure_datetime > NOW() AND f.status IN ('scheduled','confirmed') AND ao.active = 1 AND ad.active = 1 ORDER BY f.departure_datetime LIMIT 15`, [o, d, fecha]);
     for (const l1 of legs1) {
       if (conexiones.length >= 6) break;
-      const [legs2] = await pool.query(SQL_VUELO + ` WHERE ao.iata_code = ? AND ad.iata_code = ? AND f.departure_datetime BETWEEN ? AND ? AND f.status IN ('scheduled','confirmed') AND ao.active = 1 AND ad.active = 1 ORDER BY f.departure_datetime LIMIT 5`, [l1.destination_iata, d, addMin(l1.arrival_datetime, 45), addMin(l1.arrival_datetime, 360)]);
+      const [legs2] = await pool.query(SQL_VUELO + ` WHERE ao.iata_code = ? AND ad.iata_code = ? AND f.departure_datetime BETWEEN ? AND ? AND f.departure_datetime > NOW() AND f.status IN ('scheduled','confirmed') AND ao.active = 1 AND ad.active = 1 ORDER BY f.departure_datetime LIMIT 5`, [l1.destination_iata, d, addMin(l1.arrival_datetime, 45), addMin(l1.arrival_datetime, 360)]);
       for (const l2 of legs2) {
         conexiones.push({ tipo: 'conexion', escala_en: l1.destination_iata, layover_min: dur(l1.arrival_datetime, l2.departure_datetime), duracion_min: dur(l1.departure_datetime, l2.arrival_datetime), base_price: Number(l1.base_price) + Number(l2.base_price), available_seats: Math.min(l1.available_seats, l2.available_seats), vuelos: [l1, l2] });
       }

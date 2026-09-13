@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { checkinAPI } from '../services/api';
+import SearchableSelect from '../components/SearchableSelect';
 import { FiSearch, FiUserCheck, FiLogIn, FiX, FiPrinter } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -161,12 +162,8 @@ const Checkin = () => {
         <div className="space-y-4">
           <div className="card p-4 flex space-x-2 items-center">
             <input type="date" className="input-field" value={fecha} onChange={(e) => setFecha(e.target.value)} />
-            <select className="input-field" value={vueloSel} onChange={(e) => e.target.value && cargarManifiesto(e.target.value)}>
-              <option value="">-- Selecciona vuelo --</option>
-              {vuelos.map((v) => (
-                <option key={v.id} value={v.id}>{v.flight_number} · {v.origen}→{v.destino} · pax {v.pax} · CI {v.checked_in} · AB {v.boarded}</option>
-              ))}
-            </select>
+            <SearchableSelect className="flex-1" value={vueloSel} onChange={(valor) => valor && cargarManifiesto(valor)} placeholder="Buscar vuelo, origen o destino..."
+              options={vuelos.map((v) => ({ value: v.id, label: v.flight_number + ' · ' + v.origen + '→' + v.destino + ' · pax ' + v.pax + ' · CI ' + v.checked_in + ' · AB ' + v.boarded, searchText: v.flight_number + ' ' + v.origen + ' ' + v.destino }))} />
             <button className="btn-danger whitespace-nowrap" onClick={cerrarVuelo}>Cerrar vuelo</button>
           </div>
           {vueloSel && (

@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const crypto = require('crypto');
+const mhSimulator = require('./mhSimulatorService');
 
 const CONFIG = {
   ambiente: process.env.DTE_AMBIENTE || '00',
@@ -24,6 +25,7 @@ const pad = (n) => (n < 10 ? '0' + n : '' + n);
 const fmtFecha = (d) => { const x = new Date(d); return x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate()); };
 const fmtHora = (d) => { const x = new Date(d); return pad(x.getHours()) + ':' + pad(x.getMinutes()) + ':' + pad(x.getSeconds()); };
 const uuidV4 = () => crypto.randomUUID().toUpperCase();
+const esperarReintentoMH = () => new Promise((resolve) => setTimeout(resolve, 250));
 
 const siguienteCorrelativo = async (tipo) => {
   const anio = new Date().getFullYear();
@@ -189,12 +191,25 @@ const emitirDTE = async (opciones) => {
     return { dteId: head.insertId, uuid: identificacion.codigoGeneracion, numeroControl: identificacion.numeroControl, estado: 'contingency', sello: null, errores: null, dte: dte };
   }
 
-  const ok = Math.random() > 0.05;
+  // RF-003: antes de contingencia se intenta transmitir tres veces. En el
+  // simulador la disponibilidad la controla el interruptor persistente de MH.
+  let ok = false;
+  let intentos = 0;
+  for (; intentos < 3; intentos += 1) {
+    if (await mhSimulator.estaOperativo()) { ok = true; break; }
+    if (intentos < 2) await esperarReintentoMH();
+  }
   let estado, sello = null, errores = null;
   if (ok) { estado = 'accepted'; sello = 'SELLO-' + crypto.randomBytes(12).toString('hex').toUpperCase(); }
-  else { estado = 'rejected'; errores = ['Rechazo simulado del MH (prueba): corrija y reemita']; }
+  else { estado = 'contingency'; errores = ['MH no disponible tras 3 intentos: DTE generado automáticamente en contingencia']; }
   await pool.query('UPDATE dte_headers SET transmission_status = ?, reception_seal = ?, reception_date = NOW() WHERE id = ?', [estado, sello, head.insertId]);
-  return { dteId: head.insertId, uuid: identificacion.codigoGeneracion, numeroControl: identificacion.numeroControl, estado: estado, sello: sello, errores: errores, dte: dte };
+  if (estado === 'contingency') {
+    dte.identificacion.tipoModelo = 2;
+    dte.identificacion.tipoOperacion = 2;
+    dte.identificacion.tipoContingencia = 1;
+    await pool.query('UPDATE dte_headers SET billing_model = 2, operation_type = 2, full_json = ? WHERE id = ?', [JSON.stringify(dte), head.insertId]);
+  }
+  return { dteId: head.insertId, uuid: identificacion.codigoGeneracion, numeroControl: identificacion.numeroControl, estado: estado, sello: sello, errores: errores, intentosMH: intentos + (ok ? 1 : 0), dte: dte };
 };
 
 module.exports = { emitirDTE: emitirDTE, CONFIG: CONFIG, fmtFecha: fmtFecha, fmtHora: fmtHora, uuidV4: uuidV4 };

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
+import SearchableSelect from '../components/SearchableSelect';
 import { FiShield, FiCheck, FiAlertTriangle } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -91,10 +92,8 @@ const CumplimientoFiscal = () => {
       <div className="card p-6 space-y-4">
         <h2 className="text-lg font-semibold text-gray-800">Verificador de plazo de invalidación</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <select className="input-field" value={uuidInv} onChange={(e) => setUuidInv(e.target.value)}>
-            <option value="">-- DTE --</option>
-            {dtes.filter((d) => d.reception_seal).map((d) => <option key={d.uuid_generation} value={d.uuid_generation}>{d.dte_type} · {d.uuid_generation.slice(0,8)}...</option>)}
-          </select>
+          <SearchableSelect value={uuidInv} onChange={setUuidInv} placeholder="Buscar por UUID o número de control..."
+            options={dtes.filter((d) => d.reception_seal).map((d) => ({ value: d.uuid_generation, label: d.dte_type + ' · ' + d.control_number, searchText: d.uuid_generation + ' ' + d.control_number + ' ' + d.receiver_name }))} />
           <input type="date" className="input-field" value={fechaEv} onChange={(e) => setFechaEv(e.target.value)} />
           <button className="btn-secondary" onClick={validar}>Validar plazo</button>
         </div>

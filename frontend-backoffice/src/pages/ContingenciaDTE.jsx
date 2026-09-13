@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api, { reservasAPI } from '../services/api';
+import SearchableSelect from '../components/SearchableSelect';
 import { FiAlertTriangle, FiXCircle, FiRefreshCw, FiPlus, FiX } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -22,6 +23,7 @@ const ContingenciaDTE = () => {
   const [eventos, setEventos] = useState({ contingencia: [], invalidacion: [] });
   const [aceptados, setAceptados] = useState([]);
   const [facturables, setFacturables] = useState([]);
+  const [mh, setMh] = useState(null);
   const [modalEvento, setModalEvento] = useState(false);
   const [modalInvalidar, setModalInvalidar] = useState(null);
   const [modalEmitir, setModalEmitir] = useState(false);
@@ -35,16 +37,28 @@ const ContingenciaDTE = () => {
       api.get('/dte-eventos/pendientes'),
       api.get('/dte-eventos/eventos'),
       api.get('/dte', { params: { estado: 'accepted' } }),
-      reservasAPI.listar({ status: 'paid' })
+      reservasAPI.listar({ status: 'paid' }),
+      api.get('/dte-eventos/mh/estado')
     ]).then((res) => {
       setPendientes(res[0].data.datos || []);
       setEventos(res[1].data.datos || { contingencia: [], invalidacion: [] });
       setAceptados(res[2].data.datos || []);
       setFacturables(res[3].data.datos || []);
+      setMh(res[4].data.datos || null);
     }).catch(() => toast.error('Error al cargar contingencia'));
   };
 
   useEffect(() => { cargar(); }, []);
+
+  const cambiarEstadoMH = async (operativo) => {
+    setProcesando(true);
+    try {
+      await api.put('/dte-eventos/mh/estado', { operativo });
+      toast.success(operativo ? 'MH simulado restablecido. Ya puede transmitir el lote.' : 'MH simulado caído. Los nuevos pagos emitirán DTE en contingencia.');
+      cargar();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo cambiar el estado de MH'); }
+    finally { setProcesando(false); }
+  };
 
   const transmitirEvento = async () => {
     if (!formEvento.fInicio || !formEvento.fFin || !formEvento.hInicio || !formEvento.hFin) return toast.error('Complete el período de contingencia');
@@ -96,10 +110,20 @@ const ContingenciaDTE = () => {
           <button className="btn-secondary flex items-center space-x-2" onClick={() => setModalEmitir(true)}>
             <FiPlus /><span>Emitir en contingencia</span>
           </button>
-          <button className="btn-primary flex items-center space-x-2" onClick={() => setModalEvento(true)} disabled={pendientes.length === 0}>
-            <FiRefreshCw /><span>Transmitir evento ({pendientes.length})</span>
+          <button className="btn-primary flex items-center space-x-2" onClick={() => setModalEvento(true)} disabled={pendientes.length === 0 || !mh?.operativo}>
+            <FiRefreshCw /><span>Transmitir lote ({pendientes.length})</span>
           </button>
         </div>
+      </div>
+
+      <div className={'rounded-lg border p-4 flex flex-wrap items-center justify-between gap-3 ' + (mh?.operativo ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200')}>
+        <div>
+          <p className="font-semibold text-gray-800">Ministerio de Hacienda (simulado): {mh?.operativo ? 'OPERATIVO' : 'CAÍDO'}</p>
+          <p className="text-sm text-gray-600">El pago nunca se bloquea. Si MH falla tras {mh?.reintentosConfigurados || 3} intentos, el DTE y el correo se generan automáticamente en contingencia, sin sello.</p>
+        </div>
+        <button className={mh?.operativo ? 'btn-secondary' : 'btn-primary'} disabled={procesando || !mh} onClick={() => cambiarEstadoMH(!mh.operativo)}>
+          {mh?.operativo ? 'Simular caída de MH' : 'Restablecer MH'}
+        </button>
       </div>
 
       {pendientes.length > 0 && (
@@ -291,10 +315,8 @@ const ContingenciaDTE = () => {
             </div>
             <div className="space-y-3">
               <div><label className="block text-xs font-medium text-gray-700 mb-1">Reserva pagada *</label>
-                <select className="input-field" value={formEmitir.reservation_id} onChange={(e) => setFormEmitir(Object.assign({}, formEmitir, { reservation_id: e.target.value }))}>
-                  <option value="">-- Selecciona --</option>
-                  {facturables.map((r) => <option key={r.id} value={r.id}>{r.pnr} - {r.customer_first_names} {r.customer_last_names}</option>)}
-                </select></div>
+                <SearchableSelect value={formEmitir.reservation_id} onChange={(valor) => setFormEmitir(Object.assign({}, formEmitir, { reservation_id: valor }))} placeholder="Escribe PNR o nombre..."
+                  options={facturables.map((r) => ({ value: r.id, label: r.pnr + ' - ' + r.customer_first_names + ' ' + r.customer_last_names, searchText: r.pnr + ' ' + r.customer_first_names + ' ' + r.customer_last_names }))} /></div>
               <div><label className="block text-xs font-medium text-gray-700 mb-1">Tipo *</label>
                 <select className="input-field" value={formEmitir.tipo_dte} onChange={(e) => setFormEmitir(Object.assign({}, formEmitir, { tipo_dte: e.target.value }))}>
                   <option value="01">01 - FE</option><option value="03">03 - CCFE</option>

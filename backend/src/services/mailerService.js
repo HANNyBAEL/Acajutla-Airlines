@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const axios = require('axios');
+const pagoDteService = require('./pagoDteService');
 
 const CONFIG = {
   apiKey: process.env.BREVO_API_KEY || '',
@@ -27,6 +28,16 @@ async function dispatch(outboxId) {
   const [rows] = await pool.query('SELECT * FROM email_outbox WHERE id = ?', [outboxId]);
   if (!rows.length) return { enviado: false, motivo: 'Registro no encontrado' };
   const m = rows[0];
+  // El registro de auditoría del DTE no almacena binarios. Por eso, al
+  // reenviarlo se regeneran el PDF y el ZIP con el JSON antes de enviarlo.
+  if (m.template === 'dte_entrega_adjuntos' && m.ref_type === 'dte' && m.ref_id) {
+    const r = await pagoDteService.reenviarAdjuntos(m.ref_id);
+    await pool.query(
+      "UPDATE email_outbox SET status = ?, brevo_message_id = ?, error_msg = ?, sent_at = NOW() WHERE id = ?",
+      [r.enviado ? (r.simulado ? 'simulado' : 'sent') : 'failed', r.messageId || null, r.enviado ? null : r.motivo, outboxId]
+    );
+    return Object.assign({}, r, { outbox_id: outboxId });
+  }
   if (!CONFIG.apiKey) {
     await pool.query("UPDATE email_outbox SET status = 'simulado', sent_at = NOW() WHERE id = ?", [outboxId]);
     console.log('[CORREO SIMULADO] -> ' + m.to_email + ' | ' + m.subject);

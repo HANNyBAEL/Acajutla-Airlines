@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
-import { FiPlus, FiSearch, FiX } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiX, FiEdit2 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const Clientes = () => {
@@ -9,7 +9,8 @@ const Clientes = () => {
   const [filtro, setFiltro] = useState('');
   const [modal, setModal] = useState(false);
   const [guardando, setGuardando] = useState(false);
-  const [form, setForm] = useState({ first_names: '', last_names: '', document_type: 'DUI', document_number: '', email: '', phone: '' });
+  const [clienteEditando, setClienteEditando] = useState(null);
+  const [form, setForm] = useState({ first_names: '', last_names: '', document_type: 'DUI', document_number: '', birth_date: '', email: '', phone: '' });
 
   const cargar = () => {
     api.get('/clientes').then((r) => setClientes(r.data.datos || []))
@@ -19,18 +20,34 @@ const Clientes = () => {
   useEffect(cargar, []);
 
   const abrirModal = () => {
-    setForm({ first_names: '', last_names: '', document_type: 'DUI', document_number: '', email: '', phone: '' });
+    setForm({ first_names: '', last_names: '', document_type: 'DUI', document_number: '', birth_date: '', email: '', phone: '' });
+    setClienteEditando(null);
+    setModal(true);
+  };
+
+  const editar = (cliente) => {
+    setClienteEditando(cliente);
+    setForm({
+      first_names: cliente.first_names || '', last_names: cliente.last_names || '', document_type: cliente.document_type || 'DUI',
+      document_number: cliente.document_number || '', birth_date: cliente.birth_date ? String(cliente.birth_date).slice(0, 10) : '',
+      email: cliente.email || '', phone: cliente.phone || ''
+    });
     setModal(true);
   };
 
   const setCampo = (campo, valor) => setForm((f) => Object.assign({}, f, { [campo]: valor }));
 
   const guardar = async () => {
-    if (!form.first_names || !form.last_names || !form.document_number) return toast.error('Nombres, apellidos y documento son obligatorios');
+    if (!form.first_names || !form.last_names || !form.document_number || !form.birth_date) return toast.error('Nombres, apellidos, documento y fecha de nacimiento son obligatorios');
     setGuardando(true);
     try {
-      await api.post('/clientes', form);
-      toast.success('Cliente registrado');
+      if (clienteEditando) {
+        await api.put('/clientes/' + clienteEditando.id, form);
+        toast.success('Cliente actualizado');
+      } else {
+        await api.post('/clientes', form);
+        toast.success('Cliente registrado');
+      }
       setModal(false);
       cargar();
     } catch (e) {
@@ -54,16 +71,20 @@ const Clientes = () => {
         <table className="w-full"><thead className="bg-gray-50 border-b border-gray-200"><tr>
           <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Nombre</th>
           <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Documento</th>
+          <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Fecha nacimiento</th>
           <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Email</th>
           <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Teléfono</th>
+          <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Acción</th>
         </tr></thead><tbody className="divide-y divide-gray-100">
-          {cargando ? <tr><td colSpan="4" className="text-center py-8 text-gray-500">Cargando...</td></tr> :
-           lista.length === 0 ? <tr><td colSpan="4" className="text-center py-8 text-gray-500">No hay clientes</td></tr> :
+          {cargando ? <tr><td colSpan="6" className="text-center py-8 text-gray-500">Cargando...</td></tr> :
+           lista.length === 0 ? <tr><td colSpan="6" className="text-center py-8 text-gray-500">No hay clientes</td></tr> :
            lista.map((c) => (<tr key={c.id} className="hover:bg-gray-50">
             <td className="px-6 py-4 font-medium text-gray-800">{c.first_names} {c.last_names}</td>
             <td className="px-6 py-4 text-sm"><span className="px-2 py-1 bg-primary-100 text-primary-700 rounded text-xs font-medium">{c.document_type}</span><span className="ml-2">{c.document_number}</span></td>
+            <td className="px-6 py-4 text-sm text-gray-600">{c.birth_date ? String(c.birth_date).slice(0, 10) : '-'}</td>
             <td className="px-6 py-4 text-sm text-gray-600">{c.email || '-'}</td>
             <td className="px-6 py-4 text-sm text-gray-600">{c.phone || '-'}</td>
+            <td className="px-6 py-4"><button type="button" onClick={() => editar(c)} className="text-primary-600 hover:text-primary-800 flex items-center space-x-1"><FiEdit2 size={16} /><span className="text-sm">Editar</span></button></td>
           </tr>))}
         </tbody></table>
       </div>
@@ -71,7 +92,7 @@ const Clientes = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-800">Nuevo Cliente</h2>
+              <h2 className="text-xl font-bold text-gray-800">{clienteEditando ? 'Editar Cliente' : 'Nuevo Cliente'}</h2>
               <button onClick={() => setModal(false)} className="text-gray-500 hover:text-gray-700"><FiX size={22} /></button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -85,6 +106,8 @@ const Clientes = () => {
                 </select></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Número de Documento *</label>
                 <input className="input-field" value={form.document_number} onChange={(e) => setCampo('document_number', e.target.value)} placeholder="12345678-9" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha de nacimiento *</label>
+                <input type="date" className="input-field" value={form.birth_date} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setCampo('birth_date', e.target.value)} /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                 <input type="email" className="input-field" value={form.email} onChange={(e) => setCampo('email', e.target.value)} placeholder="cliente@email.com" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
@@ -92,7 +115,7 @@ const Clientes = () => {
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button className="btn-secondary" onClick={() => setModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando...' : 'Crear Cliente'}</button>
+              <button className="btn-primary" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando...' : clienteEditando ? 'Guardar cambios' : 'Crear Cliente'}</button>
             </div>
           </div>
         </div>

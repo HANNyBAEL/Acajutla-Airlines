@@ -5,7 +5,9 @@ const pool = require('../config/db');
 const procesarPago = async (req, res) => {
   try {
     const body = Object.assign({}, req.body);
-    const tipo_dte = body.tipo_dte || null;
+    // Toda venta aprobada genera DTE. FE es el valor por defecto; CCFE se
+    // conserva cuando caja lo solicitó explícitamente con los datos fiscales.
+    const tipo_dte = body.tipo_dte || '01';
     const receptor = body.receptor || null;
     delete body.tipo_dte;
     delete body.receptor;
@@ -14,7 +16,7 @@ const procesarPago = async (req, res) => {
     let dteInfo = null;
     if (pago.length) {
       if (tipo_dte) await pool.query('UPDATE payments SET tipo_dte = ? WHERE id = ?', [tipo_dte, pago[0].id]);
-      if (tipo_dte && pago[0].status === 'approved') {
+      if (pago[0].status === 'approved') {
         try {
           dteInfo = await pagoDteService.emitirYEnviar(pago[0].reservation_id, tipo_dte, receptor);
         } catch (e) {
