@@ -7,28 +7,58 @@ const Sidebar = () => {
   const navigate = useNavigate();
 
   const menu = [
-    { path: '/dashboard', icon: FiHome, label: 'Dashboard' },
-    { path: '/clientes', icon: FiUser, label: 'Clientes' },
-    { path: '/nueva-reserva', icon: FiUserPlus, label: 'Nueva Reserva' },
-    { path: '/vuelos', icon: FiSend, label: 'Vuelos' },
-    { path: '/aeropuertos', icon: FiMap, label: 'Aeropuertos' },
-    { path: '/reservas', icon: FiCalendar, label: 'Reservas' },
-    { path: '/pagos', icon: FiCreditCard, label: 'Pagos' },
-    { path: '/dte', icon: FiFileText, label: 'Facturación DTE' },
-    { path: '/notas', icon: FiFileMinus, label: 'Notas NCE/NDE' },
-    { path: '/contingencia', icon: FiAlertTriangle, label: 'Contingencia DTE' },
-    { path: '/checkin', icon: FiUserCheck, label: 'Check-in / Embarque' },
-    { path: '/aeronaves', icon: FiCpu, label: 'Aeronaves' },
-    { path: '/empleados', icon: FiUsers, label: 'Empleados' },
-    { path: '/reportes', icon: FiBarChart2, label: 'Reportes' },
-    { path: '/correos', icon: FiMail, label: 'Correos' },
-    { path: '/comercial', icon: FiShoppingBag, label: 'Comercial / Waitlist' },
-    { path: '/operaciones', icon: FiSettings, label: 'Operaciones' },
-    { path: '/auditoria', icon: FiShield, label: 'Auditoría' },
-    { path: '/notificaciones', icon: FiBell, label: 'Notificaciones' },
-    { path: '/cierre-qa', icon: FiCheckSquare, label: 'Cierre QA' },
-    { path: '/cumplimiento', icon: FiShield, label: 'Cumplimiento Fiscal' },
-    { path: '/dte-export', icon: FiGlobe, label: 'FEXE / FSEE' },
+    {
+      seccion: 'General',
+      items: [
+        { path: '/dashboard', icon: FiHome, label: 'Dashboard' },
+      ],
+    },
+    {
+      seccion: 'Ventas y Reservas',
+      items: [
+        { path: '/nueva-reserva', icon: FiUserPlus, label: 'Nueva Reserva' },
+        { path: '/reservas', icon: FiCalendar, label: 'Reservas' },
+        { path: '/clientes', icon: FiUser, label: 'Clientes' },
+        { path: '/pagos', icon: FiCreditCard, label: 'Pagos' },
+        { path: '/comercial', icon: FiShoppingBag, label: 'Comercial / Waitlist' },
+      ],
+    },
+    {
+      seccion: 'Operaciones de Vuelo',
+      items: [
+        { path: '/vuelos', icon: FiSend, label: 'Vuelos' },
+        { path: '/aeropuertos', icon: FiMap, label: 'Aeropuertos' },
+        { path: '/aeronaves', icon: FiCpu, label: 'Aeronaves' },
+        { path: '/checkin', icon: FiUserCheck, label: 'Check-in / Embarque' },
+        { path: '/operaciones', icon: FiSettings, label: 'Operaciones' },
+      ],
+    },
+    {
+      seccion: 'Facturación y Fiscal',
+      items: [
+        { path: '/dte', icon: FiFileText, label: 'Facturación DTE' },
+        { path: '/notas', icon: FiFileMinus, label: 'Notas NCE/NDE' },
+        { path: '/contingencia', icon: FiAlertTriangle, label: 'Contingencia DTE' },
+        { path: '/dte-export', icon: FiGlobe, label: 'FEXE / FSEE' },
+        { path: '/cumplimiento', icon: FiShield, label: 'Cumplimiento Fiscal' },
+      ],
+    },
+    {
+      seccion: 'Administración',
+      items: [
+        { path: '/empleados', icon: FiUsers, label: 'Empleados' },
+      ],
+    },
+    {
+      seccion: 'Análisis y Soporte',
+      items: [
+        { path: '/reportes', icon: FiBarChart2, label: 'Reportes' },
+        { path: '/correos', icon: FiMail, label: 'Correos' },
+        { path: '/notificaciones', icon: FiBell, label: 'Notificaciones' },
+        { path: '/auditoria', icon: FiShield, label: 'Auditoría' },
+        { path: '/cierre-qa', icon: FiCheckSquare, label: 'Cierre QA' },
+      ],
+    },
   ];
 
   const salir = async () => {
@@ -47,16 +77,23 @@ const Sidebar = () => {
           <p className="text-xs text-gray-500">Backoffice</p>
         </div>
       </div>
-      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
-        {menu.map((item) => (
-          <NavLink key={item.path} to={item.path}
-            className={({ isActive }) =>
-              'flex items-center space-x-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ' +
-              (isActive ? 'bg-primary-50 text-primary-700 border-l-4 border-primary-600' : 'text-gray-700 hover:bg-gray-50')
-            }>
-            <item.icon size={18} />
-            <span>{item.label}</span>
-          </NavLink>
+      <nav className="flex-1 overflow-y-auto py-4 px-3">
+        {menu.map((grupo) => (
+          <div key={grupo.seccion} className="mb-4 last:mb-0">
+            <p className="px-4 mb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{grupo.seccion}</p>
+            <div className="space-y-1">
+              {grupo.items.map((item) => (
+                <NavLink key={item.path} to={item.path}
+                  className={({ isActive }) =>
+                    'flex items-center space-x-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ' +
+                    (isActive ? 'bg-primary-50 text-primary-700 border-l-4 border-primary-600' : 'text-gray-700 hover:bg-gray-50')
+                  }>
+                  <item.icon size={18} />
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
       <div className="p-4 border-t border-gray-200">

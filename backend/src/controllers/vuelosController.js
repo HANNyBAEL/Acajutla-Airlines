@@ -93,39 +93,127 @@ const crearVuelo = async (req, res) => {
 };
 
 const cancelarVuelo = async (req, res) => {
+  const connection = await pool.getConnection();
   try {
+    await connection.beginTransaction();
     const id = parseInt(req.params.id, 10);
     const body = req.body || {};
     const motivo = body.motivo || 'Cancelado por operaciones';
     const confirmar = body.confirmar === true;
 
-    const [vuelos] = await pool.query('SELECT id, flight_number, status, departure_datetime FROM flights WHERE id = ?', [id]);
-    if (vuelos.length === 0) return res.status(404).json({ error: 'Vuelo no encontrado' });
+    const [vuelos] = await connection.query('SELECT id, flight_number, status, departure_datetime FROM flights WHERE id = ? FOR UPDATE', [id]);
+    if (vuelos.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Vuelo no encontrado' });
+    }
     const vuelo = vuelos[0];
 
-    if (vuelo.status === 'cancelled') return res.status(400).json({ error: 'El vuelo ya está cancelado' });
+    if (vuelo.status === 'cancelled') {
+      await connection.rollback();
+      return res.status(400).json({ error: 'El vuelo ya está cancelado' });
+    }
     if (new Date(vuelo.departure_datetime) <= new Date() || vuelo.status === 'in_progress' || vuelo.status === 'completed') {
+      await connection.rollback();
       return res.status(400).json({ error: 'No se puede cancelar un vuelo en curso o finalizado' });
     }
 
-    const [afectados] = await pool.query(
-      `SELECT COUNT(DISTINCT r.id) AS total
+    const [reservasAfectadas] = await connection.query(
+      `SELECT DISTINCT r.id, r.pnr, r.status, r.paid_total, r.customer_id
        FROM flight_segments fs
        JOIN reservations r ON r.id = fs.reservation_id
-       WHERE fs.flight_id = ? AND r.status IN ('pending','confirmed','paid')`,
+       WHERE fs.flight_id = ? AND r.status IN ('pending','confirmed','paid') FOR UPDATE`,
       [id]
     );
-    const total = afectados[0].total;
+    const total = reservasAfectadas.length;
 
     if (total > 0 && !confirmar) {
+      await connection.rollback();
       return res.status(409).json({ error: 'El vuelo tiene reservas activas asociadas', afectados: total, requiereConfirmacion: true });
     }
 
-    await pool.query('UPDATE flights SET status = ? WHERE id = ?', ['cancelled', id]);
-    res.json({ exito: true, mensaje: 'Vuelo ' + vuelo.flight_number + ' cancelado', datos: { id: id, reservasAfectadas: total, motivo: motivo } });
+    // 1. Cancelar el vuelo
+    await connection.query("UPDATE flights SET status = 'cancelled' WHERE id = ?", [id]);
+
+    // 2. Procesar reservas afectadas: cancelar, liberar segmentos y procesar reembolsos
+    let userId = null;
+    if (req.usuario && req.usuario.id) {
+      const [u] = await connection.query('SELECT id FROM users WHERE id = ?', [req.usuario.id]);
+      if (u.length) userId = req.usuario.id;
+    }
+
+    let totalReembolsado = 0;
+    const reembolsosDetalle = [];
+
+    for (const resItem of reservasAfectadas) {
+      await connection.query(
+        `UPDATE reservations SET status = 'cancelled', cancellation_date = NOW(),
+         cancellation_reason = ?, cancelled_by = ? WHERE id = ?`,
+        ['Cancelación de vuelo ' + vuelo.flight_number + ': ' + motivo, userId, resItem.id]
+      );
+
+      await connection.query('DELETE FROM flight_segments WHERE flight_id = ? AND reservation_id = ?', [id, resItem.id]);
+
+      // Si tiene pagos aprobados, registrar reembolso
+      const [pagos] = await connection.query(
+        `SELECT id, amount, currency, external_reference FROM payments
+         WHERE reservation_id = ? AND status = 'approved' AND type = 'payment' FOR UPDATE`,
+        [resItem.id]
+      );
+
+      for (const pago of pagos) {
+        const monto = parseFloat(pago.amount);
+        await connection.query(
+          `INSERT INTO payments (reservation_id, original_payment_id, method, amount, currency, status, type, external_reference, reason, processed_by, payment_date)
+           VALUES (?, ?, 'cash', ?, ?, 'refunded', 'refund', ?, ?, ?, NOW())`,
+          [
+            resItem.id,
+            pago.id,
+            monto,
+            pago.currency || 'USD',
+            pago.external_reference ? 'REFUND-' + pago.external_reference : null,
+            'Reembolso automático por cancelación de vuelo ' + vuelo.flight_number,
+            userId
+          ]
+        );
+        totalReembolsado += monto;
+        reembolsosDetalle.push({ reservation_id: resItem.id, pnr: resItem.pnr, amount: monto });
+      }
+
+      if (pagos.length > 0) {
+        await connection.query('UPDATE reservations SET paid_total = 0 WHERE id = ?', [resItem.id]);
+      }
+    }
+
+    await connection.commit();
+
+    // 3. Notificar a los pasajeros (asíncrono, post-commit)
+    for (const resItem of reservasAfectadas) {
+      try {
+        const mailerService = require('../services/mailerService');
+        await mailerService.enviarCancelacionVuelo(resItem.id, vuelo, motivo);
+      } catch (errMail) {
+        console.error('Error al encolar notificación de cancelación para ' + resItem.pnr + ':', errMail.message);
+      }
+    }
+
+    res.json({
+      exito: true,
+      mensaje: 'Vuelo ' + vuelo.flight_number + ' cancelado correctamente y reservas gestionadas',
+      datos: {
+        id: id,
+        flight_number: vuelo.flight_number,
+        reservasAfectadas: total,
+        reembolsosGenerados: reembolsosDetalle.length,
+        totalReembolsado: Math.round(totalReembolsado * 100) / 100,
+        motivo: motivo
+      }
+    });
   } catch (error) {
+    await connection.rollback();
     console.error('Error cancelar vuelo:', error);
-    res.status(500).json({ error: 'Error interno al cancelar' });
+    res.status(500).json({ error: 'Error interno al cancelar el vuelo: ' + error.message });
+  } finally {
+    connection.release();
   }
 };
 
@@ -179,7 +267,7 @@ const buscarItinerarios = async (req, res) => {
     const addMin = (s, m) => new Date(new Date(s).getTime() + m * 60000).toISOString().slice(0, 19).replace('T', ' ');
     const SQL_VUELO = `SELECT f.id, f.flight_number, f.departure_datetime, f.arrival_datetime, f.base_price,
               ao.iata_code AS origin_iata, ad.iata_code AS destination_iata, at.model AS aircraft_model, at.total_capacity,
-              (at.total_capacity - COALESCE((SELECT COUNT(*) FROM flight_segments fs JOIN reservations r ON r.id = fs.reservation_id WHERE fs.flight_id = f.id AND r.status IN ('confirmed','paid')), 0)) AS available_seats
+              (at.total_capacity - COALESCE((SELECT COUNT(*) FROM flight_segments fs JOIN reservations r ON r.id = fs.reservation_id WHERE fs.flight_id = f.id AND r.status IN ('pending','confirmed','paid')), 0)) AS available_seats
        FROM flights f JOIN routes rt ON rt.id = f.route_id
        JOIN airports ao ON ao.id = rt.origin_id JOIN airports ad ON ad.id = rt.destination_id
        JOIN aircraft ac ON ac.id = f.aircraft_id JOIN aircraft_types at ON at.id = ac.type_id`;
@@ -200,4 +288,5 @@ const buscarItinerarios = async (req, res) => {
     res.status(500).json({ error: 'Error interno' });
   }
 };
+
 module.exports = { buscarVuelos, listarVuelos, obtenerVuelo, listarAeronaves, crearVuelo, cancelarVuelo, reprogramarVuelo, buscarItinerarios };

@@ -72,6 +72,7 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`ðŸš€ Servidor SkyManager corriendo en http://localhost:${PORT}`);
-  console.log(`ðŸ“¡ Ambiente: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🚀 Servidor SkyManager corriendo en http://localhost:${PORT}`);
+  console.log(`📡 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+  require('./services/expiracionService').iniciarJobExpiracion();
 });

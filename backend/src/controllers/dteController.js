@@ -6,9 +6,11 @@ const emitir = async (req, res) => {
     const { reservation_id, tipo_dte, receptor } = req.body;
     if (!reservation_id || !tipo_dte) return res.status(400).json({ error: 'reservation_id y tipo_dte son obligatorios' });
     const r = await DTEService.emitirDTE({ reservation_id: reservation_id, tipo_dte: tipo_dte, receptor: receptor });
-    res.status(201).json({
-      exito: true,
-      mensaje: r.estado === 'accepted' ? 'DTE emitido y sellado por MH' : 'DTE generado pero RECHAZADO por MH',
+    const esRechazado = r.estado === 'rejected';
+    const statusHttp = esRechazado ? 422 : 201;
+    res.status(statusHttp).json({
+      exito: !esRechazado,
+      mensaje: r.estado === 'accepted' ? 'DTE emitido y sellado por MH' : (esRechazado ? 'DTE generado pero RECHAZADO por MH' : 'DTE emitido'),
       datos: r
     });
   } catch (e) {

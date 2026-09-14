@@ -40,13 +40,45 @@ const crearReserva = async (req, res) => {
       }
     }
 
-    // Calcular total estimado
+    // Calcular total estimado usando la tarifa de la clase seleccionada
+    // (flight_fares); si el vuelo no la tiene configurada, se aplica el
+    // multiplicador de la clase sobre el base_price, con base_price como
+    // último respaldo.
     let sumaPrecios = 0;
     for (const v of vuelos) {
-      const [fv] = await connection.query('SELECT base_price FROM flights WHERE id = ?', [v.flight_id]);
-      sumaPrecios += parseFloat(fv[0] ? fv[0].base_price : 250);
+      const clase = v.fare_class || 'economy';
+      const [tarifa] = await connection.query(
+        `SELECT ff.price, ff.seats_allocated,
+                (SELECT COUNT(*) FROM flight_segments fs JOIN reservations rx ON rx.id = fs.reservation_id
+                  WHERE fs.flight_id = ? AND fs.fare_class = ? AND rx.status IN ('pending','confirmed','paid')) AS ocupados_clase
+         FROM flight_fares ff JOIN fare_classes fc ON fc.id = ff.fare_class_id
+         WHERE ff.flight_id = ? AND fc.code = ?`,
+        [v.flight_id, clase, v.flight_id, clase]
+      );
+      let precioUnitario;
+      if (tarifa.length) {
+        precioUnitario = parseFloat(tarifa[0].price);
+        const cupo = tarifa[0].seats_allocated;
+        if (cupo !== null && cupo > 0 && cupo - tarifa[0].ocupados_clase < pasajeros.length) {
+          await connection.rollback();
+          return res.status(409).json({
+            error: `Cupo insuficiente para la clase ${clase} en este vuelo`,
+            cupo_clase: cupo, ocupados: tarifa[0].ocupados_clase, requeridos: pasajeros.length
+          });
+        }
+      } else {
+        const [fb] = await connection.query(
+          `SELECT f.base_price, fc.multiplier
+           FROM flights f LEFT JOIN fare_classes fc ON fc.code = ?
+           WHERE f.id = ?`,
+          [clase, v.flight_id]
+        );
+        const base = parseFloat(fb[0] ? fb[0].base_price : 250);
+        precioUnitario = fb[0] && fb[0].multiplier ? base * parseFloat(fb[0].multiplier) : base;
+      }
+      sumaPrecios += precioUnitario;
     }
-    const estimated_total = sumaPrecios * pasajeros.length;
+    const estimated_total = Math.round(sumaPrecios * pasajeros.length * 100) / 100;
 
     // Generar PNR único
     const pnr = await generarPNRUnico(connection);

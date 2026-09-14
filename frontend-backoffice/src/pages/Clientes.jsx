@@ -38,7 +38,7 @@ const Clientes = () => {
   const setCampo = (campo, valor) => setForm((f) => Object.assign({}, f, { [campo]: valor }));
 
   const guardar = async () => {
-    if (!form.first_names || !form.last_names || !form.document_number || !form.birth_date) return toast.error('Nombres, apellidos, documento y fecha de nacimiento son obligatorios');
+    if (!form.first_names || !form.last_names || !form.birth_date) return toast.error('Nombres, apellidos y fecha de nacimiento son obligatorios');
     setGuardando(true);
     try {
       if (clienteEditando) {
@@ -80,7 +80,7 @@ const Clientes = () => {
            lista.length === 0 ? <tr><td colSpan="6" className="text-center py-8 text-gray-500">No hay clientes</td></tr> :
            lista.map((c) => (<tr key={c.id} className="hover:bg-gray-50">
             <td className="px-6 py-4 font-medium text-gray-800">{c.first_names} {c.last_names}</td>
-            <td className="px-6 py-4 text-sm"><span className="px-2 py-1 bg-primary-100 text-primary-700 rounded text-xs font-medium">{c.document_type}</span><span className="ml-2">{c.document_number}</span></td>
+            <td className="px-6 py-4 text-sm">{c.document_number ? (<><span className="px-2 py-1 bg-primary-100 text-primary-700 rounded text-xs font-medium">{c.document_type}</span><span className="ml-2">{c.document_number}</span></>) : '-'}</td>
             <td className="px-6 py-4 text-sm text-gray-600">{c.birth_date ? String(c.birth_date).slice(0, 10) : '-'}</td>
             <td className="px-6 py-4 text-sm text-gray-600">{c.email || '-'}</td>
             <td className="px-6 py-4 text-sm text-gray-600">{c.phone || '-'}</td>
@@ -100,11 +100,11 @@ const Clientes = () => {
                 <input className="input-field" value={form.first_names} onChange={(e) => setCampo('first_names', e.target.value)} placeholder="Juan Carlos" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Apellidos *</label>
                 <input className="input-field" value={form.last_names} onChange={(e) => setCampo('last_names', e.target.value)} placeholder="Menjívar López" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Documento *</label>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Documento</label>
                 <select className="input-field" value={form.document_type} onChange={(e) => setCampo('document_type', e.target.value)}>
                   <option value="DUI">DUI</option><option value="NIT">NIT</option><option value="Passport">Pasaporte</option>
                 </select></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Número de Documento *</label>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Número de Documento</label>
                 <input className="input-field" value={form.document_number} onChange={(e) => setCampo('document_number', e.target.value)} placeholder="12345678-9" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha de nacimiento *</label>
                 <input type="date" className="input-field" value={form.birth_date} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setCampo('birth_date', e.target.value)} /></div>

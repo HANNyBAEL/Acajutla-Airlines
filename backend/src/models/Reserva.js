@@ -1,19 +1,6 @@
 const pool = require('../config/db');
 
 const Reserva = {
-  crear: async (data) => {
-    const { customer_id, user_id, estimated_total, currency = 'USD', time_limit_minutes = 30 } = data;
-    const timeLimit = new Date();
-    timeLimit.setMinutes(timeLimit.getMinutes() + time_limit_minutes);
-
-    const [result] = await pool.query(
-      `INSERT INTO reservations (pnr, customer_id, user_id, status, estimated_total, currency, created_at, time_limit)
-       VALUES (?, ?, ?, 'pending', ?, ?, NOW(), ?)`,
-      [data.pnr, customer_id, user_id, estimated_total, currency, timeLimit]
-    );
-    return { id: result.insertId, pnr: data.pnr, time_limit: timeLimit };
-  },
-
   buscarPorPNR: async (pnr) => {
     const [rows] = await pool.query(
       `SELECT r.*, c.first_names AS customer_first_names, c.last_names AS customer_last_names,

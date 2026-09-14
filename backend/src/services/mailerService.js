@@ -134,6 +134,23 @@ async function enviarDTE(dte) {
   return queue('dte_entrega', row.email, row.control_number + ' - ' + tipoNombre + ' - Acajutla Airlines', wrap('Documento Tributario Electrónico', cuerpo), 'dte', uuid);
 }
 
+async function enviarCancelacionVuelo(reservationId, flightData, motivo) {
+  const [r] = await pool.query('SELECT r.*, c.first_names, c.last_names, c.email FROM reservations r LEFT JOIN customers c ON c.id = r.customer_id WHERE r.id = ?', [reservationId]);
+  if (!r.length) return { enviado: false, motivo: 'Reserva no encontrada' };
+  const res = r[0];
+  const fechaVuelo = flightData && flightData.departure_datetime ? new Date(flightData.departure_datetime).toLocaleString('es-SV') : 'Fecha no disponible';
+  const numVuelo = flightData && flightData.flight_number ? flightData.flight_number : 'Vuelo';
+  const cuerpo =
+    '<p>Estimado/a ' + (res.first_names || '') + ' ' + (res.last_names || '') + ':</p>' +
+    '<p>Le informamos que el vuelo <strong>' + numVuelo + '</strong> programado para el <strong>' + fechaVuelo +
+    '</strong> ha sido <strong>CANCELADO</strong> por la aerolínea (' + (motivo || 'Motivos operacionales') + ').</p>' +
+    '<table class="kv"><tr><td><strong>Código PNR</strong></td><td class="total">' + res.pnr + '</td></tr>' +
+    '<tr><td>Estado de reserva</td><td>Cancelada</td></tr>' +
+    '<tr><td>Monto Reembolsado</td><td class="total">$' + Number(res.paid_total || 0).toFixed(2) + ' USD</td></tr></table>' +
+    '<p class="note">Si su reserva tenía pagos registrados, el reembolso ha sido procesado de acuerdo con nuestra política de compensación. Si requiere asistencia, por favor contacte a nuestro equipo de atención.</p>';
+  return queue('cancelacion_vuelo', res.email, 'Cancelación de vuelo ' + numVuelo + ' - Reserva ' + res.pnr, wrap('Aviso de Cancelación de Vuelo', cuerpo), 'reserva', reservationId);
+}
+
 async function listar() {
   const [rows] = await pool.query('SELECT id, template, to_email, subject, ref_type, ref_id, status, error_msg, brevo_message_id, created_at, sent_at FROM email_outbox ORDER BY id DESC LIMIT 200');
   return rows;
@@ -145,5 +162,6 @@ module.exports = {
   enviarConfirmacionReserva: enviarConfirmacionReserva,
   enviarComprobantePago: enviarComprobantePago,
   enviarDTE: enviarDTE,
+  enviarCancelacionVuelo: enviarCancelacionVuelo,
   listar: listar
 };

@@ -10,7 +10,7 @@ const Vuelo = {
              (at.total_capacity - COALESCE(
                (SELECT COUNT(*) FROM flight_segments fs
                 JOIN reservations r ON r.id = fs.reservation_id
-                WHERE fs.flight_id = f.id AND r.status IN ('confirmed','paid')), 0
+                WHERE fs.flight_id = f.id AND r.status IN ('pending','confirmed','paid')), 0
              )) AS available_seats
       FROM flights f
       JOIN routes rt ON f.route_id = rt.id

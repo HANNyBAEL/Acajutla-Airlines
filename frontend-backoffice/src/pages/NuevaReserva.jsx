@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../services/api';
 import Autocomplete from '../components/Autocomplete';
 import SearchableSelect from '../components/SearchableSelect';
-import { FiSearch, FiUserPlus, FiTrash2, FiCheckCircle } from 'react-icons/fi';
+import { FiSearch, FiUserPlus, FiTrash2, FiCheckCircle, FiX } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const aeropuertos = [
@@ -38,7 +38,8 @@ const fechaMinima = () => {
 const NuevaReserva = () => {
   const [clienteId, setClienteId] = useState('');
   const [clienteSel, setClienteSel] = useState(null);
-  const [nuevoCliente, setNuevoCliente] = useState(false);
+  const [modalNuevoCliente, setModalNuevoCliente] = useState(false);
+  const [guardandoCliente, setGuardandoCliente] = useState(false);
   const [clienteForm, setClienteForm] = useState({ first_names: '', last_names: '', document_type: 'DUI', document_number: '', birth_date: '', email: '', phone: '' });
   const [autoRellenar, setAutoRellenar] = useState(true);
   const [tipoViaje, setTipoViaje] = useState('ida');
@@ -113,14 +114,34 @@ const NuevaReserva = () => {
     if (checked && clienteSel) seleccionarCliente(clienteSel);
   };
 
+  const setCampoCliente = (campo, valor) => setClienteForm((f) => Object.assign({}, f, { [campo]: valor }));
+
+  const abrirModalNuevoCliente = () => {
+    setClienteForm({ first_names: '', last_names: '', document_type: 'DUI', document_number: '', birth_date: '', email: '', phone: '' });
+    setModalNuevoCliente(true);
+  };
+
+  const registrarCliente = async () => {
+    if (!clienteForm.first_names || !clienteForm.last_names || !clienteForm.document_number || !clienteForm.birth_date)
+      return toast.error('Nombres, apellidos, documento y fecha de nacimiento son obligatorios');
+    setGuardandoCliente(true);
+    try {
+      const rc = await api.post('/clientes', clienteForm);
+      const creado = Object.assign({}, clienteForm, { id: rc.data.datos.id });
+      setModalNuevoCliente(false);
+      seleccionarCliente(creado);
+      toast.success('Cliente registrado y seleccionado');
+    } catch (e) {
+      if (e.response && e.response.status === 409) toast.error('Ya existe un cliente con ese documento o email. Búscalo y selecciónalo.');
+      else toast.error(e.response?.data?.error || 'Error al registrar el cliente');
+    } finally { setGuardandoCliente(false); }
+  };
+
   const vuelosSeleccionados = trayectos.map((t) => t.vuelos.find((v) => v.id === t.vueloId)).filter(Boolean);
   const totalEstimado = vuelosSeleccionados.reduce((total, vuelo) => total + Number(vuelo.base_price || 0), 0) * pasajeros.length;
 
   const guardar = async () => {
-    if (nuevoCliente) {
-      if (!clienteForm.first_names || !clienteForm.last_names || !clienteForm.document_number || !clienteForm.birth_date)
-        return toast.error('Completa los datos del nuevo cliente');
-    } else if (!clienteId) return toast.error('Selecciona un cliente');
+    if (!clienteId) return toast.error('Selecciona un cliente o agrega uno nuevo');
     if (trayectos.some((t) => !t.vueloId)) return toast.error('Selecciona un vuelo para cada trayecto');
     for (let i = 0; i < pasajeros.length; i++) {
       const p = pasajeros[i];
@@ -129,21 +150,7 @@ const NuevaReserva = () => {
     }
     setGuardando(true);
     try {
-      let cid = clienteId;
-      if (nuevoCliente) {
-        try {
-          const rc = await api.post('/clientes', clienteForm);
-          cid = rc.data.datos.id;
-          toast.success('Cliente creado');
-        } catch (clientError) {
-          if (clientError.response && clientError.response.status === 409) {
-            toast.error('Ya existe un cliente con ese documento o email. Busca el cliente o usa uno existente.');
-            setGuardando(false);
-            return;
-          }
-          throw clientError;
-        }
-      }
+      const cid = clienteId;
       const r = await api.post('/reservas', {
         customer_id: Number(cid),
         vuelos: trayectos.map((t) => ({ flight_id: t.vueloId, fare_class: clase })),
@@ -183,42 +190,31 @@ const NuevaReserva = () => {
       <div className="lg:col-span-2 space-y-6">
         <div className="card p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">1. Cliente</h2>
-          <label className="flex items-center space-x-2 text-sm text-gray-700 mb-3">
-            <input type="checkbox" checked={nuevoCliente} onChange={(e) => setNuevoCliente(e.target.checked)} />
-            <span>Registrar cliente nuevo</span>
-          </label>
-          {nuevoCliente ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input className="input-field" placeholder="Nombres" value={clienteForm.first_names} onChange={(e) => setClienteForm(Object.assign({}, clienteForm, { first_names: e.target.value }))} />
-              <input className="input-field" placeholder="Apellidos" value={clienteForm.last_names} onChange={(e) => setClienteForm(Object.assign({}, clienteForm, { last_names: e.target.value }))} />
-              <select className="input-field" value={clienteForm.document_type} onChange={(e) => setClienteForm(Object.assign({}, clienteForm, { document_type: e.target.value }))}>
-                <option value="DUI">DUI</option><option value="NIT">NIT</option><option value="Passport">Pasaporte</option>
-              </select>
-              <input className="input-field" placeholder="Número de documento" value={clienteForm.document_number} onChange={(e) => setClienteForm(Object.assign({}, clienteForm, { document_number: e.target.value }))} />
-              <input type="date" className="input-field" value={clienteForm.birth_date} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setClienteForm(Object.assign({}, clienteForm, { birth_date: e.target.value }))} />
-              <input className="input-field" placeholder="Email" value={clienteForm.email} onChange={(e) => setClienteForm(Object.assign({}, clienteForm, { email: e.target.value }))} />
-              <input className="input-field" placeholder="Teléfono" value={clienteForm.phone} onChange={(e) => setClienteForm(Object.assign({}, clienteForm, { phone: e.target.value }))} />
+          <div className="space-y-3">
+            <div className="flex flex-col md:flex-row gap-3">
+              <div className="flex-1">
+                <Autocomplete
+                  placeholder="Escribe nombre, apellido, documento o email (mínimo 2 letras)..."
+                  fetcher={(q) => api.get('/clientes/buscar', { params: { q: q } }).then((r) => r.data.datos)}
+                  renderLabel={(c) => c.first_names + ' ' + c.last_names}
+                  renderSub={(c) => (c.document_number ? c.document_type + ' ' + c.document_number : 'Sin documento') + (c.email ? ' · ' + c.email : '')}
+                  onSelect={seleccionarCliente}
+                />
+              </div>
+              <button type="button" className="btn-secondary flex items-center justify-center space-x-2 shrink-0" onClick={abrirModalNuevoCliente}>
+                <FiUserPlus /><span>Agregar nuevo cliente</span>
+              </button>
             </div>
-          ) : (
-            <div className="space-y-3">
-              <Autocomplete
-                placeholder="Escribe nombre, apellido, documento o email (mínimo 2 letras)..."
-                fetcher={(q) => api.get('/clientes/buscar', { params: { q: q } }).then((r) => r.data.datos)}
-                renderLabel={(c) => c.first_names + ' ' + c.last_names}
-                renderSub={(c) => c.document_type + ' ' + c.document_number + (c.email ? ' · ' + c.email : '')}
-                onSelect={seleccionarCliente}
-              />
-              <label className="flex items-center space-x-2 text-sm text-gray-700">
-                <input type="checkbox" checked={autoRellenar} onChange={(e) => toggleAuto(e.target.checked)} />
-                <span>Rellenar automáticamente el Pasajero 1 con los datos del cliente</span>
-              </label>
-              {clienteSel && (
-                <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg p-2">
-                  Cliente seleccionado: {clienteSel.first_names} {clienteSel.last_names} ({clienteSel.document_number})
-                </p>
-              )}
-            </div>
-          )}
+            <label className="flex items-center space-x-2 text-sm text-gray-700">
+              <input type="checkbox" checked={autoRellenar} onChange={(e) => toggleAuto(e.target.checked)} />
+              <span>Rellenar automáticamente el Pasajero 1 con los datos del cliente</span>
+            </label>
+            {clienteSel && (
+              <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg p-2">
+                Cliente seleccionado: {clienteSel.first_names} {clienteSel.last_names}{clienteSel.document_number ? ' (' + clienteSel.document_number + ')' : ''}
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="card p-6">
@@ -330,6 +326,39 @@ const NuevaReserva = () => {
           <p className="text-xs text-gray-500 mt-3">La reserva queda PENDIENTE con time limit de 30 min (RN-COM-01). El precio se congela al crear (RN-COM-02).</p>
         </div>
       </div>
+      {modalNuevoCliente && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-800">Agregar Nuevo Cliente</h2>
+              <button onClick={() => setModalNuevoCliente(false)} className="text-gray-500 hover:text-gray-700"><FiX size={22} /></button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Nombres *</label>
+                <input className="input-field" value={clienteForm.first_names} onChange={(e) => setCampoCliente('first_names', e.target.value)} placeholder="Juan Carlos" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Apellidos *</label>
+                <input className="input-field" value={clienteForm.last_names} onChange={(e) => setCampoCliente('last_names', e.target.value)} placeholder="Menjívar López" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Documento *</label>
+                <select className="input-field" value={clienteForm.document_type} onChange={(e) => setCampoCliente('document_type', e.target.value)}>
+                  <option value="DUI">DUI</option><option value="NIT">NIT</option><option value="Passport">Pasaporte</option>
+                </select></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Número de Documento *</label>
+                <input className="input-field" value={clienteForm.document_number} onChange={(e) => setCampoCliente('document_number', e.target.value)} placeholder="12345678-9" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha de nacimiento *</label>
+                <input type="date" className="input-field" value={clienteForm.birth_date} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setCampoCliente('birth_date', e.target.value)} /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" className="input-field" value={clienteForm.email} onChange={(e) => setCampoCliente('email', e.target.value)} placeholder="cliente@email.com" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+                <input className="input-field" value={clienteForm.phone} onChange={(e) => setCampoCliente('phone', e.target.value)} placeholder="+503 7000-0000" /></div>
+            </div>
+            <p className="text-xs text-gray-500 mt-3">Para crear una reserva es obligatorio proporcionar DUI, NIT o pasaporte.</p>
+            <div className="flex justify-end space-x-2 mt-6">
+              <button className="btn-secondary" onClick={() => setModalNuevoCliente(false)}>Cancelar</button>
+              <button className="btn-primary" onClick={registrarCliente} disabled={guardandoCliente}>{guardandoCliente ? 'Registrando...' : 'Aceptar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

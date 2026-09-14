@@ -15,26 +15,41 @@ const listarWaitlist = async (req, res) => {
 };
 
 const agregarWaitlist = async (req, res) => {
+  const connection = await pool.getConnection();
   try {
+    await connection.beginTransaction();
     const { flight_id, passenger_name, passenger_email, passenger_doc, doc_type, requested_class, notes } = req.body;
-    if (!flight_id || !passenger_name) return res.status(400).json({ error: 'Vuelo y nombre son obligatorios' });
-    const [v] = await pool.query(
+    if (!flight_id || !passenger_name) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Vuelo y nombre son obligatorios' });
+    }
+    const [v] = await connection.query(
       `SELECT f.id, f.flight_number, at.total_capacity,
         (SELECT COUNT(DISTINCT fs.passenger_id) FROM flight_segments fs JOIN reservations r ON r.id = fs.reservation_id
-         WHERE fs.flight_id = f.id AND r.status IN ('paid','confirmed')) AS ocupados
+         WHERE fs.flight_id = f.id AND r.status IN ('pending','confirmed','paid')) AS ocupados
        FROM flights f JOIN aircraft ac ON ac.id = f.aircraft_id JOIN aircraft_types at ON at.id = ac.type_id
-       WHERE f.id = ?`, [flight_id]);
-    if (!v.length) return res.status(404).json({ error: 'Vuelo no encontrado' });
+       WHERE f.id = ? FOR UPDATE`, [flight_id]);
+    if (!v.length) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Vuelo no encontrado' });
+    }
     if (v[0].ocupados < v[0].total_capacity) {
+      await connection.rollback();
       return res.status(409).json({ error: 'El vuelo aún tiene asientos disponibles; no requiere lista de espera', disponibles: v[0].total_capacity - v[0].ocupados });
     }
-    const [max] = await pool.query("SELECT COALESCE(MAX(position),0) AS m FROM waitlist WHERE flight_id = ? AND status = 'waiting'", [flight_id]);
+    const [max] = await connection.query("SELECT COALESCE(MAX(position),0) AS m FROM waitlist WHERE flight_id = ? AND status = 'waiting' FOR UPDATE", [flight_id]);
     const posicion = max[0].m + 1;
-    const [r] = await pool.query(
+    const [r] = await connection.query(
       'INSERT INTO waitlist (flight_id, passenger_name, passenger_email, passenger_doc, doc_type, requested_class, notes, position) VALUES (?,?,?,?,?,?,?,?)',
       [flight_id, passenger_name, passenger_email || null, passenger_doc || null, doc_type || null, requested_class || null, notes || null, posicion]);
+    await connection.commit();
     res.status(201).json({ exito: true, datos: { id: r.insertId, posicion: posicion }, mensaje: 'Agregado a lista de espera en posición #' + posicion });
-  } catch (e) { res.status(500).json({ error: 'Error interno' }); }
+  } catch (e) {
+    await connection.rollback();
+    res.status(500).json({ error: 'Error interno' });
+  } finally {
+    connection.release();
+  }
 };
 
 const actualizarWaitlist = async (req, res) => {
@@ -134,7 +149,13 @@ const kpi = async (req, res) => {
     const [cap] = await pool.query(
       `SELECT SUM(at.total_capacity) AS cap, COALESCE(SUM(oc.n),0) AS ocu FROM flights f
        JOIN aircraft ac ON ac.id = f.aircraft_id JOIN aircraft_types at ON at.id = ac.type_id
-       LEFT JOIN (SELECT flight_id, COUNT(DISTINCT passenger_id) AS n FROM flight_segments GROUP BY flight_id) oc ON oc.flight_id = f.id
+       LEFT JOIN (
+         SELECT fs.flight_id, COUNT(DISTINCT fs.passenger_id) AS n
+         FROM flight_segments fs
+         JOIN reservations rx ON rx.id = fs.reservation_id
+         WHERE rx.status IN ('pending','confirmed','paid')
+         GROUP BY fs.flight_id
+       ) oc ON oc.flight_id = f.id
        WHERE DATE(f.departure_datetime) = ?`, [hoy]);
     const [ventas] = await pool.query("SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE status='approved' AND type='payment' AND DATE(payment_date) = ?", [hoy]);
     const [dte] = await pool.query("SELECT COALESCE(SUM(transmission_status='accepted'),0) AS ok, COALESCE(SUM(transmission_status='rejected'),0) AS bad, COALESCE(SUM(transmission_status='contingency'),0) AS cont FROM dte_headers WHERE DATE(emission_date) = ?", [hoy]);
@@ -153,7 +174,13 @@ const reporteOcupacion = async (req, res) => {
     const { desde, hasta } = req.query;
     let sql = `SELECT r.route_code, COUNT(DISTINCT f.id) AS vuelos, SUM(at.total_capacity) AS capacidad_total, COALESCE(SUM(oc.n),0) AS ocupados
        FROM flights f JOIN routes r ON r.id = f.route_id JOIN aircraft ac ON ac.id = f.aircraft_id JOIN aircraft_types at ON at.id = ac.type_id
-       LEFT JOIN (SELECT flight_id, COUNT(DISTINCT passenger_id) AS n FROM flight_segments GROUP BY flight_id) oc ON oc.flight_id = f.id
+       LEFT JOIN (
+         SELECT fs.flight_id, COUNT(DISTINCT fs.passenger_id) AS n
+         FROM flight_segments fs
+         JOIN reservations rx ON rx.id = fs.reservation_id
+         WHERE rx.status IN ('pending','confirmed','paid')
+         GROUP BY fs.flight_id
+       ) oc ON oc.flight_id = f.id
        WHERE 1=1`;
     const params = [];
     if (desde) { sql += ' AND DATE(f.departure_datetime) >= ?'; params.push(desde); }

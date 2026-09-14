@@ -14,8 +14,8 @@ const listarClientes = async (req, res) => {
 const crearCliente = async (req, res) => {
   try {
     const { first_names, last_names, document_type = 'DUI', document_number, birth_date, email, phone } = req.body;
-    if (!first_names || !last_names || !document_number || !birth_date) {
-      return res.status(400).json({ error: 'first_names, last_names, document_number y birth_date son requeridos' });
+    if (!first_names || !last_names || !birth_date) {
+      return res.status(400).json({ error: 'first_names, last_names y birth_date son requeridos' });
     }
     const fechaNacimiento = new Date(birth_date + 'T00:00:00');
     if (Number.isNaN(fechaNacimiento.getTime()) || fechaNacimiento > new Date()) {
@@ -24,7 +24,7 @@ const crearCliente = async (req, res) => {
     const [result] = await pool.query(
       `INSERT INTO customers (first_names, last_names, document_type, document_number, birth_date, email, phone, status, registration_date)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', NOW())`,
-      [first_names, last_names, document_type, document_number, birth_date, email || null, phone || null]
+      [first_names, last_names, document_type, document_number || null, birth_date, email || null, phone || null]
     );
     res.status(201).json({ exito: true, datos: { id: result.insertId } });
   } catch (error) {
@@ -39,8 +39,8 @@ const actualizarCliente = async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const { first_names, last_names, document_type = 'DUI', document_number, birth_date, email, phone } = req.body;
-    if (!id || !first_names || !last_names || !document_number || !birth_date) {
-      return res.status(400).json({ error: 'first_names, last_names, document_number y birth_date son requeridos' });
+    if (!id || !first_names || !last_names || !birth_date) {
+      return res.status(400).json({ error: 'first_names, last_names y birth_date son requeridos' });
     }
     const fechaNacimiento = new Date(birth_date + 'T00:00:00');
     if (Number.isNaN(fechaNacimiento.getTime()) || fechaNacimiento > new Date()) {
@@ -49,7 +49,7 @@ const actualizarCliente = async (req, res) => {
     const [result] = await pool.query(
       `UPDATE customers SET first_names = ?, last_names = ?, document_type = ?, document_number = ?,
        birth_date = ?, email = ?, phone = ? WHERE id = ?`,
-      [first_names, last_names, document_type, document_number, birth_date, email || null, phone || null, id]
+      [first_names, last_names, document_type, document_number || null, birth_date, email || null, phone || null, id]
     );
     if (!result.affectedRows) return res.status(404).json({ error: 'Cliente no encontrado' });
     res.json({ exito: true, datos: { id } });
