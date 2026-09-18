@@ -48,13 +48,21 @@ const Reserva = {
        WHERE fs.reservation_id = ? ORDER BY f.departure_datetime ASC`,
       [reserva[0].id]
     );
+    const [impuestos] = await pool.query(
+      `SELECT rtl.*, a.iata_code AS airport_code, c.code AS country_code
+       FROM reservation_tax_lines rtl LEFT JOIN airports a ON a.id = rtl.airport_id
+       LEFT JOIN countries c ON c.id = rtl.country_id WHERE rtl.reservation_id = ? ORDER BY rtl.flight_id, rtl.passenger_id, rtl.id`,
+      [reserva[0].id]
+    );
     return {
       ...reserva[0],
       passengers: pasajeros,
       pasajeros,
       segments: segmentos,
       segmentos,
-      payments: pagos
+      payments: pagos,
+      tax_lines: impuestos,
+      impuestos
     };
   },
 

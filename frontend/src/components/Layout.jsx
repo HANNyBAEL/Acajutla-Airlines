@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, Link } from 'react-router-dom';
-import { FiHome, FiPlane, FiCalendar, FiFileText, FiLogOut } from 'react-icons/fi';
+import { FiHome, FiSend, FiCalendar, FiFileText, FiLogOut } from 'react-icons/fi';
 
 const Layout = () => {
   const navigate = useNavigate();
@@ -11,7 +11,7 @@ const Layout = () => {
 
   const menuItems = [
     { path: '/dashboard', icon: FiHome, label: 'Dashboard' },
-    { path: '/vuelos', icon: FiPlane, label: 'Vuelos' },
+    { path: '/vuelos', icon: FiSend, label: 'Vuelos' },
     { path: '/reservas', icon: FiCalendar, label: 'Reservas' },
     { path: '/dte', icon: FiFileText, label: 'Facturación DTE' },
   ];

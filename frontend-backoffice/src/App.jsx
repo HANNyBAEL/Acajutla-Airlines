@@ -26,6 +26,7 @@ import DteExport from './pages/DteExport';
 import Comercial from './pages/Comercial';
 import Correos from './pages/Correos';
 import Checkin from './pages/Checkin';
+import FiscalidadTasas from './pages/FiscalidadTasas';
 
 function App() {
   return (
@@ -53,6 +54,7 @@ function App() {
             <Route path="cierre-qa" element={<CierreQA />} />
             <Route path="operaciones" element={<Operaciones />} />
             <Route path="cumplimiento" element={<CumplimientoFiscal />} />
+            <Route path="fiscalidad" element={<FiscalidadTasas />} />
             <Route path="dte-export" element={<DteExport />} />
             <Route path="correos" element={<Correos />} />
             <Route path="checkin" element={<Checkin />} />

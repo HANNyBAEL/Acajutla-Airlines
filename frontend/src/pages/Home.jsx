@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { FiPlane, FiShield, FiClock, FiAward, FiArrowRight } from 'react-icons/fi';
+import { FiSend, FiShield, FiClock, FiAward, FiArrowRight } from 'react-icons/fi';
 import SearchForm from '../components/search/SearchForm';
 
 const Home = () => {
@@ -12,7 +12,7 @@ const Home = () => {
 
   const caracteristicas = [
     {
-      icono: <FiPlane className="text-3xl" />,
+      icono: <FiSend className="text-3xl" />,
       titulo: 'Vuelos directos',
       descripcion: 'Conectamos El Salvador con los principales destinos de la región.',
     },

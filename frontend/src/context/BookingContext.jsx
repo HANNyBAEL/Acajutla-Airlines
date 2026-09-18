@@ -27,9 +27,9 @@ export const BookingProvider = ({ children }) => {
 
   const precioPorPasajero = () => {
     if (vuelosSeleccionados && vuelosSeleccionados.length) {
-      return vuelosSeleccionados.reduce((s, it) => s + (it.vuelos || [it]).reduce((s2, v) => s2 + Number(v.base_price || v.precio_base || 250), 0), 0);
+      return vuelosSeleccionados.reduce((s, it) => s + (it.vuelos || [it]).reduce((s2, v) => s2 + Number(v.total_price ?? 0), 0), 0);
     }
-    return vueloSeleccionado ? Number(vueloSeleccionado.precio_base || vueloSeleccionado.base_price || 250) : 250;
+    return vueloSeleccionado ? Number(vueloSeleccionado.total_price ?? 0) : 0;
   };
 
   const calcularTotal = () => {
@@ -41,8 +41,8 @@ export const BookingProvider = ({ children }) => {
       return sum + precio;
     }, 0);
     const totalServicios = serviciosAdicionales.reduce((sum, s) => sum + (s.precio * (s.cantidad || 1)), 0);
-    const impuestos = totalPasajeros * 0.13 + (pasajeros.length * 25);
-    return { subtotal: totalPasajeros + totalServicios, impuestos, total: totalPasajeros + totalServicios + impuestos };
+    const impuestos = vuelosSeleccionados.reduce((sum, it) => sum + (it.vuelos || [it]).reduce((x, v) => x + Number(v.total_taxes || 0), 0), 0) * pasajeros.length;
+    return { subtotal: totalPasajeros + totalServicios - impuestos, impuestos, total: totalPasajeros + totalServicios };
   };
 
   const limpiarReserva = () => {

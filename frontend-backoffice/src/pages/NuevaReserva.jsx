@@ -1,17 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '../services/api';
 import Autocomplete from '../components/Autocomplete';
 import SearchableSelect from '../components/SearchableSelect';
 import { FiSearch, FiUserPlus, FiTrash2, FiCheckCircle, FiX } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-
-const aeropuertos = [
-  { code: 'SAL', name: 'San Salvador' }, { code: 'MIA', name: 'Miami' },
-  { code: 'GUA', name: 'Guatemala' }, { code: 'SJO', name: 'San José' },
-  { code: 'MEX', name: 'Cd. de México' }, { code: 'PTY', name: 'Panamá' },
-  { code: 'TGU', name: 'Tegucigalpa' }, { code: 'MGA', name: 'Managua' },
-];
-const opcionesAeropuerto = aeropuertos.map((a) => ({ value: a.code, label: a.code + ' - ' + a.name, searchText: a.code + ' ' + a.name }));
 const nacionalidades = ['SV', 'US', 'GT', 'HN', 'NI', 'CR', 'PA', 'MX'];
 const MAP_DOC = { DUI: '13', NIT: '36', Passport: '3', '13': '13', '36': '36', '3': '3' };
 const pasajeroVacio = () => ({
@@ -36,6 +28,15 @@ const fechaMinima = () => {
 };
 
 const NuevaReserva = () => {
+  const [aeropuertos, setAeropuertos] = useState([]);
+  const opcionesAeropuerto = useMemo(
+    () => aeropuertos.map((a) => ({
+      value: a.code,
+      label: a.code + ' - ' + (a.city || a.name),
+      searchText: [a.code, a.city, a.name, a.country].filter(Boolean).join(' '),
+    })),
+    [aeropuertos]
+  );
   const [clienteId, setClienteId] = useState('');
   const [clienteSel, setClienteSel] = useState(null);
   const [modalNuevoCliente, setModalNuevoCliente] = useState(false);
@@ -48,6 +49,12 @@ const NuevaReserva = () => {
   const [clase, setClase] = useState('economy');
   const [guardando, setGuardando] = useState(false);
   const [pnrCreado, setPnrCreado] = useState(null);
+
+  useEffect(() => {
+    api.get('/aeropuertos?activos=1')
+      .then((r) => setAeropuertos(r.data.datos || []))
+      .catch(() => toast.error('Error al cargar aeropuertos'));
+  }, []);
 
   const actualizarTrayecto = (indice, campo, valor) => {
     setTrayectos((actuales) => actuales.map((t, i) => i === indice
@@ -75,7 +82,7 @@ const NuevaReserva = () => {
     if (!trayecto.fecha) return toast.error('Selecciona la fecha del trayecto ' + (indice + 1));
     setTrayectos((actuales) => actuales.map((t, i) => i === indice ? Object.assign({}, t, { buscando: true, vueloId: null }) : t));
     try {
-      const r = await api.get('/vuelos/buscar', { params: { origen: trayecto.origen, destino: trayecto.destino, fecha: trayecto.fecha } });
+      const r = await api.get('/vuelos/buscar', { params: { origen: trayecto.origen, destino: trayecto.destino, fecha: trayecto.fecha, clase } });
       const resultados = r.data.datos || [];
       setTrayectos((actuales) => actuales.map((t, i) => i === indice ? Object.assign({}, t, { vuelos: resultados, buscando: false }) : t));
       if (!resultados.length) toast.error('No hay vuelos para ese trayecto y fecha');
@@ -138,7 +145,7 @@ const NuevaReserva = () => {
   };
 
   const vuelosSeleccionados = trayectos.map((t) => t.vuelos.find((v) => v.id === t.vueloId)).filter(Boolean);
-  const totalEstimado = vuelosSeleccionados.reduce((total, vuelo) => total + Number(vuelo.base_price || 0), 0) * pasajeros.length;
+  const totalEstimado = vuelosSeleccionados.reduce((total, vuelo) => total + Number(vuelo.total_price ?? 0), 0) * pasajeros.length;
 
   const guardar = async () => {
     if (!clienteId) return toast.error('Selecciona un cliente o agrega uno nuevo');
@@ -250,7 +257,7 @@ const NuevaReserva = () => {
                           <input type="radio" name={'vuelo-' + indice} checked={t.vueloId === v.id} onChange={() => actualizarTrayecto(indice, 'vueloId', v.id)} />
                           <div><p className="font-semibold text-gray-800">{v.flight_number}</p><p className="text-xs text-gray-500">{v.origin_iata} → {v.destination_iata} · {new Date(v.departure_datetime).toLocaleString('es-SV')}</p></div>
                         </div>
-                        <div className="text-right"><p className="font-bold text-primary-700">${v.base_price}</p><p className="text-xs text-gray-500">{v.available_seats} asientos</p></div>
+                        <div className="text-right"><p className="font-bold text-primary-700">${Number(v.total_price || 0).toFixed(2)}</p><p className="text-xs text-gray-500">Incluye ${Number(v.total_taxes || 0).toFixed(2)} impuestos · {v.available_seats} asientos</p></div>
                       </label>
                     ))}
                   </div>

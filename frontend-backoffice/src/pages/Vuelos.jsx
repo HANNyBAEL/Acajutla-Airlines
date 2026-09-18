@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
 import SearchableSelect from '../components/SearchableSelect';
-import { FiPlus, FiSearch, FiX, FiXCircle, FiRefreshCw } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiX, FiXCircle, FiRefreshCw, FiMapPin, FiClock, FiCpu, FiDollarSign } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const Vuelos = () => {
@@ -16,6 +16,8 @@ const Vuelos = () => {
   const [modalReprog, setModalReprog] = useState(null);
   const [formReprog, setFormReprog] = useState({ departure_datetime: '', arrival_datetime: '', aircraft_id: '', gate: '' });
   const [guardandoReprog, setGuardandoReprog] = useState(false);
+  // Estado del drawer
+  const [drawerVuelo, setDrawerVuelo] = useState(null);
 
   const cargar = () => {
     api.get('/vuelos')
@@ -68,6 +70,7 @@ const Vuelos = () => {
     try {
       await api.patch('/vuelos/' + v.id + '/cancelar', { motivo: motivo, confirmar: false });
       toast.success('Vuelo ' + v.flight_number + ' cancelado');
+      setDrawerVuelo(null);
       cargar();
     } catch (e) {
       const data = e.response ? e.response.data : null;
@@ -77,6 +80,7 @@ const Vuelos = () => {
         try {
           await api.patch('/vuelos/' + v.id + '/cancelar', { motivo: motivo, confirmar: true });
           toast.success('Vuelo ' + v.flight_number + ' cancelado');
+          setDrawerVuelo(null);
           cargar();
         } catch (e2) {
           toast.error(e2.response && e2.response.data && e2.response.data.error ? e2.response.data.error : 'Error al cancelar');
@@ -88,6 +92,7 @@ const Vuelos = () => {
   };
 
   const abrirReprog = async (v) => {
+    setDrawerVuelo(null);
     setModalReprog(v);
     setFormReprog({
       departure_datetime: toLocalInput(v.departure_datetime),
@@ -134,10 +139,18 @@ const Vuelos = () => {
     delayed: 'Retrasado', completed: 'Finalizado', cancelled: 'Cancelado', deployed: 'Desplegado',
   }[e] || e);
 
-  const estadoDe = (vuelo) => vuelo.display_status || vuelo.status;
+  const estadoDe = (vuelo) => vuelo?.display_status || vuelo?.status;
 
   const sePuedeCancelar = (e) => ['scheduled', 'confirmed', 'delayed'].includes(e);
   const sePuedeReprogramar = (e) => ['cancelled', 'delayed'].includes(e);
+
+  const InfoFila = ({ icon: Icon, label, value }) => (
+    <div className="flex items-center py-2.5 text-sm border-b border-gray-100 last:border-b-0">
+      <Icon className="text-primary-600 mr-3 shrink-0" size={16} />
+      <span className="font-medium text-gray-600 w-36 shrink-0">{label}:</span>
+      <span className="text-gray-800 font-medium truncate">{value || '—'}</span>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -163,12 +176,12 @@ const Vuelos = () => {
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="w-[10%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Vuelo</th>
-                <th className="w-[14%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Ruta</th>
-                <th className="w-[18%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Salida</th>
-                <th className="w-[16%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Aeronave</th>
+                <th className="w-[12%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Vuelo</th>
+                <th className="w-[16%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Ruta</th>
+                <th className="w-[20%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Salida</th>
+                <th className="w-[18%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Aeronave</th>
                 <th className="w-[14%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
-                <th className="w-[28%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Acciones</th>
+                <th className="w-[20%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -177,24 +190,28 @@ const Vuelos = () => {
               ) : lista.length === 0 ? (
                 <tr><td colSpan="6" className="text-center py-8 text-gray-500">No hay vuelos registrados</td></tr>
               ) : lista.map((v) => (
-                <tr key={v.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 font-semibold text-gray-800" title={v.flight_number}>{v.flight_number}</td>
-                  <td className="px-6 py-4 text-sm" title={(v.origin || '') + ' a ' + (v.destination || '')}>{v.origin} → {v.destination}</td>
+                <tr
+                  key={v.id}
+                  className="hover:bg-gray-50 cursor-pointer transition-colors"
+                  onClick={() => setDrawerVuelo(v)}
+                >
+                  <td className="px-6 py-4 font-bold text-primary-700" title={v.flight_number}>{v.flight_number}</td>
+                  <td className="px-6 py-4 text-sm font-medium text-gray-800" title={(v.origin || '') + ' a ' + (v.destination || '')}>{v.origin} → {v.destination}</td>
                   <td className="px-6 py-4 text-sm text-gray-600" title={new Date(v.departure_datetime).toLocaleString('es-SV')}>{new Date(v.departure_datetime).toLocaleString('es-SV')}</td>
                   <td className="px-6 py-4 text-sm text-gray-600" title={v.aircraft || ''}>{v.aircraft || '-'}</td>
                   <td className="px-6 py-4">
                     <span className={'px-3 py-1 rounded-full text-xs font-medium ' + estadoBadge(estadoDe(v))}>{estadoLabel(estadoDe(v))}</span>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center space-x-3">
                       {sePuedeCancelar(estadoDe(v)) && (
                         <button onClick={() => cancelarVuelo(v)} className="text-red-600 hover:text-red-800 flex items-center space-x-1">
-                          <FiXCircle size={16} /><span className="text-sm">Cancelar</span>
+                          <FiXCircle size={16} /><span className="text-sm font-medium">Cancelar</span>
                         </button>
                       )}
                       {sePuedeReprogramar(estadoDe(v)) && (
                         <button onClick={() => abrirReprog(v)} className="text-primary-600 hover:text-primary-800 flex items-center space-x-1">
-                          <FiRefreshCw size={16} /><span className="text-sm">Reprogramar</span>
+                          <FiRefreshCw size={16} /><span className="text-sm font-medium">Reprogramar</span>
                         </button>
                       )}
                       {!sePuedeCancelar(estadoDe(v)) && !sePuedeReprogramar(estadoDe(v)) && (
@@ -207,8 +224,81 @@ const Vuelos = () => {
             </tbody>
           </table>
         </div>
+        <div className="p-3 bg-gray-50 border-t border-gray-100 text-center">
+          <p className="text-xs text-gray-500">Haz clic en cualquier fila para ver el detalle completo del vuelo</p>
+        </div>
       </div>
 
+      {/* Drawer lateral para detalle del vuelo */}
+      {drawerVuelo && (
+        <>
+          <div className="fixed inset-0 bg-black bg-opacity-40 z-40" onClick={() => setDrawerVuelo(null)}></div>
+          <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-50 flex flex-col">
+            {/* Header del drawer */}
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 bg-gray-50">
+              <div className="flex items-center space-x-3">
+                <div className="bg-primary-600 text-white rounded-xl w-11 h-11 flex items-center justify-center font-bold text-lg shadow-sm">
+                  {drawerVuelo.flight_number?.slice(0, 2) || 'FL'}
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-xl font-bold text-gray-800">{drawerVuelo.flight_number}</h3>
+                    <span className={'px-2.5 py-0.5 rounded-full text-xs font-medium ' + estadoBadge(estadoDe(drawerVuelo))}>
+                      {estadoLabel(estadoDe(drawerVuelo))}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">{drawerVuelo.origin} → {drawerVuelo.destination}</p>
+                </div>
+              </div>
+              <button onClick={() => setDrawerVuelo(null)} className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                <FiX size={22} />
+              </button>
+            </div>
+
+            {/* Contenido del drawer */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-6">
+              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 space-y-1">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Información del Vuelo</h4>
+                <InfoFila icon={FiMapPin} label="Ruta" value={`${drawerVuelo.origin} → ${drawerVuelo.destination}`} />
+                <InfoFila icon={FiClock} label="Salida programada" value={drawerVuelo.departure_datetime ? new Date(drawerVuelo.departure_datetime).toLocaleString('es-SV') : '—'} />
+                <InfoFila icon={FiClock} label="Llegada programada" value={drawerVuelo.arrival_datetime ? new Date(drawerVuelo.arrival_datetime).toLocaleString('es-SV') : '—'} />
+                <InfoFila icon={FiCpu} label="Aeronave" value={drawerVuelo.aircraft || '—'} />
+                <InfoFila icon={FiMapPin} label="Puerta de embarque" value={drawerVuelo.gate || 'Sin asignar'} />
+                <InfoFila icon={FiDollarSign} label="Precio base" value={drawerVuelo.base_price ? `$${Number(drawerVuelo.base_price).toFixed(2)} USD` : '—'} />
+              </div>
+            </div>
+
+            {/* Footer del drawer con acciones */}
+            <div className="px-6 pt-5 pb-10 border-t border-gray-200 bg-gray-50 flex items-center justify-between space-x-3">
+              <div className="flex items-center space-x-2">
+                {sePuedeCancelar(estadoDe(drawerVuelo)) && (
+                  <button
+                    onClick={() => cancelarVuelo(drawerVuelo)}
+                    className="btn-danger flex items-center space-x-1.5 text-sm py-2 px-3"
+                  >
+                    <FiXCircle size={16} />
+                    <span>Cancelar</span>
+                  </button>
+                )}
+                {sePuedeReprogramar(estadoDe(drawerVuelo)) && (
+                  <button
+                    onClick={() => abrirReprog(drawerVuelo)}
+                    className="btn-primary flex items-center space-x-1.5 text-sm py-2 px-3"
+                  >
+                    <FiRefreshCw size={16} />
+                    <span>Reprogramar</span>
+                  </button>
+                )}
+              </div>
+              <button className="btn-secondary" onClick={() => setDrawerVuelo(null)}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Modal nuevo vuelo */}
       {modal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
@@ -242,6 +332,7 @@ const Vuelos = () => {
         </div>
       )}
 
+      {/* Modal reprogramar vuelo */}
       {modalReprog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
@@ -272,4 +363,5 @@ const Vuelos = () => {
     </div>
   );
 };
+
 export default Vuelos;

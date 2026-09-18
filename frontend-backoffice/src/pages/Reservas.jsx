@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../services/api';
-import { FiSearch, FiX, FiEye, FiXCircle } from 'react-icons/fi';
+import { FiSearch, FiX, FiXCircle, FiUser, FiCalendar, FiDollarSign, FiFileText, FiSend } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const ESTADOS = {
@@ -19,6 +19,8 @@ const Reservas = () => {
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [detalle, setDetalle] = useState(null);
+  const [reservaSeleccionada, setReservaSeleccionada] = useState(null);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [cancelando, setCancelando] = useState(false);
 
   const cargar = () => {
@@ -32,8 +34,8 @@ const Reservas = () => {
   useEffect(() => { cargar(); }, []);
 
   const nombreDe = (r) =>
-    ((r.first_names || r.customer_first || r.nombres || '') + ' ' + (r.last_names || r.customer_last || r.apellidos || '')).trim();
-  const docDe = (r) => r.document_number || r.customer_doc || r.documento || '';
+    ((r?.first_names || r?.customer_first || r?.nombres || '') + ' ' + (r?.last_names || r?.customer_last || r?.apellidos || '')).trim();
+  const docDe = (r) => r?.document_number || r?.customer_doc || r?.documento || '';
 
   const filtradas = useMemo(() => {
     const q = texto.trim().toLowerCase();
@@ -49,16 +51,27 @@ const Reservas = () => {
   const limpiar = () => { setTexto(''); setEstado(''); setDesde(''); setHasta(''); };
 
   const verDetalle = async (r) => {
+    setReservaSeleccionada(r);
+    setDetalle(null);
+    setCargandoDetalle(true);
     try {
       const res = await api.get('/reservas/' + r.pnr);
       setDetalle(res.data.datos || res.data);
     } catch (e) {
       toast.error('Error al consultar la reserva');
+    } finally {
+      setCargandoDetalle(false);
     }
   };
 
-  const reservaDetalle = detalle ? (detalle.reserva || detalle) : null;
+  const cerrarDrawer = () => {
+    setReservaSeleccionada(null);
+    setDetalle(null);
+  };
+
+  const reservaDetalle = detalle ? (detalle.reserva || detalle) : reservaSeleccionada;
   const pnrDetalle = reservaDetalle ? reservaDetalle.pnr : '';
+  const statusDetalle = reservaDetalle ? reservaDetalle.status : '';
   const pasajeros = detalle ? (detalle.pasajeros || detalle.passengers || []) : [];
   const segmentos = detalle ? (detalle.segmentos || detalle.segments || detalle.flight_segments || []) : [];
 
@@ -69,14 +82,22 @@ const Reservas = () => {
     try {
       await api.post('/reservas/' + pnrDetalle + '/cancelar', { motivo: motivo });
       toast.success('Reserva cancelada');
-      setDetalle(null);
+      cerrarDrawer();
       cargar();
     } catch (e) {
       toast.error(e.response && e.response.data ? e.response.data.error : 'Error al cancelar');
     } finally { setCancelando(false); }
   };
 
-  const badge = (s) => (ESTADOS[s] || [s, 'bg-gray-100 text-gray-700']);
+  const badge = (s) => (ESTADOS[s] || [s || 'Desconocido', 'bg-gray-100 text-gray-700']);
+
+  const InfoFila = ({ icon: Icon, label, value }) => (
+    <div className="flex items-center py-2 text-sm border-b border-gray-100 last:border-b-0">
+      <Icon className="text-primary-600 mr-3 shrink-0" size={16} />
+      <span className="font-medium text-gray-600 w-32 shrink-0">{label}:</span>
+      <span className="text-gray-800 font-medium truncate">{value || '—'}</span>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -127,80 +148,166 @@ const Reservas = () => {
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Creada</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Total</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Acción</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {cargando ? (
-              <tr><td colSpan="7" className="text-center py-8 text-gray-500">Cargando...</td></tr>
+              <tr><td colSpan="6" className="text-center py-8 text-gray-500">Cargando...</td></tr>
             ) : filtradas.length === 0 ? (
-              <tr><td colSpan="7" className="text-center py-8 text-gray-500">No se encontraron reservas con esos criterios</td></tr>
+              <tr><td colSpan="6" className="text-center py-8 text-gray-500">No se encontraron reservas con esos criterios</td></tr>
             ) : filtradas.map((r) => (
-              <tr key={r.id} className="hover:bg-gray-50">
+              <tr
+                key={r.id}
+                className="hover:bg-gray-50 cursor-pointer transition-colors"
+                onClick={() => verDetalle(r)}
+              >
                 <td className="px-6 py-4 font-mono font-bold text-primary-700">{r.pnr}</td>
-                <td className="px-6 py-4 text-sm">{nombreDe(r) || '—'}</td>
+                <td className="px-6 py-4 text-sm font-medium text-gray-800">{nombreDe(r) || '—'}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{docDe(r) || '—'}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{r.created_at ? new Date(r.created_at).toLocaleDateString('es-SV') : '—'}</td>
-                <td className="px-6 py-4 text-sm font-semibold">${Number(r.estimated_total || 0).toFixed(2)}</td>
+                <td className="px-6 py-4 text-sm font-semibold text-gray-800">${Number(r.estimated_total || 0).toFixed(2)}</td>
                 <td className="px-6 py-4">
                   <span className={'px-3 py-1 rounded-full text-xs font-medium ' + badge(r.status)[1]}>{badge(r.status)[0]}</span>
-                </td>
-                <td className="px-6 py-4">
-                  <button className="text-primary-600 hover:text-primary-800 flex items-center space-x-1" onClick={() => verDetalle(r)}>
-                    <FiEye size={16} /><span className="text-sm">Ver</span>
-                  </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        <div className="p-3 bg-gray-50 border-t border-gray-100 text-center">
+          <p className="text-xs text-gray-500">Haz clic en cualquier fila para ver el detalle completo de la reserva</p>
+        </div>
       </div>
 
-      {detalle && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-800">Reserva {pnrDetalle}</h2>
-              <button onClick={() => setDetalle(null)} className="text-gray-500"><FiX size={22} /></button>
+      {/* Drawer lateral para detalle de reserva */}
+      {reservaSeleccionada && (
+        <>
+          <div className="fixed inset-0 bg-black bg-opacity-40 z-40" onClick={cerrarDrawer}></div>
+          <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white shadow-2xl z-50 flex flex-col">
+            {/* Header del drawer */}
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 bg-gray-50">
+              <div className="flex items-center space-x-3">
+                <div className="bg-primary-600 text-white rounded-xl w-11 h-11 flex items-center justify-center font-mono font-bold text-lg shadow-sm">
+                  {pnrDetalle ? pnrDetalle.slice(0, 2) : 'RS'}
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-xl font-bold font-mono text-gray-800">{pnrDetalle}</h3>
+                    <span className={'px-2.5 py-0.5 rounded-full text-xs font-medium ' + badge(statusDetalle)[1]}>
+                      {badge(statusDetalle)[0]}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">Detalle de la reservación</p>
+                </div>
+              </div>
+              <button onClick={cerrarDrawer} className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                <FiX size={22} />
+              </button>
             </div>
-            <div className="space-y-4">
+
+            {/* Contenido del drawer */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-6">
+              {cargandoDetalle ? (
+                <div className="flex flex-col items-center justify-center py-12 space-y-2">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                  <p className="text-sm text-gray-500">Cargando información de la reserva...</p>
+                </div>
+              ) : (
+                <>
+                  {/* Información General */}
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 space-y-1">
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Información General</h4>
+                    <InfoFila icon={FiUser} label="Cliente" value={nombreDe(reservaDetalle)} />
+                    <InfoFila icon={FiFileText} label="Documento" value={docDe(reservaDetalle)} />
+                    <InfoFila
+                      icon={FiDollarSign}
+                      label="Total"
+                      value={reservaDetalle?.estimated_total ? `$${Number(reservaDetalle.estimated_total).toFixed(2)} USD` : '—'}
+                    />
+                    <InfoFila
+                      icon={FiCalendar}
+                      label="Fecha de creación"
+                      value={reservaDetalle?.created_at ? new Date(reservaDetalle.created_at).toLocaleString('es-SV') : '—'}
+                    />
+                  </div>
+
+                  {/* Pasajeros */}
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                      Pasajeros ({pasajeros.length})
+                    </h4>
+                    {pasajeros.length === 0 ? (
+                      <p className="text-sm text-gray-400 italic">No hay pasajeros registrados</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {pasajeros.map((p, i) => (
+                          <div key={i} className="p-3 bg-white rounded-lg border border-gray-200 shadow-sm flex items-center justify-between">
+                            <div>
+                              <p className="font-semibold text-sm text-gray-800">{p.first_names} {p.last_names}</p>
+                              <p className="text-xs text-gray-500">{p.document_type || 'Doc'}: {p.document_number}</p>
+                            </div>
+                            <span className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 text-xs font-medium uppercase">
+                              {p.passenger_type || 'Adulto'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Segmentos de Vuelo */}
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                      Vuelos / Segmentos ({segmentos.length})
+                    </h4>
+                    {segmentos.length === 0 ? (
+                      <p className="text-sm text-gray-400 italic">No hay segmentos registrados</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {segmentos.map((s, i) => (
+                          <div key={i} className="p-3 bg-white rounded-lg border border-gray-200 shadow-sm space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-primary-700 text-sm">
+                                {s.flight_number || ('Vuelo #' + (s.flight_id || ''))}
+                              </span>
+                              <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-700 text-xs font-medium">
+                                Clase: {s.fare_class || 'General'}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-gray-600">
+                              <span>Asiento: <strong className="text-gray-800">{s.seat || 'Sin asignar'}</strong></span>
+                              {s.departure_datetime && (
+                                <span>{new Date(s.departure_datetime).toLocaleDateString('es-SV')}</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Footer del drawer */}
+            <div className="px-6 pt-5 pb-10 border-t border-gray-200 bg-gray-50 flex items-center justify-between space-x-3">
               <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-2">Pasajeros</h3>
-                {pasajeros.length === 0 ? (
-                  <p className="text-sm text-gray-500">Sin pasajeros</p>
-                ) : (
-                  <ul className="space-y-1">
-                    {pasajeros.map((p, i) => (
-                      <li key={i} className="text-sm text-gray-700">
-                        {p.first_names} {p.last_names} · {p.document_type} {p.document_number} · {p.passenger_type}
-                      </li>
-                    ))}
-                  </ul>
+                {statusDetalle !== 'cancelled' && (
+                  <button
+                    className="btn-danger flex items-center space-x-2"
+                    onClick={cancelar}
+                    disabled={cancelando}
+                  >
+                    <FiXCircle />
+                    <span>{cancelando ? 'Cancelando...' : 'Cancelar reserva'}</span>
+                  </button>
                 )}
               </div>
-              <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-2">Vuelos</h3>
-                {segmentos.length === 0 ? (
-                  <p className="text-sm text-gray-500">Sin segmentos</p>
-                ) : (
-                  <ul className="space-y-1">
-                    {segmentos.map((s, i) => (
-                      <li key={i} className="text-sm text-gray-700">
-                        {s.flight_number || ('Vuelo ' + (s.flight_id || ''))} · Asiento {s.seat || '—'} · {s.fare_class}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-            <div className="flex justify-end space-x-2 mt-6">
-              <button className="btn-secondary" onClick={() => setDetalle(null)}>Cerrar</button>
-              <button className="btn-danger flex items-center space-x-2" onClick={cancelar} disabled={cancelando}>
-                <FiXCircle /><span>{cancelando ? 'Cancelando...' : 'Cancelar reserva'}</span>
+              <button className="btn-secondary" onClick={cerrarDrawer}>
+                Cerrar
               </button>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

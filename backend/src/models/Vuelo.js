@@ -4,6 +4,7 @@ const Vuelo = {
   buscarDisponibles: async (origen, destino, fecha, clase = 'economy') => {
     const sql = `
       SELECT f.id, f.flight_number, f.departure_datetime, f.arrival_datetime, f.status, f.base_price,
+             ff.id AS fare_id, ff.price AS sale_price, ff.price AS price, fc.code AS fare_class,
              at.model AS aircraft_model, at.total_capacity,
              ao.iata_code AS origin_iata, ao.name AS origin_name,
              ad.iata_code AS destination_iata, ad.name AS destination_name,
@@ -18,6 +19,9 @@ const Vuelo = {
       JOIN airports ad ON rt.destination_id = ad.id
       JOIN aircraft ac ON f.aircraft_id = ac.id
       JOIN aircraft_types at ON ac.type_id = at.id
+      JOIN flight_fares ff ON ff.flight_id = f.id AND ff.active = 1
+        AND ff.valid_from <= NOW() AND (ff.valid_to IS NULL OR ff.valid_to > NOW())
+      JOIN fare_classes fc ON fc.id = ff.fare_class_id AND fc.code = ? AND fc.active = 1
       WHERE ao.iata_code = ? AND ad.iata_code = ?
         AND DATE(f.departure_datetime) = ?
         AND f.departure_datetime > NOW()
@@ -25,7 +29,7 @@ const Vuelo = {
         AND ao.active = 1 AND ad.active = 1
       ORDER BY f.departure_datetime ASC
     `;
-    const [rows] = await pool.query(sql, [origen, destino, fecha]);
+    const [rows] = await pool.query(sql, [clase, origen, destino, fecha]);
     return rows;
   },
 

@@ -1,0 +1,10 @@
+const router = require('express').Router();
+const c = require('../controllers/fiscalidadController');
+const { verificarToken, verificarRol } = require('../middleware/auth');
+router.use(verificarToken);
+router.get('/paises', c.listarPaises);
+router.post('/paises', verificarRol('admin', 'operations'), c.crearPais);
+router.get('/reglas', c.listarReglas);
+router.post('/reglas', verificarRol('admin', 'operations'), c.crearRegla);
+router.patch('/reglas/:id', verificarRol('admin', 'operations'), c.cambiarRegla);
+module.exports = router;

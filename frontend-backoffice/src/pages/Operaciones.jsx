@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
-import { FiUsers, FiTag, FiMap, FiSettings, FiActivity } from 'react-icons/fi';
+import { FiUsers, FiTag, FiMap, FiSettings, FiActivity, FiEdit2, FiX } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const Operaciones = () => {
@@ -14,6 +14,10 @@ const Operaciones = () => {
   const [traza, setTraza] = useState([]);
   const [uuidTraza, setUuidTraza] = useState('');
   const [fCrew, setFCrew] = useState({ full_name: '', role_operativo: 'pilot', license_type: '', license_number: '', license_expiry: '' });
+  const [modalCrew, setModalCrew] = useState(false);
+  const [crewEditando, setCrewEditando] = useState(null);
+  const [fCrewEdit, setFCrewEdit] = useState({ full_name: '', role_operativo: 'pilot', license_type: '', license_number: '', license_expiry: '', active: true });
+  const [guardandoCrew, setGuardandoCrew] = useState(false);
   const [fAsig, setFAsig] = useState({ flight_id: '', crew_member_id: '', role: '', duty_start: '', duty_end: '' });
   const [crewVuelo, setCrewVuelo] = useState([]);
   const [fClase, setFClase] = useState({ code: '', name: '', multiplier: '1.00', conditions: '' });
@@ -40,6 +44,34 @@ const Operaciones = () => {
       cargarBase();
     } catch (e) { toast.error(e.response && e.response.data ? e.response.data.error : 'Error'); }
   };
+
+  const editarTripulante = (c) => {
+    setCrewEditando(c);
+    setFCrewEdit({
+      full_name: c.full_name || '',
+      role_operativo: c.role_operativo || 'pilot',
+      license_type: c.license_type || '',
+      license_number: c.license_number || '',
+      license_expiry: c.license_expiry ? String(c.license_expiry).slice(0, 10) : '',
+      active: c.active !== 0 && c.active !== false
+    });
+    setModalCrew(true);
+  };
+
+  const guardarTripulante = async () => {
+    if (!fCrewEdit.full_name) return toast.error('Nombre obligatorio');
+    setGuardandoCrew(true);
+    try {
+      await api.put('/operaciones/tripulacion/' + crewEditando.id, fCrewEdit);
+      toast.success('Tripulante actualizado');
+      setModalCrew(false);
+      cargarBase();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Error al guardar');
+    } finally { setGuardandoCrew(false); }
+  };
+
+  const rolLabel = (r) => ({ pilot: 'Piloto', copilot: 'Copiloto', cabin: 'Auxiliar de vuelo', maintenance: 'Mantenimiento' }[r] || r);
 
   const asignar = async () => {
     if (!fAsig.flight_id || !fAsig.crew_member_id) return toast.error('Selecciona vuelo y tripulante');
@@ -71,7 +103,7 @@ const Operaciones = () => {
     if (!fFare.flight_id || !fFare.fare_class_id) return toast.error('Selecciona vuelo y clase');
     try {
       const r = await api.post('/operaciones/fares', fFare);
-      toast.success('Tarifa asignada: $' + r.data.datos.price);
+      toast.success('Tarifa vigente actualizada: $' + r.data.datos.price + ' (impuestos incluidos)');
       const fr = await api.get('/operaciones/fares/vuelo/' + fFare.flight_id);
       setFaresVuelo(fr.data.datos || []);
     } catch (e) { toast.error(e.response && e.response.data ? e.response.data.error : 'Error'); }
@@ -155,7 +187,7 @@ const Operaciones = () => {
             </select>
             <select className="input-field" value={fAsig.crew_member_id} onChange={(e) => setFAsig(Object.assign({}, fAsig, { crew_member_id: e.target.value }))}>
               <option value="">-- Tripulante --</option>
-              {crew.map((c) => <option key={c.id} value={c.id}>{c.full_name} ({c.role_operativo})</option>)}
+              {crew.filter((c) => c.active !== 0 && c.active !== false).map((c) => <option key={c.id} value={c.id}>{c.full_name} ({rolLabel(c.role_operativo)})</option>)}
             </select>
             <input type="datetime-local" className="input-field" value={fAsig.duty_start} onChange={(e) => setFAsig(Object.assign({}, fAsig, { duty_start: e.target.value }))} />
             <input type="datetime-local" className="input-field" value={fAsig.duty_end} onChange={(e) => setFAsig(Object.assign({}, fAsig, { duty_end: e.target.value }))} />
@@ -168,19 +200,72 @@ const Operaciones = () => {
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Rol</th>
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Licencia</th>
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Vence</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Acción</th>
               </tr></thead>
               <tbody className="divide-y">
                 {crew.map((c) => (
-                  <tr key={c.id}>
+                  <tr key={c.id} className={!c.active ? 'opacity-60' : ''}>
                     <td className="px-4 py-2 text-sm">{c.full_name}</td>
-                    <td className="px-4 py-2 text-sm">{c.role_operativo}</td>
+                    <td className="px-4 py-2 text-sm">{rolLabel(c.role_operativo)}</td>
                     <td className="px-4 py-2 text-sm">{c.license_type} {c.license_number}</td>
-                    <td className="px-4 py-2 text-sm">{c.license_expiry || '-'}</td>
+                    <td className="px-4 py-2 text-sm">{c.license_expiry ? String(c.license_expiry).slice(0, 10) : '-'}</td>
+                    <td className="px-4 py-2 text-sm">{c.active ? 'Activo' : 'Inactivo'}</td>
+                    <td className="px-4 py-2">
+                      <button type="button" onClick={() => editarTripulante(c)} className="text-primary-600 hover:text-primary-800 flex items-center space-x-1">
+                        <FiEdit2 size={16} /><span className="text-sm">Editar</span>
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          {modalCrew && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-gray-800">Editar tripulante</h2>
+                  <button onClick={() => setModalCrew(false)} className="text-gray-500 hover:text-gray-700"><FiX size={22} /></button>
+                </div>
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nombre completo *</label>
+                    <input className="input-field" value={fCrewEdit.full_name} onChange={(e) => setFCrewEdit(Object.assign({}, fCrewEdit, { full_name: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Rol operativo *</label>
+                    <select className="input-field" value={fCrewEdit.role_operativo} onChange={(e) => setFCrewEdit(Object.assign({}, fCrewEdit, { role_operativo: e.target.value }))}>
+                      <option value="pilot">Piloto</option><option value="copilot">Copiloto</option>
+                      <option value="cabin">Auxiliar de vuelo</option><option value="maintenance">Mantenimiento</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Tipo licencia</label>
+                      <input className="input-field" value={fCrewEdit.license_type} onChange={(e) => setFCrewEdit(Object.assign({}, fCrewEdit, { license_type: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">N° licencia</label>
+                      <input className="input-field" value={fCrewEdit.license_number} onChange={(e) => setFCrewEdit(Object.assign({}, fCrewEdit, { license_number: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Vencimiento licencia</label>
+                    <input type="date" className="input-field" value={fCrewEdit.license_expiry} onChange={(e) => setFCrewEdit(Object.assign({}, fCrewEdit, { license_expiry: e.target.value }))} />
+                  </div>
+                  <label className="flex items-center space-x-2 text-sm text-gray-700">
+                    <input type="checkbox" checked={fCrewEdit.active} onChange={(e) => setFCrewEdit(Object.assign({}, fCrewEdit, { active: e.target.checked }))} />
+                    <span>Activo</span>
+                  </label>
+                </div>
+                <div className="flex justify-end space-x-2 mt-6">
+                  <button className="btn-secondary" onClick={() => setModalCrew(false)}>Cancelar</button>
+                  <button className="btn-primary" onClick={guardarTripulante} disabled={guardandoCrew}>{guardandoCrew ? 'Guardando...' : 'Guardar cambios'}</button>
+                </div>
+              </div>
+            </div>
+          )}
           {fAsig.flight_id && (
             <div className="card overflow-hidden">
               <div className="px-4 py-2 bg-gray-50 border-b text-sm font-semibold">Tripulación del vuelo seleccionado</div>
@@ -219,7 +304,7 @@ const Operaciones = () => {
               <option value="">-- Clase --</option>
               {clases.map((c) => <option key={c.id} value={c.id}>{c.code} - {c.name} (x{c.multiplier})</option>)}
             </select>
-            <input type="number" step="0.01" className="input-field" placeholder="Precio (auto si vacío)" value={fFare.price} onChange={(e) => setFFare(Object.assign({}, fFare, { price: e.target.value }))} />
+            <input type="number" step="0.01" className="input-field" placeholder="Precio final con impuestos" value={fFare.price} onChange={(e) => setFFare(Object.assign({}, fFare, { price: e.target.value }))} />
             <input type="number" className="input-field" placeholder="Asientos" value={fFare.seats_allocated} onChange={(e) => setFFare(Object.assign({}, fFare, { seats_allocated: e.target.value }))} />
             <button className="btn-primary" onClick={asignarFare}>Asignar tarifa</button>
           </div>
@@ -231,8 +316,8 @@ const Operaciones = () => {
                     faresVuelo.map((f) => (
                       <tr key={f.id}>
                         <td className="px-4 py-2 text-sm">{f.code} - {f.name}</td>
-                        <td className="px-4 py-2 text-sm font-semibold">${Number(f.price).toFixed(2)}</td>
-                        <td className="px-4 py-2 text-sm">{f.seats_allocated} asientos · {f.seats_sold} vendidos</td>
+                        <td className="px-4 py-2 text-sm font-semibold">${Number(f.price).toFixed(2)} {f.active ? 'vigente' : 'histórica'}</td>
+                        <td className="px-4 py-2 text-sm">{f.seats_allocated} asientos · {f.seats_sold} vendidos · {f.changed_by || 'Sistema'}</td>
                       </tr>
                     ))}
                 </tbody>

@@ -35,6 +35,7 @@ const vuelosAbiertos = async (req, res) => {
        JOIN aircraft ac ON ac.id = f.aircraft_id
        JOIN aircraft_types at ON at.id = ac.type_id
        WHERE (? IS NULL OR DATE(f.departure_datetime) = ?) AND f.status IN ('scheduled','confirmed','delayed')
+             AND f.departure_datetime > NOW()
        ORDER BY f.departure_datetime LIMIT 50`,
       [fecha, fecha]
     );

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FiPlane, FiUsers, FiDollarSign, FiAlertCircle } from 'react-icons/fi';
+import { FiSend, FiUsers, FiDollarSign, FiAlertCircle } from 'react-icons/fi';
 
 const Dashboard = () => {
   const [usuario, setUsuario] = useState(null);
@@ -10,7 +10,7 @@ const Dashboard = () => {
   }, []);
 
   const kpis = [
-    { titulo: 'Vuelos Hoy', valor: '24', icono: FiPlane, color: 'bg-blue-500' },
+    { titulo: 'Vuelos Hoy', valor: '24', icono: FiSend, color: 'bg-blue-500' },
     { titulo: 'Pasajeros', valor: '1,847', icono: FiUsers, color: 'bg-green-500' },
     { titulo: 'Ventas del Día', valor: '$48,520', icono: FiDollarSign, color: 'bg-purple-500' },
     { titulo: 'DTE Pendientes', valor: '3', icono: FiAlertCircle, color: 'bg-orange-500' },

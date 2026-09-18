@@ -24,6 +24,23 @@ const crearTripulante = async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Error interno' }); }
 };
 
+const actualizarTripulante = async (req, res) => {
+  try {
+    const { full_name, role_operativo, license_type, license_number, license_expiry, qualifications, active } = req.body;
+    if (!full_name || !role_operativo) return res.status(400).json({ error: 'Nombre y rol operativo son obligatorios' });
+    const [existe] = await pool.query('SELECT id FROM crew_members WHERE id = ?', [req.params.id]);
+    if (!existe.length) return res.status(404).json({ error: 'Tripulante no encontrado' });
+    await pool.query(
+      'UPDATE crew_members SET full_name = ?, role_operativo = ?, license_type = ?, license_number = ?, license_expiry = ?, qualifications = ?, active = ? WHERE id = ?',
+      [
+        full_name, role_operativo, license_type || null, license_number || null, license_expiry || null,
+        qualifications ? JSON.stringify(qualifications) : null, active !== undefined ? (active ? 1 : 0) : 1, req.params.id
+      ]
+    );
+    res.json({ exito: true });
+  } catch (e) { res.status(500).json({ error: 'Error interno' }); }
+};
+
 const asignarCrew = async (req, res) => {
   try {
     const { flight_id, crew_member_id, role, duty_start, duty_end } = req.body;
@@ -86,27 +103,51 @@ const crearClase = async (req, res) => {
 };
 
 const asignarFare = async (req, res) => {
+  let connection;
   try {
     const { flight_id, fare_class_id, price, seats_allocated } = req.body;
-    let precio = price;
-    if (precio === undefined || precio === null || precio === '') {
-      const [f] = await pool.query('SELECT base_price FROM flights WHERE id = ?', [flight_id]);
-      const [cl] = await pool.query('SELECT multiplier FROM fare_classes WHERE id = ?', [fare_class_id]);
-      if (!f.length || !cl.length) return res.status(404).json({ error: 'Vuelo o clase no encontrada' });
-      precio = Math.round(f[0].base_price * cl[0].multiplier * 100) / 100;
+    const precio = Number(price);
+    if (!flight_id || !fare_class_id || !Number.isFinite(precio) || precio < 0) {
+      return res.status(400).json({ error: 'Vuelo, clase y un precio final válido son obligatorios' });
     }
-    await pool.query(
-      'INSERT INTO flight_fares (flight_id, fare_class_id, price, seats_allocated) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE price = VALUES(price), seats_allocated = VALUES(seats_allocated)',
-      [flight_id, fare_class_id, precio, seats_allocated || 0]
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [referencias] = await connection.query(
+      `SELECT f.id AS flight_id, fc.id AS class_id
+       FROM flights f JOIN fare_classes fc ON fc.id = ? AND fc.active = 1 WHERE f.id = ? FOR UPDATE`,
+      [fare_class_id, flight_id]
     );
-    res.status(201).json({ exito: true, datos: { price: precio } });
-  } catch (e) { res.status(500).json({ error: 'Error interno' }); }
+    if (!referencias.length) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Vuelo o clase activa no encontrada' });
+    }
+    // Cerrar la versión anterior antes de abrir la nueva preserva historial y
+    // garantiza una sola tarifa vigente por vuelo y clase.
+    await connection.query(
+      'UPDATE flight_fares SET active = 0, valid_to = NOW(), updated_by = ? WHERE flight_id = ? AND fare_class_id = ? AND active = 1',
+      [req.usuario?.id || null, flight_id, fare_class_id]
+    );
+    const [r] = await connection.query(
+      `INSERT INTO flight_fares (flight_id, fare_class_id, price, seats_allocated, active, valid_from, created_by, updated_by)
+       VALUES (?, ?, ?, ?, 1, NOW(), ?, ?)`,
+      [flight_id, fare_class_id, precio, Number(seats_allocated) || 0, req.usuario?.id || null, req.usuario?.id || null]
+    );
+    await connection.commit();
+    res.status(201).json({ exito: true, datos: { id: r.insertId, price: precio, impuestos_incluidos: true } });
+  } catch (e) {
+    if (connection) await connection.rollback();
+    console.error('Error al versionar tarifa:', e);
+    res.status(500).json({ error: 'Error interno' });
+  } finally { if (connection) connection.release(); }
 };
 
 const faresDeVuelo = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT ff.*, fc.code, fc.name FROM flight_fares ff JOIN fare_classes fc ON fc.id = ff.fare_class_id WHERE ff.flight_id = ? ORDER BY fc.code',
+      `SELECT ff.*, fc.code, fc.name, u.username AS changed_by
+       FROM flight_fares ff JOIN fare_classes fc ON fc.id = ff.fare_class_id
+       LEFT JOIN users u ON u.id = ff.updated_by
+       WHERE ff.flight_id = ? ORDER BY ff.active DESC, fc.code, ff.valid_from DESC`,
       [req.params.flightId]
     );
     res.json({ exito: true, datos: rows });
@@ -169,7 +210,7 @@ const trazabilidad = async (req, res) => {
 };
 
 module.exports = {
-  listarTripulacion, crearTripulante, asignarCrew, crewDeVuelo,
+  listarTripulacion, crearTripulante, actualizarTripulante, asignarCrew, crewDeVuelo,
   listarClases, crearClase, asignarFare, faresDeVuelo,
   listarFacilities, crearFacility, getConfig, updateConfig, trazabilidad
 };

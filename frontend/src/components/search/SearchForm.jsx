@@ -1,19 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiSearch, FiCalendar, FiUsers, FiMapPin, FiArrowRight } from 'react-icons/fi';
 import { useBooking } from '../../context/BookingContext';
 import { validarBusqueda } from '../../utils/validators';
-
-const aeropuertos = [
-  { codigo: 'SAL', nombre: 'San Salvador', pais: 'El Salvador' },
-  { codigo: 'MIA', nombre: 'Miami', pais: 'Estados Unidos' },
-  { codigo: 'GUA', nombre: 'Guatemala City', pais: 'Guatemala' },
-  { codigo: 'SJO', nombre: 'San José', pais: 'Costa Rica' },
-  { codigo: 'MEX', nombre: 'Ciudad de México', pais: 'México' },
-  { codigo: 'PTY', nombre: 'Panamá City', pais: 'Panamá' },
-  { codigo: 'TGU', nombre: 'Tegucigalpa', pais: 'Honduras' },
-  { codigo: 'MGA', nombre: 'Managua', pais: 'Nicaragua' },
-];
+import api from '../../services/api';
 
 const SearchForm = ({ variant = 'hero' }) => {
   const navigate = useNavigate();
@@ -24,10 +14,17 @@ const SearchForm = ({ variant = 'hero' }) => {
     fecha: busqueda?.fecha || '',
     fechaRegreso: busqueda?.fechaRegreso || '',
     pasajeros: busqueda?.pasajeros || 1,
-    clase: busqueda?.clase || 'economica',
+    clase: busqueda?.clase || 'economy',
     soloIda: busqueda?.soloIda ?? true,
   });
   const [errores, setErrores] = useState({});
+  const [aeropuertos, setAeropuertos] = useState([]);
+
+  useEffect(() => {
+    api.get('/aeropuertos?activos=1')
+      .then((r) => setAeropuertos((r.data.datos || []).map((a) => ({ codigo: a.code, nombre: a.name || a.city, pais: a.country }))))
+      .catch(() => setAeropuertos([]));
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -98,10 +95,10 @@ const SearchForm = ({ variant = 'hero' }) => {
         <div className="flex items-center space-x-2">
           <span className="text-sm text-gray-700">Clase:</span>
           <select name="clase" value={form.clase} onChange={handleChange} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500">
-            <option value="economica">Económica</option>
+            <option value="economy">Económica</option>
             <option value="premium">Premium Economy</option>
-            <option value="ejecutiva">Ejecutiva</option>
-            <option value="primera">Primera Clase</option>
+            <option value="business">Ejecutiva</option>
+            <option value="first">Primera Clase</option>
           </select>
         </div>
       </div>

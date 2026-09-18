@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
-import { FiPlus, FiSearch, FiX, FiCpu, FiLayers } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiX, FiCpu, FiLayers, FiHash } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const Aeronaves = () => {
@@ -13,6 +13,8 @@ const Aeronaves = () => {
   const [guardando, setGuardando] = useState(false);
   const [formAeronave, setFormAeronave] = useState({ registration: '', serial_number: '', type_id: '', status: 'available', manufacture_year: '' });
   const [formTipo, setFormTipo] = useState({ model: '', manufacturer: '', total_capacity: '' });
+  // Drawer state
+  const [drawerAeronave, setDrawerAeronave] = useState(null);
 
   const cargar = () => {
     Promise.all([api.get('/aeronaves'), api.get('/aeronaves/tipos')])
@@ -78,6 +80,15 @@ const Aeronaves = () => {
     out_of_service: 'bg-red-100 text-red-700',
   }[s] || 'bg-gray-100 text-gray-700');
 
+  // Helper component for drawer rows
+  const InfoFila = ({ icon: Icon, label, value }) => (
+    <div className="flex items-center py-2">
+      <Icon className="text-primary-600 mr-3" />
+      <span className="font-medium w-32">{label}:</span>
+      <span className="text-gray-700">{value}</span>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -124,7 +135,7 @@ const Aeronaves = () => {
             ) : lista.length === 0 ? (
               <tr><td colSpan="6" className="text-center py-8 text-gray-500">No hay aeronaves registradas</td></tr>
             ) : lista.map((a) => (
-              <tr key={a.id} className="hover:bg-gray-50">
+              <tr key={a.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setDrawerAeronave(a)}>
                 <td className="px-6 py-4 font-bold text-primary-700">{a.registration}</td>
                 <td className="px-6 py-4 text-sm text-gray-800">{a.model || '-'}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{a.manufacturer || '-'}</td>
@@ -135,6 +146,7 @@ const Aeronaves = () => {
             ))}
           </tbody>
         </table>
+        <p className="text-sm text-gray-500 mt-2">Haz clic en cualquier fila para ver detalles</p>
       </div>
 
       <div className="card overflow-hidden">
@@ -166,32 +178,80 @@ const Aeronaves = () => {
         </table>
       </div>
 
+      {/* Drawer for Aeronave details */}
+      {drawerAeronave && (
+        <>
+          <div className="fixed inset-0 bg-black bg-opacity-40 z-40" onClick={() => setDrawerAeronave(null)}></div>
+          <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-50 flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <div className="flex items-center space-x-3">
+                <div className="bg-primary-600 text-white rounded-full w-10 h-10 flex items-center justify-center text-lg font-bold">
+                  {drawerAeronave.registration?.charAt(0) || 'A'}
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">{drawerAeronave.registration}</h3>
+                  <p className="text-sm text-gray-500">Modelo: {drawerAeronave.model || '-'} </p>
+                </div>
+              </div>
+              <button onClick={() => setDrawerAeronave(null)} className="text-gray-500 hover:text-gray-700">
+                <FiX size={22} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <InfoFila icon={FiHash} label="Matrícula" value={drawerAeronave.registration || '-'} />
+              <InfoFila icon={FiCpu} label="Modelo" value={drawerAeronave.model || '-'} />
+              <InfoFila icon={FiLayers} label="Fabricante" value={drawerAeronave.manufacturer || '-'} />
+              <InfoFila icon={FiLayers} label="Capacidad" value={drawerAeronave.total_capacity ? `${drawerAeronave.total_capacity} pax` : '-'} />
+              <InfoFila icon={FiLayers} label="Año" value={drawerAeronave.manufacture_year || '-'} />
+              <InfoFila icon={FiHash} label="Número de serie" value={drawerAeronave.serial_number || '-'} />
+              <InfoFila icon={FiCpu} label="Estado" value={drawerAeronave.status || '-'} />
+            </div>
+            <div className="px-6 pt-5 pb-10 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
+              <button onClick={() => setDrawerAeronave(null)} className="btn-primary">Cerrar</button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Modal para nueva aeronave */}
       {modalAeronave && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-800">Nueva Aeronave</h2>
-              <button onClick={() => setModalAeronave(false)} className="text-gray-500 hover:text-gray-700"><FiX size={22} /></button>
+              <button onClick={() => setModalAeronave(false)} className="text-gray-500 hover:text-gray-700">
+                <FiX size={22} />
+              </button>
             </div>
             <div className="space-y-3">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Matrícula *</label>
-                <input className="input-field" value={formAeronave.registration} onChange={(e) => setCampoAeronave('registration', e.target.value.toUpperCase())} placeholder="YS-005" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Número de serie</label>
-                <input className="input-field" value={formAeronave.serial_number} onChange={(e) => setCampoAeronave('serial_number', e.target.value)} placeholder="MSN12345" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Tipo de aeronave *</label>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Matrícula *</label>
+                <input className="input-field" value={formAeronave.registration} onChange={(e) => setCampoAeronave('registration', e.target.value.toUpperCase())} placeholder="YS-005" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Número de serie</label>
+                <input className="input-field" value={formAeronave.serial_number} onChange={(e) => setCampoAeronave('serial_number', e.target.value)} placeholder="MSN12345" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de aeronave *</label>
                 <select className="input-field" value={formAeronave.type_id} onChange={(e) => setCampoAeronave('type_id', e.target.value)}>
                   <option value="">-- Selecciona --</option>
                   {tipos.map((t) => <option key={t.id} value={t.id}>{t.manufacturer} {t.model} ({t.total_capacity} pax)</option>)}
-                </select></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Año de fabricación</label>
-                <input type="number" className="input-field" value={formAeronave.manufacture_year} onChange={(e) => setCampoAeronave('manufacture_year', e.target.value)} placeholder="2020" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Año de fabricación</label>
+                <input type="number" className="input-field" value={formAeronave.manufacture_year} onChange={(e) => setCampoAeronave('manufacture_year', e.target.value)} placeholder="2020" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
                 <select className="input-field" value={formAeronave.status} onChange={(e) => setCampoAeronave('status', e.target.value)}>
                   <option value="available">Disponible</option>
                   <option value="in_flight">En vuelo</option>
                   <option value="maintenance">En mantenimiento</option>
                   <option value="out_of_service">Fuera de servicio</option>
-                </select></div>
+                </select>
+              </div>
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button className="btn-secondary" onClick={() => setModalAeronave(false)}>Cancelar</button>
@@ -201,20 +261,29 @@ const Aeronaves = () => {
         </div>
       )}
 
+      {/* Modal para nuevo tipo */}
       {modalTipo && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-800">Nuevo Tipo de Aeronave</h2>
-              <button onClick={() => setModalTipo(false)} className="text-gray-500 hover:text-gray-700"><FiX size={22} /></button>
+              <button onClick={() => setModalTipo(false)} className="text-gray-500 hover:text-gray-700">
+                <FiX size={22} />
+              </button>
             </div>
             <div className="space-y-3">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Fabricante *</label>
-                <input className="input-field" value={formTipo.manufacturer} onChange={(e) => setCampoTipo('manufacturer', e.target.value)} placeholder="Boeing" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Modelo *</label>
-                <input className="input-field" value={formTipo.model} onChange={(e) => setCampoTipo('model', e.target.value)} placeholder="737 MAX 8" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Capacidad total de pasajeros *</label>
-                <input type="number" className="input-field" value={formTipo.total_capacity} onChange={(e) => setCampoTipo('total_capacity', e.target.value)} placeholder="178" /></div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Fabricante *</label>
+                <input className="input-field" value={formTipo.manufacturer} onChange={(e) => setCampoTipo('manufacturer', e.target.value)} placeholder="Boeing" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Modelo *</label>
+                <input className="input-field" value={formTipo.model} onChange={(e) => setCampoTipo('model', e.target.value)} placeholder="737 MAX 8" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Capacidad total de pasajeros *</label>
+                <input type="number" className="input-field" value={formTipo.total_capacity} onChange={(e) => setCampoTipo('total_capacity', e.target.value)} placeholder="178" />
+              </div>
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button className="btn-secondary" onClick={() => setModalTipo(false)}>Cancelar</button>
@@ -226,4 +295,5 @@ const Aeronaves = () => {
     </div>
   );
 };
+
 export default Aeronaves;

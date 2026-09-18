@@ -1,9 +1,9 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import api from '../services/api';
 import { FiPlus, FiSearch, FiX, FiUserCheck, FiUserX, FiEdit2, FiMail, FiPhone, FiFileText, FiUser, FiBriefcase, FiShield } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
-/* â”€â”€â”€ Drawer lateral de detalles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ������ Drawer lateral de detalles �������������������������������������������������������������� */
 const EmpleadoDrawer = ({ empleado, onClose, onEditar, onCambiarEstado }) => {
   if (!empleado) return null;
 
@@ -69,14 +69,14 @@ const EmpleadoDrawer = ({ empleado, onClose, onEditar, onCambiarEstado }) => {
           {/* Informacion personal */}
           <div className="space-y-1">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Datos personales</h3>
-            <InfoFila icono={<FiMail />} label="Email" valor={empleado.email || 'â€”'} />
-            <InfoFila icono={<FiPhone />} label="TelÃ©fono" valor={empleado.phone || 'â€”'} />
+            <InfoFila icono={<FiMail />} label="Email" valor={empleado.email || '�'} />
+            <InfoFila icono={<FiPhone />} label="Teléfono" valor={empleado.phone || '�'} />
             <InfoFila
               icono={<FiFileText />}
               label="Documento"
-              valor={empleado.document_number ? `${empleado.document_type} Â· ${empleado.document_number}` : 'â€”'}
+              valor={empleado.document_number ? `${empleado.document_type} · ${empleado.document_number}` : '�'}
             />
-            <InfoFila icono={<FiBriefcase />} label="Cargo" valor={empleado.position || 'â€”'} />
+            <InfoFila icono={<FiBriefcase />} label="Cargo" valor={empleado.position || '�'} />
           </div>
 
           <hr className="border-gray-100" />
@@ -90,7 +90,7 @@ const EmpleadoDrawer = ({ empleado, onClose, onEditar, onCambiarEstado }) => {
                 <InfoFila
                   icono={<FiShield />}
                   label="Rol"
-                  valor={empleado.role ? rolLabel(empleado.role) : 'â€”'}
+                  valor={empleado.role ? rolLabel(empleado.role) : '�'}
                 />
               </>
             ) : (
@@ -100,7 +100,7 @@ const EmpleadoDrawer = ({ empleado, onClose, onEditar, onCambiarEstado }) => {
         </div>
 
         {/* Acciones al pie */}
-        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 space-y-2">
+        <div className="px-6 pt-5 pb-10 border-t border-gray-200 bg-gray-50 space-y-3">
           <button
             onClick={() => { onClose(); onEditar(empleado); }}
             className="w-full btn-primary flex items-center justify-center space-x-2"
@@ -142,7 +142,7 @@ const InfoFila = ({ icono, label, valor }) => (
   </div>
 );
 
-/* â”€â”€â”€ PÃ¡gina principal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ������ Página principal ������������������������������������������������������������������������������������ */
 const Empleados = () => {
   const [empleados, setEmpleados] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -212,14 +212,14 @@ const Empleados = () => {
     }
     if (!editandoId) {
       if (form.username && (!form.password || !form.role)) {
-        return toast.error('Si defines usuario, debes indicar contraseÃ±a y rol');
+        return toast.error('Si defines usuario, debes indicar contraseña y rol');
       }
       if (form.password && form.password.length < 6) {
-        return toast.error('La contraseÃ±a debe tener al menos 6 caracteres');
+        return toast.error('La contraseña debe tener al menos 6 caracteres');
       }
     } else {
       if (form.password && form.password.length < 6) {
-        return toast.error('La nueva contraseÃ±a debe tener al menos 6 caracteres');
+        return toast.error('La nueva contraseña debe tener al menos 6 caracteres');
       }
     }
 
@@ -245,7 +245,7 @@ const Empleados = () => {
   };
 
   const cambiarEstado = async (userId, nuevoEstado) => {
-    if (!window.confirm('Â¿Cambiar el estado de la cuenta de usuario?')) return;
+    if (!window.confirm('¿Cambiar el estado de la cuenta de usuario?')) return;
     try {
       await api.patch('/empleados/' + userId + '/status', { status: nuevoEstado });
       toast.success('Estado actualizado');
@@ -274,8 +274,8 @@ const Empleados = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">GestiÃ³n de Empleados</h1>
-          <p className="text-gray-500 mt-1">Personal de la aerolÃ­nea y cuentas de acceso</p>
+          <h1 className="text-3xl font-bold text-gray-800">Gestión de Empleados</h1>
+          <p className="text-gray-500 mt-1">Personal de la aerolínea y cuentas de acceso</p>
         </div>
         <button className="btn-primary flex items-center space-x-2" onClick={abrirModalNuevo}>
           <FiPlus /><span>Nuevo Empleado</span>
@@ -337,7 +337,7 @@ const Empleados = () => {
                 {/* Cargo */}
                 <td className="px-5 py-3">
                   <span className="text-sm text-gray-600 truncate max-w-[120px] block">
-                    {e.position || <span className="text-gray-400 italic">â€”</span>}
+                    {e.position || <span className="text-gray-400 italic">�</span>}
                   </span>
                 </td>
 
@@ -428,7 +428,7 @@ const Empleados = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Apellidos *</label>
-                <input className="input-field" value={form.last_names} onChange={(e) => setCampo('last_names', e.target.value)} placeholder="Ej. PÃ©rez GÃ³mez" />
+                <input className="input-field" value={form.last_names} onChange={(e) => setCampo('last_names', e.target.value)} placeholder="Ej. Pérez Gómez" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de documento *</label>
@@ -439,7 +439,7 @@ const Empleados = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">NÃºmero de documento *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Número de documento *</label>
                 <input className="input-field" value={form.document_number} onChange={(e) => setCampo('document_number', e.target.value)} placeholder="Ej. 12345678-9" />
               </div>
               <div>
@@ -447,7 +447,7 @@ const Empleados = () => {
                 <input className="input-field" value={form.position} onChange={(e) => setCampo('position', e.target.value)} placeholder="Ej. Agente de Check-in, Piloto, etc." />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">TelÃ©fono</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
                 <input className="input-field" value={form.phone} onChange={(e) => setCampo('phone', e.target.value)} placeholder="Ej. +503 7123-4567" />
               </div>
               <div>
@@ -471,12 +471,12 @@ const Empleados = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {editandoId ? 'Nueva contraseÃ±a' : 'ContraseÃ±a'}
+                  {editandoId ? 'Nueva contraseña' : 'Contraseña'}
                 </label>
                 <input
                   type="password" className="input-field" value={form.password}
                   onChange={(e) => setCampo('password', e.target.value)}
-                  placeholder={editandoId ? '(Sin cambios si estÃ¡ vacÃ­o)' : 'MÃ­nimo 6 caracteres'}
+                  placeholder={editandoId ? '(Sin cambios si está vacío)' : 'Mínimo 6 caracteres'}
                 />
               </div>
               <div>

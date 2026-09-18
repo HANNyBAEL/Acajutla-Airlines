@@ -15,6 +15,7 @@ const Checkout = () => {
   const navigate = useNavigate();
   const {
     vueloSeleccionado,
+    vuelosSeleccionados,
     pasajeros,
     agregarPasajero,
     actualizarPasajero,
@@ -80,23 +81,23 @@ const Checkout = () => {
     setCargando(true);
     try {
       const data = {
-        cliente_id: usuario?.id || 1, // temporal
-        vuelos: [{
-          flight_id: vueloSeleccionado.id,
-          clase_tarifaria: busqueda.clase || 'economica',
-        }],
-        pasajeros: pasajeros.map((p) => ({
-          tipo_pasajero: p.tipo_pasajero,
-          nombres: p.nombres,
-          apellidos: p.apellidos,
-          doc_tipo: p.doc_tipo,
-          doc_numero: p.doc_numero,
-          fecha_nacimiento: p.fecha_nacimiento,
-          nacionalidad: p.nacionalidad,
-          correo: p.correo,
-          telefono: p.telefono,
+        customer_id: usuario?.id || 1, // temporal
+        vuelos: (vuelosSeleccionados.length ? vuelosSeleccionados.flatMap((it) => it.vuelos || [it]) : [vueloSeleccionado]).map((vuelo) => ({
+          flight_id: vuelo.id,
+          fare_class: busqueda.clase || 'economy',
         })),
-        tiempo_limite_minutos: 30,
+        pasajeros: pasajeros.map((p) => ({
+          passenger_type: p.tipo_pasajero === 'nino' ? 'child' : p.tipo_pasajero === 'bebe' ? 'infant' : 'adult',
+          first_names: p.nombres,
+          last_names: p.apellidos,
+          document_type: p.doc_tipo,
+          document_number: p.doc_numero,
+          birth_date: p.fecha_nacimiento,
+          nationality: p.nacionalidad,
+          email: p.correo,
+          phone: p.telefono,
+        })),
+        time_limit_minutes: 30,
       };
 
       const response = await reservasAPI.crear(data);
@@ -308,6 +309,7 @@ const Checkout = () => {
           <div className="lg:col-span-1">
             <BookingSummary
               vuelo={vueloSeleccionado}
+              itinerarios={vuelosSeleccionados}
               pasajeros={pasajeros}
               servicios={[]}
               totales={totales}

@@ -6,20 +6,20 @@ const ESTADOS_ACTIVOS = "('pending','confirmed','paid')";
 
 const FlightSegment = {
   asignar: async (data, connection = pool) => {
-    const { reservation_id, passenger_id, flight_id, fare_class = 'economy', seat } = data;
+    const { reservation_id, passenger_id, flight_id, fare_class = 'economy', seat, fare_id = null, unit_price = null, total_price = null } = data;
     // La reserva y el pasajero pueden estar aún sin confirmar dentro de una
     // transacción. Usar esa misma conexión evita que la FK no los encuentre.
     const disponible = await FlightSegment.validarDisponibilidad(flight_id, fare_class, connection);
     if (!disponible.disponible) {
-      throw new Error(`No hay asientos disponibles en el vuelo ${disponible.flight_number}. Disponibles: ${disponible.available_seats}`);
+      throw new Error(disponible.motivo || `No hay asientos disponibles en el vuelo ${disponible.flight_number}. Disponibles: ${disponible.available_seats}`);
     }
     if (seat) {
       const ocupado = await FlightSegment.validarAsiento(flight_id, seat, connection);
       if (ocupado) throw new Error(`El asiento ${seat} ya está ocupado en este vuelo`);
     }
     const [result] = await connection.query(
-      `INSERT INTO flight_segments (reservation_id, passenger_id, flight_id, fare_class, seat) VALUES (?, ?, ?, ?, ?)`,
-      [reservation_id, passenger_id, flight_id, fare_class, seat]
+      `INSERT INTO flight_segments (reservation_id, passenger_id, flight_id, fare_class, seat, fare_id, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [reservation_id, passenger_id, flight_id, fare_class, seat, fare_id, unit_price, total_price]
     );
     return { id: result.insertId };
   },
@@ -39,8 +39,15 @@ const FlightSegment = {
     if (!rows[0]) throw new Error('Vuelo no encontrado');
     const { flight_number, status, departure_datetime, total_capacity, occupied_seats } = rows[0];
     const available_seats = total_capacity - occupied_seats;
-    const vigente = new Date(departure_datetime) > new Date() && ['scheduled', 'confirmed'].includes(status);
-    return { disponible: vigente && available_seats > 0, available_seats, flight_number };
+    const yaSalio = new Date(departure_datetime) <= new Date();
+    const vigente = !yaSalio && ['scheduled', 'confirmed'].includes(status);
+    let motivo = null;
+    if (!vigente) {
+      motivo = yaSalio
+        ? 'El vuelo ' + flight_number + ' ya despegó; no se pueden vender más asientos'
+        : 'El vuelo ' + flight_number + ' no admite ventas (estado: ' + status + ')';
+    }
+    return { disponible: vigente && available_seats > 0, available_seats, flight_number, motivo };
   },
 
   validarAsiento: async (flight_id, seat, connection = pool) => {

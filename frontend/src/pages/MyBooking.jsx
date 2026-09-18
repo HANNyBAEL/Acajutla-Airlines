@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { FiSearch, FiPlane, FiUser, FiCalendar } from 'react-icons/fi';
+import { FiSearch, FiSend, FiUser, FiCalendar } from 'react-icons/fi';
 import Loading from '../components/common/Loading';
 import Alert from '../components/common/Alert';
 import { reservasAPI } from '../services/api';
@@ -132,7 +132,7 @@ const MyBooking = () => {
             {reserva.pasajeros && reserva.pasajeros.length > 0 && (
               <div className="card p-6">
                 <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
-                  <FiPlane className="mr-2" /> Detalles del vuelo
+                  <FiSend className="mr-2" /> Detalles del vuelo
                 </h2>
                 <div className="space-y-3">
                   {reserva.pasajeros.slice(0, 1).map((p, i) => (
@@ -165,7 +165,7 @@ const MyBooking = () => {
                           </p>
                           <div className="flex items-center my-2">
                             <div className="h-0.5 flex-1 bg-gray-300"></div>
-                            <FiPlane className="text-primary-600 mx-2" />
+                            <FiSend className="text-primary-600 mx-2" />
                             <div className="h-0.5 flex-1 bg-gray-300"></div>
                           </div>
                           <p className="text-xs text-gray-500">Directo</p>

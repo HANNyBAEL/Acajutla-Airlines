@@ -3,6 +3,8 @@ const Pasajero = require('../models/Pasajero');
 const FlightSegment = require('../models/FlightSegment');
 const { generarPNRUnico } = require('../utils/pnrGenerator');
 const pool = require('../config/db');
+const { obtenerImpuestos } = require('../services/taxService');
+const { resolverClase } = require('../utils/fareClass');
 
 const crearReserva = async (req, res) => {
   let connection;
@@ -40,45 +42,43 @@ const crearReserva = async (req, res) => {
       }
     }
 
-    // Calcular total estimado usando la tarifa de la clase seleccionada
-    // (flight_fares); si el vuelo no la tiene configurada, se aplica el
-    // multiplicador de la clase sobre el base_price, con base_price como
-    // último respaldo.
-    let sumaPrecios = 0;
+    // Resolver y bloquear la tarifa neta vigente de cada vuelo/clase. El total
+    // de venta suma las reglas fiscales del aeropuerto de salida; base_price
+    // nunca se usa como respaldo para cobrar.
+    const tarifasPorVuelo = new Map();
     for (const v of vuelos) {
-      const clase = v.fare_class || 'economy';
+      const clase = resolverClase(v.fare_class || 'economy');
       const [tarifa] = await connection.query(
-        `SELECT ff.price, ff.seats_allocated,
+        `SELECT ff.id, ff.price, ff.seats_allocated,
                 (SELECT COUNT(*) FROM flight_segments fs JOIN reservations rx ON rx.id = fs.reservation_id
                   WHERE fs.flight_id = ? AND fs.fare_class = ? AND rx.status IN ('pending','confirmed','paid')) AS ocupados_clase
          FROM flight_fares ff JOIN fare_classes fc ON fc.id = ff.fare_class_id
-         WHERE ff.flight_id = ? AND fc.code = ?`,
-        [v.flight_id, clase, v.flight_id, clase]
+         WHERE ff.flight_id = ? AND fc.code = ? AND ff.active = 1
+           AND ff.valid_from <= NOW() AND (ff.valid_to IS NULL OR ff.valid_to > NOW())
+         ORDER BY ff.valid_from DESC, ff.id DESC FOR UPDATE`,
+        [v.flight_id, clase.segmentCode, v.flight_id, clase.fareCode]
       );
-      let precioUnitario;
-      if (tarifa.length) {
-        precioUnitario = parseFloat(tarifa[0].price);
-        const cupo = tarifa[0].seats_allocated;
-        if (cupo !== null && cupo > 0 && cupo - tarifa[0].ocupados_clase < pasajeros.length) {
-          await connection.rollback();
-          return res.status(409).json({
-            error: `Cupo insuficiente para la clase ${clase} en este vuelo`,
-            cupo_clase: cupo, ocupados: tarifa[0].ocupados_clase, requeridos: pasajeros.length
-          });
-        }
-      } else {
-        const [fb] = await connection.query(
-          `SELECT f.base_price, fc.multiplier
-           FROM flights f LEFT JOIN fare_classes fc ON fc.code = ?
-           WHERE f.id = ?`,
-          [clase, v.flight_id]
-        );
-        const base = parseFloat(fb[0] ? fb[0].base_price : 250);
-        precioUnitario = fb[0] && fb[0].multiplier ? base * parseFloat(fb[0].multiplier) : base;
+      if (!tarifa.length) {
+        await connection.rollback();
+        return res.status(409).json({ error: `La clase ${v.fare_class || 'economy'} no está disponible para venta en este vuelo: no tiene una tarifa vigente.` });
       }
-      sumaPrecios += precioUnitario;
+      const cupo = tarifa[0].seats_allocated;
+      if (cupo !== null && cupo > 0 && cupo - tarifa[0].ocupados_clase < pasajeros.length) {
+        await connection.rollback();
+        return res.status(409).json({
+          error: `Cupo insuficiente para la clase ${v.fare_class || 'economy'} en este vuelo`,
+          cupo_clase: cupo, ocupados: tarifa[0].ocupados_clase, requeridos: pasajeros.length
+        });
+      }
+      const impuestos = await obtenerImpuestos(v.flight_id, Number(tarifa[0].price), connection);
+      tarifasPorVuelo.set(String(v.flight_id), { id: tarifa[0].id, precio: Number(tarifa[0].price), clase: clase.segmentCode, impuestos });
     }
-    const estimated_total = Math.round(sumaPrecios * pasajeros.length * 100) / 100;
+
+    const factorPasajero = (tipo) => tipo === 'child' ? 0.75 : tipo === 'infant' ? 0.10 : 1;
+    const estimated_total = Math.round(
+      pasajeros.reduce((total, pax) => total + vuelos.reduce((porTramo, v) =>
+        porTramo + (tarifasPorVuelo.get(String(v.flight_id)).precio + tarifasPorVuelo.get(String(v.flight_id)).impuestos.total) * factorPasajero(pax.passenger_type || 'adult'), 0), 0) * 100
+    ) / 100;
 
     // Generar PNR único
     const pnr = await generarPNRUnico(connection);
@@ -121,13 +121,27 @@ const crearReserva = async (req, res) => {
     // Asignar segmentos de vuelo
     for (const pax of pasajerosCreados) {
       for (const vuelo of vuelos) {
+        const tarifa = tarifasPorVuelo.get(String(vuelo.flight_id));
+        const factor = factorPasajero(pax.passenger_type || 'adult');
+        const precioUnitario = Math.round(tarifa.precio * factor * 100) / 100;
         await FlightSegment.asignar({
           reservation_id,
           passenger_id: pax.id,
           flight_id: vuelo.flight_id,
-          fare_class: vuelo.fare_class || 'economy',
-          seat: vuelo.seat || null
+          fare_class: tarifa.clase,
+          seat: vuelo.seat || null,
+          fare_id: tarifa.id,
+          unit_price: precioUnitario,
+          total_price: precioUnitario
         }, connection);
+        for (const impuesto of tarifa.impuestos.lines) {
+          const monto = Math.round(impuesto.amount * factor * 100) / 100;
+          await connection.query(
+            `INSERT INTO reservation_tax_lines (reservation_id, passenger_id, flight_id, tax_rule_id, country_id, airport_id, code, name, calculation_type, rate, taxable_amount, amount)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [reservation_id, pax.id, vuelo.flight_id, impuesto.id, impuesto.country_id, impuesto.airport_id, impuesto.code, impuesto.name, impuesto.calculation_type, impuesto.value, Math.round(impuesto.taxable_amount * factor * 100) / 100, monto]
+          );
+        }
       }
     }
 

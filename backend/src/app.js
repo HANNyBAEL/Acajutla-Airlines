@@ -60,6 +60,7 @@ app.use('/api/correos', require('./routes/correosRoutes'));
 app.use('/api/comercial', require('./routes/comercialRoutes'));
 app.use('/api/dte-export', require('./routes/dteExportRoutes'));
 app.use('/api/fiscal', require('./routes/fiscalRoutes'));
+app.use('/api/fiscalidad', require('./routes/fiscalidadRoutes'));
 app.use('/api/operaciones', require('./routes/operacionesRoutes'));
 app.use('/api/qa', require('./routes/qaRoutes'));
 app.use('/api/notificaciones', require('./routes/notificacionesRoutes'));

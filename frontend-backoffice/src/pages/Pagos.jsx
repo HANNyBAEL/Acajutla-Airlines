@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
-import { FiDollarSign, FiCheckCircle, FiRefreshCw, FiX, FiFileText, FiSearch } from 'react-icons/fi';
+import { FiDollarSign, FiCheckCircle, FiRefreshCw, FiX, FiFileText, FiSearch, FiCreditCard, FiCalendar, FiHash } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const Pagos = () => {
@@ -12,6 +12,8 @@ const Pagos = () => {
   const [procesando, setProcesando] = useState(false);
   const [buscarPendientes, setBuscarPendientes] = useState('');
   const [buscarPagos, setBuscarPagos] = useState('');
+  // Drawer state
+  const [drawerPago, setDrawerPago] = useState(null);
 
   const cargar = () => {
     Promise.all([api.get('/pagos/reservas-pendientes'), api.get('/pagos')])
@@ -71,6 +73,7 @@ const Pagos = () => {
       } else if (r.data.dte && r.data.dte.error) {
         toast.error('Confirmado, pero el DTE falló: ' + r.data.dte.error);
       }
+      setDrawerPago(null);
       cargar();
     } catch (e) { toast.error(e.response && e.response.data ? e.response.data.error : 'Error al confirmar'); }
   };
@@ -81,6 +84,7 @@ const Pagos = () => {
     try {
       await api.post('/pagos/' + p.id + '/reembolsar', { amount: p.amount, reason: reason });
       toast.success('Reembolso procesado');
+      setDrawerPago(null);
       cargar();
     } catch (e) { toast.error(e.response && e.response.data ? e.response.data.error : 'Error al reembolsar'); }
   };
@@ -98,6 +102,14 @@ const Pagos = () => {
   const pendientesFiltrados = pendientes.filter((r) => coincide(r, buscarPendientes));
   const pagosFiltrados = pagos.filter((p) => coincide(p, buscarPagos));
 
+  const InfoFila = ({ icon: Icon, label, value }) => (
+    <div className="flex items-center py-2.5 text-sm border-b border-gray-100 last:border-b-0">
+      <Icon className="text-primary-600 mr-3 shrink-0" size={16} />
+      <span className="font-medium text-gray-600 w-36 shrink-0">{label}:</span>
+      <span className="text-gray-800 font-medium truncate">{value || '—'}</span>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <div>
@@ -105,6 +117,7 @@ const Pagos = () => {
         <p className="text-gray-500 mt-1">Cobro con emisión automática de DTE y envío de correo con PDF y JSON</p>
       </div>
 
+      {/* Tabla de cobros pendientes - sin drawer */}
       <div className="card overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg font-semibold text-gray-800">Cobros pendientes</h2>
@@ -141,6 +154,7 @@ const Pagos = () => {
         </table>
       </div>
 
+      {/* Tabla de historial de pagos - con drawer */}
       <div className="card overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg font-semibold text-gray-800">Historial de pagos</h2>
@@ -156,23 +170,21 @@ const Pagos = () => {
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">PNR</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Método</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Monto</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">DTE</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {pagosFiltrados.length === 0 ? (
-              <tr><td colSpan="7" className="text-center py-8 text-gray-500">{pagos.length ? 'No hay pagos que coincidan con la búsqueda' : 'Sin pagos registrados'}</td></tr>
+              <tr><td colSpan="6" className="text-center py-8 text-gray-500">{pagos.length ? 'No hay pagos que coincidan con la búsqueda' : 'Sin pagos registrados'}</td></tr>
             ) : pagosFiltrados.map((p) => (
-              <tr key={p.id} className="hover:bg-gray-50">
+              <tr key={p.id} className="hover:bg-gray-50 cursor-pointer transition-colors" onClick={() => setDrawerPago(p)}>
                 <td className="px-6 py-4 text-sm text-gray-600">{p.id}</td>
                 <td className="px-6 py-4 font-mono text-sm text-primary-700">{p.pnr}</td>
-                <td className="px-6 py-4 text-sm">{metodoLabel(p.method)}{p.card_last_digits ? ' ••••' + p.card_last_digits : ''}</td>
+                <td className="px-6 py-4 text-sm">{metodoLabel(p.method)}{p.card_last_digits ? ' ····' + p.card_last_digits : ''}</td>
                 <td className="px-6 py-4 text-sm font-semibold">{p.type === 'refund' ? '-' : ''}${parseFloat(p.amount).toFixed(2)}</td>
-                <td className="px-6 py-4 text-sm">{p.tipo_dte ? (p.tipo_dte === '01' ? 'FE' : p.tipo_dte === '03' ? 'CCFE' : p.tipo_dte) : '-'}</td>
                 <td className="px-6 py-4"><span className={'px-3 py-1 rounded-full text-xs font-medium ' + badge(p.status)[1]}>{badge(p.status)[0]}</span></td>
-                <td className="px-6 py-4">
+                <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center space-x-3">
                     {p.status === 'pending_confirmation' && (
                       <button onClick={() => confirmar(p)} className="text-green-600 hover:text-green-800 flex items-center space-x-1">
@@ -190,8 +202,72 @@ const Pagos = () => {
             ))}
           </tbody>
         </table>
+        <div className="p-3 bg-gray-50 border-t border-gray-100 text-center">
+          <p className="text-xs text-gray-500">Haz clic en cualquier fila del historial para ver el detalle del pago</p>
+        </div>
       </div>
 
+      {/* Drawer lateral para detalle de pago */}
+      {drawerPago && (
+        <>
+          <div className="fixed inset-0 bg-black bg-opacity-40 z-40" onClick={() => setDrawerPago(null)}></div>
+          <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-50 flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 bg-gray-50">
+              <div className="flex items-center space-x-3">
+                <div className="bg-primary-600 text-white rounded-xl w-11 h-11 flex items-center justify-center font-bold text-lg shadow-sm">
+                  <FiDollarSign size={22} />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-xl font-bold text-gray-800">Pago #{drawerPago.id}</h3>
+                    <span className={'px-2.5 py-0.5 rounded-full text-xs font-medium ' + badge(drawerPago.status)[1]}>
+                      {badge(drawerPago.status)[0]}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">PNR: {drawerPago.pnr}</p>
+                </div>
+              </div>
+              <button onClick={() => setDrawerPago(null)} className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                <FiX size={22} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-6">
+              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 space-y-1">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Información del Pago</h4>
+                <InfoFila icon={FiHash} label="ID" value={drawerPago.id} />
+                <InfoFila icon={FiFileText} label="PNR" value={drawerPago.pnr} />
+                <InfoFila icon={FiCreditCard} label="Método" value={metodoLabel(drawerPago.method) + (drawerPago.card_last_digits ? ' ····' + drawerPago.card_last_digits : '')} />
+                <InfoFila icon={FiDollarSign} label="Monto" value={(drawerPago.type === 'refund' ? '-' : '') + '$' + parseFloat(drawerPago.amount).toFixed(2) + ' USD'} />
+                <InfoFila icon={FiFileText} label="Tipo" value={drawerPago.type === 'refund' ? 'Reembolso' : 'Pago'} />
+                <InfoFila icon={FiFileText} label="DTE" value={drawerPago.tipo_dte ? (drawerPago.tipo_dte === '01' ? 'Factura Electrónica (FE)' : drawerPago.tipo_dte === '03' ? 'Crédito Fiscal (CCFE)' : drawerPago.tipo_dte) : '—'} />
+                <InfoFila icon={FiCalendar} label="Fecha" value={drawerPago.created_at ? new Date(drawerPago.created_at).toLocaleString('es-SV') : '—'} />
+                {drawerPago.referencia && (
+                  <InfoFila icon={FiHash} label="Referencia" value={drawerPago.referencia} />
+                )}
+              </div>
+            </div>
+
+            <div className="px-6 pt-5 pb-10 border-t border-gray-200 bg-gray-50 flex items-center justify-between space-x-3">
+              <div className="flex items-center space-x-2">
+                {drawerPago.status === 'pending_confirmation' && (
+                  <button onClick={() => confirmar(drawerPago)} className="btn-primary flex items-center space-x-1.5 text-sm py-2 px-3">
+                    <FiCheckCircle size={16} /><span>Confirmar</span>
+                  </button>
+                )}
+                {drawerPago.status === 'approved' && drawerPago.type === 'payment' && (
+                  <button onClick={() => reembolsar(drawerPago)} className="btn-danger flex items-center space-x-1.5 text-sm py-2 px-3">
+                    <FiRefreshCw size={16} /><span>Reembolsar</span>
+                  </button>
+                )}
+              </div>
+              <button className="btn-secondary" onClick={() => setDrawerPago(null)}>Cerrar</button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Modal de cobro - se mantiene exactamente igual */}
       {modal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
@@ -254,7 +330,7 @@ const Pagos = () => {
                 </div>
               )}
               <div className="bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-lg p-3">
-        Al aprobarse el pago se emitirá el DTE seleccionado y se enviará correo al cliente con el PDF y un ZIP que contiene el JSON adjuntos.
+                Al aprobarse el pago se emitirá el DTE seleccionado y se enviará correo al cliente con el PDF y un ZIP que contiene el JSON adjuntos.
                 Tarjeta de prueba aprobada: 4111111111111111.
               </div>
             </div>
@@ -268,4 +344,5 @@ const Pagos = () => {
     </div>
   );
 };
+
 export default Pagos;

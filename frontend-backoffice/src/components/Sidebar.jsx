@@ -41,6 +41,7 @@ const Sidebar = () => {
         { path: '/contingencia', icon: FiAlertTriangle, label: 'Contingencia DTE' },
         { path: '/dte-export', icon: FiGlobe, label: 'FEXE / FSEE' },
         { path: '/cumplimiento', icon: FiShield, label: 'Cumplimiento Fiscal' },
+        { path: '/fiscalidad', icon: FiSettings, label: 'Fiscalidad y tasas' },
       ],
     },
     {

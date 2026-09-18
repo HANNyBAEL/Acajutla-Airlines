@@ -60,7 +60,7 @@ const SearchResults = () => {
 
   const esRedondo = !!busqueda && !busqueda.soloIda && !!busqueda.fechaRegreso;
   const cargarTramo = (origen, destino, fecha) =>
-    api.get('/vuelos/itinerarios', { params: { origen, destino, fecha } }).then((r) => r.data.datos);
+    api.get('/vuelos/itinerarios', { params: { origen, destino, fecha, clase: busqueda?.clase || 'economy' } }).then((r) => r.data.datos);
 
   useEffect(() => {
     if (!busqueda) { navigate('/'); return; }

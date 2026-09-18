@@ -1,12 +1,25 @@
 const pool = require('../config/db');
 const Vuelo = require('../models/Vuelo');
+const { obtenerImpuestos } = require('../services/taxService');
+const { resolverClase } = require('../utils/fareClass');
+
+const cotizarVuelo = async (vuelo) => {
+  const impuestos = await obtenerImpuestos(vuelo.id, Number(vuelo.price || vuelo.sale_price || 0));
+  return {
+    ...vuelo,
+    fare_price: Number(vuelo.price || vuelo.sale_price || 0),
+    taxes: impuestos.lines,
+    total_taxes: impuestos.total,
+    total_price: Math.round((Number(vuelo.price || vuelo.sale_price || 0) + impuestos.total) * 100) / 100
+  };
+};
 
 const buscarVuelos = async (req, res) => {
   try {
     const { origen, destino, fecha, clase } = req.query;
     if (!origen || !destino || !fecha) return res.status(400).json({ error: 'origen, destino y fecha son obligatorios' });
     if (new Date(fecha + 'T23:59:59') < new Date()) return res.status(400).json({ error: 'No se pueden consultar vuelos para fechas anteriores' });
-    const vuelos = await Vuelo.buscarDisponibles(origen.toUpperCase(), destino.toUpperCase(), fecha, clase);
+    const vuelos = await Promise.all((await Vuelo.buscarDisponibles(origen.toUpperCase(), destino.toUpperCase(), fecha, resolverClase(clase).fareCode)).map(cotizarVuelo));
     res.json({ exito: true, total: vuelos.length, datos: vuelos });
   } catch (error) {
     console.error('Error al buscar vuelos:', error);
@@ -80,10 +93,28 @@ const crearVuelo = async (req, res) => {
     if (confTurn.length) return res.status(409).json({ error: 'RN-OP-02: turnaround insuficiente con el vuelo ' + confTurn[0].flight_number });
     // ===== FIN RN-OP-02 =====
 
-    const [result] = await pool.query(
+    const connection = await pool.getConnection();
+    let result;
+    try {
+      await connection.beginTransaction();
+      [result] = await connection.query(
       'INSERT INTO flights (route_id, aircraft_id, flight_number, departure_datetime, arrival_datetime, status, base_price, gate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       [routeId, aircraft_id, flight_number.toUpperCase(), departure_datetime, arrival_datetime, 'scheduled', base_price, gate || null]
-    );
+      );
+      // El precio base es sólo el valor inicial de referencia: cada clase activa
+      // recibe su propia tarifa, cuyo importe ya incluye impuestos.
+      const [clases] = await connection.query('SELECT id FROM fare_classes WHERE active = 1');
+      for (const clase of clases) {
+        await connection.query(
+          'INSERT INTO flight_fares (flight_id, fare_class_id, price, seats_allocated, active, valid_from, created_by, updated_by) VALUES (?, ?, ?, 0, 1, NOW(), ?, ?)',
+          [result.insertId, clase.id, base_price, req.usuario?.id || null, req.usuario?.id || null]
+        );
+      }
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally { connection.release(); }
     res.status(201).json({ exito: true, datos: { id: result.insertId } });
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Ya existe ese número de vuelo en esa fecha y hora' });
@@ -260,25 +291,31 @@ const reprogramarVuelo = async (req, res) => {
 
 const buscarItinerarios = async (req, res) => {
   try {
-    const { origen, destino, fecha } = req.query;
+    const { origen, destino, fecha, clase = 'economy' } = req.query;
+    const fareCode = resolverClase(clase).fareCode;
     if (!origen || !destino || !fecha) return res.status(400).json({ error: 'origen, destino y fecha son obligatorios' });
     const o = origen.toUpperCase(); const d = destino.toUpperCase();
     const dur = (a, b) => Math.round((new Date(b) - new Date(a)) / 60000);
     const addMin = (s, m) => new Date(new Date(s).getTime() + m * 60000).toISOString().slice(0, 19).replace('T', ' ');
     const SQL_VUELO = `SELECT f.id, f.flight_number, f.departure_datetime, f.arrival_datetime, f.base_price,
+              ff.id AS fare_id, ff.price AS sale_price, ff.price AS price, fc.code AS fare_class,
               ao.iata_code AS origin_iata, ad.iata_code AS destination_iata, at.model AS aircraft_model, at.total_capacity,
               (at.total_capacity - COALESCE((SELECT COUNT(*) FROM flight_segments fs JOIN reservations r ON r.id = fs.reservation_id WHERE fs.flight_id = f.id AND r.status IN ('pending','confirmed','paid')), 0)) AS available_seats
        FROM flights f JOIN routes rt ON rt.id = f.route_id
        JOIN airports ao ON ao.id = rt.origin_id JOIN airports ad ON ad.id = rt.destination_id
-       JOIN aircraft ac ON ac.id = f.aircraft_id JOIN aircraft_types at ON at.id = ac.type_id`;
-    const directos = (await Vuelo.buscarDisponibles(o, d, fecha)).map((v) => Object.assign({}, v, { tipo: 'directo', duracion_min: dur(v.departure_datetime, v.arrival_datetime), vuelos: [v] }));
+       JOIN aircraft ac ON ac.id = f.aircraft_id JOIN aircraft_types at ON at.id = ac.type_id
+       JOIN flight_fares ff ON ff.flight_id = f.id AND ff.active = 1 AND ff.valid_from <= NOW() AND (ff.valid_to IS NULL OR ff.valid_to > NOW())
+       JOIN fare_classes fc ON fc.id = ff.fare_class_id AND fc.code = ? AND fc.active = 1`;
+    const directos = (await Promise.all((await Vuelo.buscarDisponibles(o, d, fecha, fareCode)).map(cotizarVuelo)))
+      .map((v) => Object.assign({}, v, { tipo: 'directo', duracion_min: dur(v.departure_datetime, v.arrival_datetime), base_price: v.total_price, vuelos: [v] }));
     const conexiones = [];
-    const [legs1] = await pool.query(SQL_VUELO + ` WHERE ao.iata_code = ? AND ad.iata_code <> ? AND DATE(f.departure_datetime) = ? AND f.departure_datetime > NOW() AND f.status IN ('scheduled','confirmed') AND ao.active = 1 AND ad.active = 1 ORDER BY f.departure_datetime LIMIT 15`, [o, d, fecha]);
+    const [legs1] = await pool.query(SQL_VUELO + ` WHERE ao.iata_code = ? AND ad.iata_code <> ? AND DATE(f.departure_datetime) = ? AND f.departure_datetime > NOW() AND f.status IN ('scheduled','confirmed') AND ao.active = 1 AND ad.active = 1 ORDER BY f.departure_datetime LIMIT 15`, [fareCode, o, d, fecha]);
     for (const l1 of legs1) {
       if (conexiones.length >= 6) break;
-      const [legs2] = await pool.query(SQL_VUELO + ` WHERE ao.iata_code = ? AND ad.iata_code = ? AND f.departure_datetime BETWEEN ? AND ? AND f.departure_datetime > NOW() AND f.status IN ('scheduled','confirmed') AND ao.active = 1 AND ad.active = 1 ORDER BY f.departure_datetime LIMIT 5`, [l1.destination_iata, d, addMin(l1.arrival_datetime, 45), addMin(l1.arrival_datetime, 360)]);
+      const [legs2] = await pool.query(SQL_VUELO + ` WHERE ao.iata_code = ? AND ad.iata_code = ? AND f.departure_datetime BETWEEN ? AND ? AND f.departure_datetime > NOW() AND f.status IN ('scheduled','confirmed') AND ao.active = 1 AND ad.active = 1 ORDER BY f.departure_datetime LIMIT 5`, [fareCode, l1.destination_iata, d, addMin(l1.arrival_datetime, 45), addMin(l1.arrival_datetime, 360)]);
       for (const l2 of legs2) {
-        conexiones.push({ tipo: 'conexion', escala_en: l1.destination_iata, layover_min: dur(l1.arrival_datetime, l2.departure_datetime), duracion_min: dur(l1.departure_datetime, l2.arrival_datetime), base_price: Number(l1.base_price) + Number(l2.base_price), available_seats: Math.min(l1.available_seats, l2.available_seats), vuelos: [l1, l2] });
+        const [tramo1, tramo2] = await Promise.all([cotizarVuelo(l1), cotizarVuelo(l2)]);
+        conexiones.push({ tipo: 'conexion', escala_en: l1.destination_iata, layover_min: dur(l1.arrival_datetime, l2.departure_datetime), duracion_min: dur(l1.departure_datetime, l2.arrival_datetime), base_price: tramo1.total_price + tramo2.total_price, available_seats: Math.min(l1.available_seats, l2.available_seats), vuelos: [tramo1, tramo2] });
       }
     }
     conexiones.sort((a, b) => a.duracion_min - b.duracion_min);

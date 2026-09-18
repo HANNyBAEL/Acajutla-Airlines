@@ -3,8 +3,9 @@ const pool = require('../config/db');
 // Marca como 'expired' las reservas pendientes cuyo time_limit venció y
 // libera los asientos que mantenían ocupados (flight_segments).
 const expirarReservas = async () => {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await pool.getConnection();
     await connection.beginTransaction();
     const [vencidas] = await connection.query(
       "SELECT id, pnr FROM reservations WHERE status = 'pending' AND time_limit < NOW() FOR UPDATE"
@@ -25,11 +26,13 @@ const expirarReservas = async () => {
     vencidas.forEach((r) => console.log(`⏰ Reserva ${r.pnr} expirada automáticamente; asientos liberados`));
     return { expiradas: vencidas.length, reservas: vencidas.map((r) => r.pnr) };
   } catch (e) {
-    await connection.rollback();
+    if (connection) {
+      try { await connection.rollback(); } catch (_) { /* ignore */ }
+    }
     console.error('Error expirando reservas:', e.message);
     return { expiradas: 0, error: e.message };
   } finally {
-    connection.release();
+    if (connection) connection.release();
   }
 };
 

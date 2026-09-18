@@ -2,9 +2,11 @@ const pool = require('../config/db');
 
 const listarAeropuertos = async (req, res) => {
   try {
-    let sql = 'SELECT id, iata_code AS code, icao_code, name, city, country, country_code, active FROM airports';
-    if (req.query.activos === '1') sql += ' WHERE active = 1';
-    sql += ' ORDER BY iata_code';
+    let sql = `SELECT a.id, a.iata_code AS code, a.icao_code, a.name, a.city,
+      COALESCE(c.name, a.country) AS country, COALESCE(c.code, a.country_code) AS country_code, a.country_id, a.active
+      FROM airports a LEFT JOIN countries c ON c.id = a.country_id`;
+    if (req.query.activos === '1') sql += ' WHERE a.active = 1';
+    sql += ' ORDER BY a.iata_code';
     const [rows] = await pool.query(sql);
     res.json({ exito: true, datos: rows });
   } catch (error) {
@@ -15,16 +17,18 @@ const listarAeropuertos = async (req, res) => {
 
 const crearAeropuerto = async (req, res) => {
   try {
-    const { code, icao_code, name, city, country, country_code } = req.body;
-    if (!code || !name || !city || !country) {
-      return res.status(400).json({ error: 'code, name, city y country son obligatorios' });
+    const { code, icao_code, name, city, country_id } = req.body;
+    if (!code || !name || !city || !country_id) {
+      return res.status(400).json({ error: 'code, name, city y country_id son obligatorios' });
     }
     if (!/^[A-Z]{3}$/i.test(code)) {
       return res.status(400).json({ error: 'El código IATA debe tener 3 letras' });
     }
+    const [countries] = await pool.query('SELECT code, name FROM countries WHERE id = ? AND active = 1', [country_id]);
+    if (!countries.length) return res.status(400).json({ error: 'Seleccione un país activo válido' });
     const [result] = await pool.query(
-      'INSERT INTO airports (iata_code, icao_code, name, city, country, country_code, active) VALUES (?, ?, ?, ?, ?, ?, 1)',
-      [code.toUpperCase(), icao_code || null, name, city, country, country_code || 'SV']
+      'INSERT INTO airports (iata_code, icao_code, name, city, country, country_code, country_id, active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)',
+      [code.toUpperCase(), icao_code || null, name, city, countries[0].name, countries[0].code, country_id]
     );
     res.status(201).json({ exito: true, datos: { id: result.insertId } });
   } catch (error) {

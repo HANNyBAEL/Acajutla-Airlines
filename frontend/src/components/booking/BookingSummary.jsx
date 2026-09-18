@@ -1,4 +1,4 @@
-import { FiPlane, FiCalendar, FiUser, FiCheckCircle, FiCornerDownRight } from 'react-icons/fi';
+import { FiCalendar, FiUser, FiCheckCircle, FiCornerDownRight } from 'react-icons/fi';
 import { formatearFecha, formatearHora, calcularDuracion, formatearMoneda } from '../../utils/formatters';
 
 const fmtDur = (min) => `${Math.floor((min || 0) / 60)}h ${(min || 0) % 60}m`;
@@ -84,6 +84,12 @@ const BookingSummary = ({ vuelo, itinerarios, pasajeros, servicios, totales }) =
             <span className="text-gray-600">Subtotal</span>
             <span className="font-medium">{formatearMoneda(totales.subtotal)}</span>
           </div>
+          {itinerariosLista.flatMap((it) => it.vuelos || []).flatMap((v) => v.taxes || []).map((tax, i) => (
+            <div key={`${tax.id}-${i}`} className="flex justify-between text-xs text-gray-500">
+              <span>{tax.code} · {tax.name}</span>
+              <span>{tax.calculation_type === 'percentage' ? `${tax.value}%` : formatearMoneda(tax.amount)}</span>
+            </div>
+          ))}
           <div className="flex justify-between text-sm">
             <span className="text-gray-600">Impuestos y tasas</span>
             <span className="font-medium">{formatearMoneda(totales.impuestos)}</span>
