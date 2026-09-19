@@ -54,7 +54,7 @@ const crearReserva = async (req, res) => {
                   WHERE fs.flight_id = ? AND fs.fare_class = ? AND rx.status IN ('pending','confirmed','paid')) AS ocupados_clase
          FROM flight_fares ff JOIN fare_classes fc ON fc.id = ff.fare_class_id
          WHERE ff.flight_id = ? AND fc.code = ? AND ff.active = 1
-           AND ff.valid_from <= NOW() AND (ff.valid_to IS NULL OR ff.valid_to > NOW())
+           AND (ff.valid_to IS NULL OR ff.valid_to > NOW())
          ORDER BY ff.valid_from DESC, ff.id DESC FOR UPDATE`,
         [v.flight_id, clase.segmentCode, v.flight_id, clase.fareCode]
       );

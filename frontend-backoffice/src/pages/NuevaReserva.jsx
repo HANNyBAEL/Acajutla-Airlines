@@ -86,7 +86,7 @@ const NuevaReserva = () => {
       const resultados = r.data.datos || [];
       setTrayectos((actuales) => actuales.map((t, i) => i === indice ? Object.assign({}, t, { vuelos: resultados, buscando: false }) : t));
       if (!resultados.length) toast.error('No hay vuelos para ese trayecto y fecha');
-    } catch (e) { toast.error('Error al buscar vuelos'); }
+    } catch (e) { toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al buscar vuelos'); }
     finally { setTrayectos((actuales) => actuales.map((t, i) => i === indice ? Object.assign({}, t, { buscando: false }) : t)); }
   };
 
@@ -243,7 +243,7 @@ const NuevaReserva = () => {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                   <SearchableSelect options={opcionesAeropuerto} value={t.origen} onChange={(valor) => actualizarTrayecto(indice, 'origen', valor)} placeholder="Desde: código o ciudad..." />
                   <SearchableSelect options={opcionesAeropuerto} value={t.destino} onChange={(valor) => actualizarTrayecto(indice, 'destino', valor)} placeholder="Hasta: código o ciudad..." />
-                  <input type="date" className="input-field" min={fechaMinima()} value={t.fecha} onChange={(e) => actualizarTrayecto(indice, 'fecha', e.target.value)} />
+                  <input type="date" className="input-field" value={t.fecha} onChange={(e) => actualizarTrayecto(indice, 'fecha', e.target.value)} />
                   <button className="btn-primary flex items-center justify-center space-x-2" onClick={() => buscarVuelos(indice)} disabled={t.buscando || t.origen === t.destino}>
                     <FiSearch /><span>{t.buscando ? 'Buscando...' : 'Buscar'}</span>
                   </button>

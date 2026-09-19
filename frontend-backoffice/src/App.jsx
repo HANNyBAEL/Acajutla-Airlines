@@ -50,7 +50,8 @@ function App() {
             <Route path="empleados" element={<Empleados />} />
             <Route path="reportes" element={<Reportes />} />
             <Route path="comercial" element={<Comercial />} />
-            <Route path="auditoria" element={<Auditoria />} />`n            <Route path="notificaciones" element={<Notificaciones />} />
+            <Route path="auditoria" element={<Auditoria />} />
+            <Route path="notificaciones" element={<Notificaciones />} />
             <Route path="cierre-qa" element={<CierreQA />} />
             <Route path="operaciones" element={<Operaciones />} />
             <Route path="cumplimiento" element={<CumplimientoFiscal />} />

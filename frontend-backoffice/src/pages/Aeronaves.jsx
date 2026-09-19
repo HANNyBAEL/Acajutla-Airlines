@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
-import { FiPlus, FiSearch, FiX, FiCpu, FiLayers, FiHash } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiX, FiCpu, FiLayers, FiHash, FiEdit2, FiTrash2 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+
+const ESTADOS_AERONAVE = [
+  ['available', 'Disponible / Buena condición'],
+  ['in_flight', 'En vuelo'],
+  ['maintenance', 'En mantenimiento'],
+  ['out_of_service', 'Fuera de servicio'],
+];
 
 const Aeronaves = () => {
   const [aeronaves, setAeronaves] = useState([]);
@@ -15,6 +22,8 @@ const Aeronaves = () => {
   const [formTipo, setFormTipo] = useState({ model: '', manufacturer: '', total_capacity: '' });
   // Drawer state
   const [drawerAeronave, setDrawerAeronave] = useState(null);
+  const [estadoDrawer, setEstadoDrawer] = useState('available');
+  const [tipoEditando, setTipoEditando] = useState(null);
 
   const cargar = () => {
     Promise.all([api.get('/aeronaves'), api.get('/aeronaves/tipos')])
@@ -34,8 +43,39 @@ const Aeronaves = () => {
   };
 
   const abrirModalTipo = () => {
+    setTipoEditando(null);
     setFormTipo({ model: '', manufacturer: '', total_capacity: '' });
     setModalTipo(true);
+  };
+
+  const editarTipo = (t) => {
+    setTipoEditando(t.id);
+    setFormTipo({ model: t.model, manufacturer: t.manufacturer, total_capacity: String(t.total_capacity) });
+    setModalTipo(true);
+  };
+
+  const guardarEstado = async () => {
+    if (!drawerAeronave) return;
+    setGuardando(true);
+    try {
+      await api.put('/aeronaves/' + drawerAeronave.id, { status: estadoDrawer });
+      toast.success('Estado de la aeronave actualizado');
+      setDrawerAeronave(Object.assign({}, drawerAeronave, { status: estadoDrawer }));
+      cargar();
+    } catch (e) {
+      toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al actualizar el estado');
+    } finally { setGuardando(false); }
+  };
+
+  const eliminarTipo = async (t) => {
+    if (!window.confirm('¿Eliminar el modelo "' + t.manufacturer + ' ' + t.model + '"? Esta acción no se puede deshacer.')) return;
+    try {
+      await api.delete('/aeronaves/tipos/' + t.id);
+      toast.success('Tipo de aeronave eliminado');
+      cargar();
+    } catch (e) {
+      toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al eliminar el tipo');
+    }
   };
 
   const setCampoAeronave = (campo, valor) => setFormAeronave((f) => Object.assign({}, f, { [campo]: valor }));
@@ -58,13 +98,20 @@ const Aeronaves = () => {
     if (!formTipo.model || !formTipo.manufacturer || !formTipo.total_capacity) return toast.error('Modelo, fabricante y capacidad son obligatorios');
     setGuardando(true);
     try {
-      await api.post('/aeronaves/tipos', {
+      const cuerpo = {
         model: formTipo.model,
         manufacturer: formTipo.manufacturer,
         total_capacity: Number(formTipo.total_capacity),
-      });
-      toast.success('Tipo de aeronave registrado');
+      };
+      if (tipoEditando) {
+        await api.put('/aeronaves/tipos/' + tipoEditando, cuerpo);
+        toast.success('Tipo de aeronave actualizado');
+      } else {
+        await api.post('/aeronaves/tipos', cuerpo);
+        toast.success('Tipo de aeronave registrado');
+      }
       setModalTipo(false);
+      setTipoEditando(null);
       cargar();
     } catch (e) {
       toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al guardar');
@@ -135,7 +182,7 @@ const Aeronaves = () => {
             ) : lista.length === 0 ? (
               <tr><td colSpan="6" className="text-center py-8 text-gray-500">No hay aeronaves registradas</td></tr>
             ) : lista.map((a) => (
-              <tr key={a.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setDrawerAeronave(a)}>
+              <tr key={a.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => { setDrawerAeronave(a); setEstadoDrawer(a.status || 'available'); }}>
                 <td className="px-6 py-4 font-bold text-primary-700">{a.registration}</td>
                 <td className="px-6 py-4 text-sm text-gray-800">{a.model || '-'}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{a.manufacturer || '-'}</td>
@@ -161,17 +208,28 @@ const Aeronaves = () => {
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Fabricante</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Capacidad</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Aeronaves en flota</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {tipos.length === 0 ? (
-              <tr><td colSpan="4" className="text-center py-8 text-gray-500">No hay tipos registrados</td></tr>
+              <tr><td colSpan="5" className="text-center py-8 text-gray-500">No hay tipos registrados</td></tr>
             ) : tipos.map((t) => (
               <tr key={t.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 font-medium text-gray-800">{t.model}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{t.manufacturer}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{t.total_capacity} pax</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{t.aircraft_count}</td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center space-x-2">
+                    <button className="btn-secondary py-1 px-2 text-xs flex items-center space-x-1" onClick={() => editarTipo(t)} title="Editar modelo">
+                      <FiEdit2 size={12} /><span>Editar</span>
+                    </button>
+                    <button className="text-red-600 hover:text-red-800 py-1 px-2 text-xs flex items-center space-x-1" onClick={() => eliminarTipo(t)} title="Eliminar modelo">
+                      <FiTrash2 size={12} /><span>Eliminar</span>
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -204,10 +262,24 @@ const Aeronaves = () => {
               <InfoFila icon={FiLayers} label="Capacidad" value={drawerAeronave.total_capacity ? `${drawerAeronave.total_capacity} pax` : '-'} />
               <InfoFila icon={FiLayers} label="Año" value={drawerAeronave.manufacture_year || '-'} />
               <InfoFila icon={FiHash} label="Número de serie" value={drawerAeronave.serial_number || '-'} />
-              <InfoFila icon={FiCpu} label="Estado" value={drawerAeronave.status || '-'} />
+              <div className="flex items-center py-2">
+                <FiCpu className="text-primary-600 mr-3" />
+                <span className="font-medium w-32">Estado:</span>
+                <select className="input-field flex-1 py-1" value={estadoDrawer} onChange={(e) => setEstadoDrawer(e.target.value)}>
+                  {ESTADOS_AERONAVE.map(([valor, etiqueta]) => <option key={valor} value={valor}>{etiqueta}</option>)}
+                </select>
+              </div>
+              {estadoDrawer !== drawerAeronave.status && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mt-1">
+                  Hay cambios sin guardar en el estado de la aeronave.
+                </p>
+              )}
             </div>
             <div className="px-6 pt-5 pb-10 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
-              <button onClick={() => setDrawerAeronave(null)} className="btn-primary">Cerrar</button>
+              <button onClick={() => setDrawerAeronave(null)} className="btn-secondary">Cerrar</button>
+              <button className="btn-primary" onClick={guardarEstado} disabled={guardando || estadoDrawer === drawerAeronave.status}>
+                {guardando ? 'Guardando...' : 'Guardar estado'}
+              </button>
             </div>
           </div>
         </>
@@ -246,7 +318,7 @@ const Aeronaves = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
                 <select className="input-field" value={formAeronave.status} onChange={(e) => setCampoAeronave('status', e.target.value)}>
-                  <option value="available">Disponible</option>
+                  <option value="available">Disponible / Buena condición</option>
                   <option value="in_flight">En vuelo</option>
                   <option value="maintenance">En mantenimiento</option>
                   <option value="out_of_service">Fuera de servicio</option>
@@ -266,7 +338,7 @@ const Aeronaves = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-800">Nuevo Tipo de Aeronave</h2>
+              <h2 className="text-xl font-bold text-gray-800">{tipoEditando ? 'Editar Tipo de Aeronave' : 'Nuevo Tipo de Aeronave'}</h2>
               <button onClick={() => setModalTipo(false)} className="text-gray-500 hover:text-gray-700">
                 <FiX size={22} />
               </button>

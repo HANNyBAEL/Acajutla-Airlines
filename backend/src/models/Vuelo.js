@@ -20,11 +20,10 @@ const Vuelo = {
       JOIN aircraft ac ON f.aircraft_id = ac.id
       JOIN aircraft_types at ON ac.type_id = at.id
       JOIN flight_fares ff ON ff.flight_id = f.id AND ff.active = 1
-        AND ff.valid_from <= NOW() AND (ff.valid_to IS NULL OR ff.valid_to > NOW())
+        AND (ff.valid_to IS NULL OR ff.valid_to > NOW())
       JOIN fare_classes fc ON fc.id = ff.fare_class_id AND fc.code = ? AND fc.active = 1
       WHERE ao.iata_code = ? AND ad.iata_code = ?
         AND DATE(f.departure_datetime) = ?
-        AND f.departure_datetime > NOW()
         AND f.status IN ('scheduled', 'confirmed')
         AND ao.active = 1 AND ad.active = 1
       ORDER BY f.departure_datetime ASC

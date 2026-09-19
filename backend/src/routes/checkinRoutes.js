@@ -3,8 +3,9 @@ const router = express.Router();
 const c = require('../controllers/checkinController');
 const { verificarToken, verificarRol } = require('../middleware/auth');
 
-router.use(verificarToken, verificarRol('admin', 'operations', 'airport_staff'));
+router.use(verificarToken, verificarRol('admin', 'operations', 'airport_staff', 'cashier'));
 router.get('/vuelos', c.vuelosAbiertos);
+router.get('/pasajeros', c.listarPasajerosPorFecha);
 router.get('/reserva/:pnr', c.reservaPorPnr);
 router.get('/mapa/:flightId', c.mapaAsientos);
 router.get('/manifiesto/:flightId', c.manifiesto);

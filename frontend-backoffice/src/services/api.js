@@ -101,7 +101,17 @@ export const empleadosAPI = auto('/empleados');
 export const usuariosAPI = auto('/usuarios');
 export const auditoriaAPI = { listar: (p) => api.get('/auditoria', { params: p }) };
 export const reportesAPI = auto('/reportes');
-export const checkinAPI = auto('/checkin');
+export const checkinAPI = {
+  vuelos: (p) => api.get('/checkin/vuelos', { params: p }),
+  pasajeros: (p) => api.get('/checkin/pasajeros', { params: p }),
+  reserva: (pnr) => api.get('/checkin/reserva/' + encodeURIComponent(String(pnr).trim().toUpperCase())),
+  mapa: (id) => api.get('/checkin/mapa/' + id),
+  manifiesto: (id) => api.get('/checkin/manifiesto/' + id),
+  asignarAsiento: (segmentoId, d) => api.post('/checkin/asiento/' + segmentoId, d),
+  checkin: (segmentoId) => api.post('/checkin/checkin/' + segmentoId),
+  abordar: (segmentoId) => api.post('/checkin/abordar/' + segmentoId),
+  cerrarVuelo: (id) => api.post('/checkin/vuelo/' + id + '/cerrar'),
+};
 export const correosAPI = auto('/correos');
 
 export default api;

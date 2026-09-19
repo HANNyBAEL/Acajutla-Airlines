@@ -34,8 +34,7 @@ const vuelosAbiertos = async (req, res) => {
        JOIN airports ad ON ad.id = rt.destination_id
        JOIN aircraft ac ON ac.id = f.aircraft_id
        JOIN aircraft_types at ON at.id = ac.type_id
-       WHERE (? IS NULL OR DATE(f.departure_datetime) = ?) AND f.status IN ('scheduled','confirmed','delayed')
-             AND f.departure_datetime > NOW()
+       WHERE (? IS NULL OR DATE(f.departure_datetime) = ?) AND f.status <> 'cancelled'
        ORDER BY f.departure_datetime LIMIT 50`,
       [fecha, fecha]
     );
@@ -45,18 +44,19 @@ const vuelosAbiertos = async (req, res) => {
 
 const reservaPorPnr = async (req, res) => {
   try {
-    const [r] = await pool.query('SELECT * FROM reservations WHERE pnr = ?', [req.params.pnr.toUpperCase()]);
+    const pnrLimpio = req.params.pnr ? req.params.pnr.trim().toUpperCase() : '';
+    const [r] = await pool.query('SELECT * FROM reservations WHERE pnr = ?', [pnrLimpio]);
     if (!r.length) return res.status(404).json({ error: 'Reserva no encontrada' });
     const [pax] = await pool.query(
       `SELECT p.id, p.first_names, p.last_names, p.passenger_type, p.birth_date, p.document_type, p.document_number,
               fs.id AS segment_id, fs.flight_id, fs.seat, fs.fare_class, fs.checkin_status, fs.checkin_at, fs.boarding_pass_code,
               f.flight_number, f.departure_datetime, f.gate, ao.iata_code AS origen, ad.iata_code AS destino
        FROM passengers p
-       JOIN flight_segments fs ON fs.passenger_id = p.id
-       JOIN flights f ON f.id = fs.flight_id
-       JOIN routes rt ON rt.id = f.route_id
-       JOIN airports ao ON ao.id = rt.origin_id
-       JOIN airports ad ON ad.id = rt.destination_id
+       LEFT JOIN flight_segments fs ON fs.passenger_id = p.id
+       LEFT JOIN flights f ON f.id = fs.flight_id
+       LEFT JOIN routes rt ON rt.id = f.route_id
+       LEFT JOIN airports ao ON ao.id = rt.origin_id
+       LEFT JOIN airports ad ON ad.id = rt.destination_id
        WHERE p.reservation_id = ? ORDER BY f.departure_datetime, p.id`,
       [r[0].id]
     );
@@ -217,4 +217,32 @@ const cerrarVuelo = async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 };
 
-module.exports = { vuelosAbiertos, reservaPorPnr, mapaAsientos, asignarAsiento, hacerCheckin, abordar, manifiesto, cerrarVuelo };
+const listarPasajerosPorFecha = async (req, res) => {
+  try {
+    const fecha = req.query.fecha;
+    if (!fecha) return res.status(400).json({ error: 'Fecha requerida' });
+    const [pax] = await pool.query(
+      `SELECT p.id, p.first_names, p.last_names, p.passenger_type, p.birth_date, p.document_type, p.document_number,
+              fs.id AS segment_id, fs.flight_id, fs.seat, fs.fare_class, fs.checkin_status, fs.checkin_at, fs.boarding_pass_code,
+              f.flight_number, f.departure_datetime, f.gate, ao.iata_code AS origen, ad.iata_code AS destino,
+              r.pnr
+       FROM passengers p
+       JOIN flight_segments fs ON fs.passenger_id = p.id
+       JOIN flights f ON f.id = fs.flight_id
+       JOIN routes rt ON rt.id = f.route_id
+       JOIN airports ao ON ao.id = rt.origin_id
+       JOIN airports ad ON ad.id = rt.destination_id
+       JOIN reservations r ON r.id = p.reservation_id
+       WHERE DATE(f.departure_datetime) = ? 
+         AND r.status IN ('paid', 'confirmed') 
+       ORDER BY f.departure_datetime, f.flight_number, p.last_names`,
+      [fecha]
+    );
+    res.json({ exito: true, datos: pax });
+  } catch (e) { 
+    console.error(e);
+    res.status(500).json({ error: 'Error interno' }); 
+  }
+};
+
+module.exports = { vuelosAbiertos, reservaPorPnr, mapaAsientos, asignarAsiento, hacerCheckin, abordar, manifiesto, cerrarVuelo, listarPasajerosPorFecha };

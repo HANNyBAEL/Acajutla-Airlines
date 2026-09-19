@@ -19,15 +19,15 @@ const Checkin = () => {
   const [vuelos, setVuelos] = useState([]);
   const [vueloSel, setVueloSel] = useState('');
   const [manifiesto, setManifiesto] = useState([]);
+  const [pasajerosFecha, setPasajerosFecha] = useState(null);
   const [mapa, setMapa] = useState(null);
   const [segmentoMapa, setSegmentoMapa] = useState(null);
   const [seatSel, setSeatSel] = useState(null);
   const [pase, setPase] = useState(null);
 
-  const cargarVuelos = () => {
-    checkinAPI.vuelos({ fecha: fecha }).then((r) => setVuelos(r.data.datos || [])).catch(() => {});
+  const cargarPasajerosPorFecha = () => {
+    checkinAPI.pasajeros({ fecha: fecha }).then((r) => setPasajerosFecha(r.data.datos || [])).catch(() => toast.error('Error al cargar pasajeros'));
   };
-  useEffect(() => { if (tab === 'vuelo') cargarVuelos(); }, [tab, fecha]);
 
   const buscar = async () => {
     if (!pnr) return toast.error('Ingresa un PNR');
@@ -61,8 +61,8 @@ const Checkin = () => {
       await checkinAPI.asignarAsiento(segmentoMapa.segment_id, { seat: seatSel });
       toast.success('Asiento ' + seatSel + ' asignado');
       setMapa(null);
-      buscar();
-      if (vueloSel) cargarManifiesto(vueloSel);
+      if (tab === 'pnr') buscar();
+      if (tab === 'vuelo') cargarPasajerosPorFecha();
     } catch (e) { toast.error(e.response && e.response.data ? e.response.data.error : 'Error'); }
   };
 
@@ -71,8 +71,8 @@ const Checkin = () => {
       const r = await checkinAPI.checkin(segmento.segment_id);
       toast.success('Check-in listo. Asiento ' + r.data.datos.seat);
       setPase({ pasajero: segmento, bp: r.data.datos.boarding_pass_code, seat: r.data.datos.seat });
-      buscar();
-      if (vueloSel) cargarManifiesto(vueloSel);
+      if (tab === 'pnr') buscar();
+      if (tab === 'vuelo') cargarPasajerosPorFecha();
     } catch (e) { toast.error(e.response && e.response.data ? e.response.data.error : 'Error'); }
   };
 
@@ -80,8 +80,8 @@ const Checkin = () => {
     try {
       await checkinAPI.abordar(segmento.segment_id);
       toast.success('Pasajero abordado');
-      buscar();
-      if (vueloSel) cargarManifiesto(vueloSel);
+      if (tab === 'pnr') buscar();
+      if (tab === 'vuelo') cargarPasajerosPorFecha();
     } catch (e) { toast.error(e.response && e.response.data ? e.response.data.error : 'Error'); }
   };
 
@@ -116,7 +116,7 @@ const Checkin = () => {
           <div className="card p-4 flex space-x-2">
             <div className="relative flex-1">
               <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input className="input-field pl-10 uppercase" placeholder="PNR (ej: K7M2P9)" value={pnr} onChange={(e) => setPnr(e.target.value)} />
+              <input className="input-field pl-10 uppercase" placeholder="PNR (ej: K7M2P9)" value={pnr} onChange={(e) => setPnr(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && buscar()} />
             </div>
             <button className="btn-primary" onClick={buscar}>Buscar</button>
           </div>
@@ -162,28 +162,35 @@ const Checkin = () => {
         <div className="space-y-4">
           <div className="card p-4 flex space-x-2 items-center">
             <input type="date" className="input-field" value={fecha} onChange={(e) => setFecha(e.target.value)} />
-            <SearchableSelect className="flex-1" value={vueloSel} onChange={(valor) => valor && cargarManifiesto(valor)} placeholder="Buscar vuelo, origen o destino..."
-              options={vuelos.map((v) => ({ value: v.id, label: v.flight_number + ' · ' + v.origen + '→' + v.destino + ' · pax ' + v.pax + ' · CI ' + v.checked_in + ' · AB ' + v.boarded, searchText: v.flight_number + ' ' + v.origen + ' ' + v.destino }))} />
-            <button className="btn-danger whitespace-nowrap" onClick={cerrarVuelo}>Cerrar vuelo</button>
+            <button className="btn-primary" onClick={cargarPasajerosPorFecha}>Buscar</button>
           </div>
-          {vueloSel && (
+          {pasajerosFecha && (
             <div className="card overflow-hidden">
               <table className="w-full">
                 <thead className="bg-gray-50 border-b"><tr>
-                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Asiento</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Pasajero</th>
-                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">PNR</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Vuelo</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Asiento</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Acciones</th>
                 </tr></thead>
                 <tbody className="divide-y">
-                  {manifiesto.length === 0 ? (
-                    <tr><td colSpan="4" className="text-center py-6 text-gray-500">Sin pasajeros</td></tr>
-                  ) : manifiesto.map((m) => (
-                    <tr key={m.segment_id}>
-                      <td className="px-4 py-2 text-sm font-bold">{m.seat || '—'}</td>
-                      <td className="px-4 py-2 text-sm">{m.first_names} {m.last_names}</td>
-                      <td className="px-4 py-2 text-sm font-mono">{m.pnr}</td>
-                      <td className="px-4 py-2"><span className={'px-2 py-1 rounded-full text-xs font-medium ' + (ESTADO_PAX[m.checkin_status] || ['-'])[1]}>{(ESTADO_PAX[m.checkin_status] || ['-'])[0]}</span></td>
+                  {pasajerosFecha.length === 0 ? (
+                    <tr><td colSpan="5" className="text-center py-6 text-gray-500">No hay pasajeros para esta fecha</td></tr>
+                  ) : pasajerosFecha.map((p) => (
+                    <tr key={p.segment_id}>
+                      <td className="px-4 py-3 text-sm">{p.first_names} {p.last_names} <br/><span className="text-xs text-gray-400 font-mono">PNR: {p.pnr}</span></td>
+                      <td className="px-4 py-3 text-sm">{p.flight_number} · {p.origen}→{p.destino}</td>
+                      <td className="px-4 py-3 text-sm font-bold">{p.seat || '—'}</td>
+                      <td className="px-4 py-3"><span className={'px-2 py-1 rounded-full text-xs font-medium ' + (ESTADO_PAX[p.checkin_status] || ['-'])[1]}>{(ESTADO_PAX[p.checkin_status] || ['-'])[0]}</span></td>
+                      <td className="px-4 py-3">
+                        <div className="flex space-x-2">
+                          <button className="btn-secondary py-1 px-2 text-xs" onClick={() => abrirMapa(p)}>Asiento</button>
+                          {p.checkin_status === 'pending' && <button className="btn-primary py-1 px-2 text-xs" onClick={() => hacerCheckin(p)}>Check-in</button>}
+                          {p.checkin_status === 'checked_in' && <button className="btn-primary py-1 px-2 text-xs" onClick={() => abordar(p)}>Abordar</button>}
+                          {p.boarding_pass_code && <button className="btn-secondary py-1 px-2 text-xs" onClick={() => setPase({ pasajero: p, bp: p.boarding_pass_code, seat: p.seat })}><FiPrinter size={12} /> Pase</button>}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

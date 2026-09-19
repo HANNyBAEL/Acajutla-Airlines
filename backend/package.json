@@ -10,7 +10,8 @@
     "migrate:mh": "node migracion-mh-simulado.js",
     "migrate:clientes-fecha": "node migracion-clientes-fecha-nacimiento.js",
     "migrate:fares": "node migracion-tarifas-reservas.js",
-    "migrate:fiscalidad": "node migracion-fiscalidad-tasas.js"
+    "migrate:fiscalidad": "node migracion-fiscalidad-tasas.js",
+    "migrate:fix-fares": "node migracion-fix-tarifas-vigentes.js"
   },
   "dependencies": {
     "axios": "^1.7.4",
