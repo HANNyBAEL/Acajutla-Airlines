@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
 import SearchableSelect from '../components/SearchableSelect';
-import { FiPlus, FiSearch, FiX, FiXCircle, FiRefreshCw, FiMapPin, FiClock, FiCpu, FiDollarSign } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiX, FiXCircle, FiRefreshCw, FiMapPin, FiClock, FiCpu, FiDollarSign, FiCalendar } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const Vuelos = () => {
   const [vuelos, setVuelos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [filtro, setFiltro] = useState('');
+  const [fechaFiltro, setFechaFiltro] = useState('');
   const [modal, setModal] = useState(false);
   const [aeropuertos, setAeropuertos] = useState([]);
   const [aeronaves, setAeronaves] = useState([]);
@@ -19,14 +20,19 @@ const Vuelos = () => {
   // Estado del drawer
   const [drawerVuelo, setDrawerVuelo] = useState(null);
 
-  const cargar = () => {
-    api.get('/vuelos')
+  const cargar = (fecha = fechaFiltro) => {
+    api.get('/vuelos', { params: fecha ? { fecha: fecha } : {} })
       .then((r) => setVuelos(r.data.datos || []))
       .catch(() => toast.error('No se pudo conectar con el backend'))
       .finally(() => setCargando(false));
   };
 
   useEffect(() => { cargar(); }, []);
+
+  const cambiarFecha = (valor) => {
+    setFechaFiltro(valor);
+    cargar(valor);
+  };
 
   const toLocalInput = (valor) => {
     if (!valor) return '';
@@ -165,9 +171,20 @@ const Vuelos = () => {
       </div>
 
       <div className="card p-4">
-        <div className="relative">
-          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input value={filtro} onChange={(e) => setFiltro(e.target.value)} placeholder="Buscar vuelo, origen, destino..." className="input-field pl-10" />
+        <div className="flex flex-col md:flex-row gap-3">
+          <div className="relative flex-1">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input value={filtro} onChange={(e) => setFiltro(e.target.value)} placeholder="Buscar vuelo, origen, destino..." className="input-field pl-10" />
+          </div>
+          <div className="flex items-center gap-2 md:w-80">
+            <FiCalendar className="text-gray-400 shrink-0" />
+            <input type="date" className="input-field" value={fechaFiltro} onChange={(e) => cambiarFecha(e.target.value)} title="Filtrar por fecha de salida" />
+            {fechaFiltro && (
+              <button onClick={() => cambiarFecha('')} className="text-gray-400 hover:text-gray-600 shrink-0" title="Quitar filtro de fecha">
+                <FiX size={18} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

@@ -20,7 +20,7 @@ const listar = async (req, res) => {
 const listarTipos = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT t.id, t.model, t.manufacturer, t.total_capacity,
+      `SELECT t.id, t.model, t.manufacturer, t.total_capacity, t.active,
               (SELECT COUNT(*) FROM aircraft a WHERE a.type_id = t.id) AS aircraft_count
        FROM aircraft_types t
        ORDER BY t.manufacturer, t.model`
@@ -38,6 +38,8 @@ const crear = async (req, res) => {
     if (!registration || !type_id) {
       return res.status(400).json({ error: 'registration y type_id son obligatorios' });
     }
+    const [tipo] = await pool.query('SELECT id FROM aircraft_types WHERE id = ? AND active = 1', [type_id]);
+    if (tipo.length === 0) return res.status(400).json({ error: 'Tipo de aeronave inválido o inactivo' });
     const [result] = await pool.query(
       `INSERT INTO aircraft (registration, serial_number, type_id, status, manufacture_year, last_maintenance_date)
        VALUES (?, ?, ?, ?, ?, NOW())`,
@@ -148,25 +150,34 @@ const actualizarTipo = async (req, res) => {
   }
 };
 
-const eliminarTipo = async (req, res) => {
+// Los tipos de aeronave no se eliminan (existen vuelos y aeronaves que los
+// referencian): sólo se desactivan para que no se usen en registros nuevos.
+const cambiarEstadoTipo = async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'id inválido' });
-    const [existe] = await pool.query('SELECT id FROM aircraft_types WHERE id = ?', [id]);
+    const { active } = req.body || {};
+    if (active === undefined || active === null) {
+      return res.status(400).json({ error: 'Debe indicar el estado (active: true o false)' });
+    }
+    const [existe] = await pool.query('SELECT id, model, manufacturer FROM aircraft_types WHERE id = ?', [id]);
     if (existe.length === 0) return res.status(404).json({ error: 'Tipo de aeronave no encontrado' });
 
-    const [asociadas] = await pool.query('SELECT COUNT(*) AS n FROM aircraft WHERE type_id = ?', [id]);
-    if (asociadas[0].n > 0) {
-      return res.status(409).json({
-        error: 'No se puede eliminar: hay ' + asociadas[0].n + ' aeronave(s) de este tipo en la flota. Elimínalas o reasígnalas primero.'
-      });
+    const nuevo = active ? 1 : 0;
+    let advertencia = null;
+    if (nuevo === 0) {
+      const [asociadas] = await pool.query('SELECT COUNT(*) AS n FROM aircraft WHERE type_id = ?', [id]);
+      if (asociadas[0].n > 0) {
+        advertencia = 'Ojo: este tipo tiene ' + asociadas[0].n + ' aeronave(s) en flota. Ellas quedan operativas, pero no se podrán registrar aeronaves nuevas de este modelo.';
+      }
     }
-    await pool.query('DELETE FROM aircraft_types WHERE id = ?', [id]);
-    res.json({ exito: true, mensaje: 'Tipo de aeronave eliminado' });
+
+    await pool.query('UPDATE aircraft_types SET active = ? WHERE id = ?', [nuevo, id]);
+    res.json({ exito: true, datos: { id: id, active: nuevo }, advertencia: advertencia });
   } catch (error) {
-    console.error('Error eliminar tipo:', error);
+    console.error('Error cambiar estado tipo:', error);
     res.status(500).json({ error: 'Error interno' });
   }
 };
 
-module.exports = { listar: listar, listarTipos: listarTipos, crear: crear, crearTipo: crearTipo, actualizar: actualizar, actualizarTipo: actualizarTipo, eliminarTipo: eliminarTipo };
+module.exports = { listar: listar, listarTipos: listarTipos, crear: crear, crearTipo: crearTipo, actualizar: actualizar, actualizarTipo: actualizarTipo, cambiarEstadoTipo: cambiarEstadoTipo };

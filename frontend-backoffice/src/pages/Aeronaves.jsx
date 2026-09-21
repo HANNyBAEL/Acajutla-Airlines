@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
-import { FiPlus, FiSearch, FiX, FiCpu, FiLayers, FiHash, FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiX, FiCpu, FiLayers, FiHash, FiEdit2, FiToggleLeft, FiToggleRight } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const ESTADOS_AERONAVE = [
@@ -67,14 +67,35 @@ const Aeronaves = () => {
     } finally { setGuardando(false); }
   };
 
-  const eliminarTipo = async (t) => {
-    if (!window.confirm('¿Eliminar el modelo "' + t.manufacturer + ' ' + t.model + '"? Esta acción no se puede deshacer.')) return;
+  // Nada se elimina: las aeronaves se desactivan poniéndolas fuera de servicio
+  // (dejan de poder asignarse a vuelos nuevos) y los tipos se activan/desactivan.
+  const cambiarEstadoAeronave = async (a) => {
+    const desactivar = a.status !== 'out_of_service';
+    const mensaje = desactivar
+      ? '¿Desactivar la aeronave ' + a.registration + '? Quedará fuera de servicio y no podrá asignarse a vuelos nuevos.'
+      : '¿Activar nuevamente la aeronave ' + a.registration + '?';
+    if (!window.confirm(mensaje)) return;
     try {
-      await api.delete('/aeronaves/tipos/' + t.id);
-      toast.success('Tipo de aeronave eliminado');
+      await api.put('/aeronaves/' + a.id, { status: desactivar ? 'out_of_service' : 'available' });
+      toast.success(desactivar ? 'Aeronave desactivada' : 'Aeronave activada');
       cargar();
     } catch (e) {
-      toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al eliminar el tipo');
+      toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al cambiar el estado');
+    }
+  };
+
+  const cambiarEstadoTipo = async (t) => {
+    const mensaje = t.active
+      ? '¿Desactivar el tipo "' + t.manufacturer + ' ' + t.model + '"? No se podrán registrar aeronaves nuevas de este modelo.'
+      : '¿Activar nuevamente el tipo "' + t.manufacturer + ' ' + t.model + '"?';
+    if (!window.confirm(mensaje)) return;
+    try {
+      const r = await api.patch('/aeronaves/tipos/' + t.id + '/estado', { active: !t.active });
+      toast.success(t.active ? 'Tipo de aeronave desactivado' : 'Tipo de aeronave activado');
+      if (r.data.advertencia) toast.error(r.data.advertencia, { duration: 6000 });
+      cargar();
+    } catch (e) {
+      toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al cambiar el estado');
     }
   };
 
@@ -174,13 +195,14 @@ const Aeronaves = () => {
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Capacidad</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Año</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {cargando ? (
-              <tr><td colSpan="6" className="text-center py-8 text-gray-500">Cargando...</td></tr>
+              <tr><td colSpan="7" className="text-center py-8 text-gray-500">Cargando...</td></tr>
             ) : lista.length === 0 ? (
-              <tr><td colSpan="6" className="text-center py-8 text-gray-500">No hay aeronaves registradas</td></tr>
+              <tr><td colSpan="7" className="text-center py-8 text-gray-500">No hay aeronaves registradas</td></tr>
             ) : lista.map((a) => (
               <tr key={a.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => { setDrawerAeronave(a); setEstadoDrawer(a.status || 'available'); }}>
                 <td className="px-6 py-4 font-bold text-primary-700">{a.registration}</td>
@@ -189,6 +211,12 @@ const Aeronaves = () => {
                 <td className="px-6 py-4 text-sm text-gray-600">{a.total_capacity || '-'}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{a.manufacture_year || '-'}</td>
                 <td className="px-6 py-4"><span className={'px-3 py-1 rounded-full text-xs font-medium ' + estadoBadge(a.status)}>{a.status}</span></td>
+                <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                  <button onClick={() => cambiarEstadoAeronave(a)} className={'flex items-center space-x-1 ' + (a.status !== 'out_of_service' ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800')}>
+                    {a.status !== 'out_of_service' ? <FiToggleRight size={18} /> : <FiToggleLeft size={18} />}
+                    <span className="text-sm font-medium">{a.status !== 'out_of_service' ? 'Desactivar' : 'Activar'}</span>
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -208,25 +236,36 @@ const Aeronaves = () => {
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Fabricante</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Capacidad</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Aeronaves en flota</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {tipos.length === 0 ? (
-              <tr><td colSpan="5" className="text-center py-8 text-gray-500">No hay tipos registrados</td></tr>
+              <tr><td colSpan="6" className="text-center py-8 text-gray-500">No hay tipos registrados</td></tr>
             ) : tipos.map((t) => (
-              <tr key={t.id} className="hover:bg-gray-50">
+              <tr key={t.id} className={'hover:bg-gray-50 ' + (t.active ? '' : 'opacity-60')}>
                 <td className="px-6 py-4 font-medium text-gray-800">{t.model}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{t.manufacturer}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{t.total_capacity} pax</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{t.aircraft_count}</td>
                 <td className="px-6 py-4">
-                  <div className="flex items-center space-x-2">
+                  <span className={'px-3 py-1 rounded-full text-xs font-medium ' + (t.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700')}>
+                    {t.active ? 'Activo' : 'Inactivo'}
+                  </span>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center space-x-3">
                     <button className="btn-secondary py-1 px-2 text-xs flex items-center space-x-1" onClick={() => editarTipo(t)} title="Editar modelo">
                       <FiEdit2 size={12} /><span>Editar</span>
                     </button>
-                    <button className="text-red-600 hover:text-red-800 py-1 px-2 text-xs flex items-center space-x-1" onClick={() => eliminarTipo(t)} title="Eliminar modelo">
-                      <FiTrash2 size={12} /><span>Eliminar</span>
+                    <button
+                      className={'flex items-center space-x-1 ' + (t.active ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800')}
+                      onClick={() => cambiarEstadoTipo(t)}
+                      title={t.active ? 'Desactivar modelo' : 'Activar modelo'}
+                    >
+                      {t.active ? <FiToggleRight size={16} /> : <FiToggleLeft size={16} />}
+                      <span className="text-xs font-medium">{t.active ? 'Desactivar' : 'Activar'}</span>
                     </button>
                   </div>
                 </td>
@@ -308,7 +347,7 @@ const Aeronaves = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de aeronave *</label>
                 <select className="input-field" value={formAeronave.type_id} onChange={(e) => setCampoAeronave('type_id', e.target.value)}>
                   <option value="">-- Selecciona --</option>
-                  {tipos.map((t) => <option key={t.id} value={t.id}>{t.manufacturer} {t.model} ({t.total_capacity} pax)</option>)}
+                  {tipos.filter((t) => t.active).map((t) => <option key={t.id} value={t.id}>{t.manufacturer} {t.model} ({t.total_capacity} pax)</option>)}
                 </select>
               </div>
               <div>

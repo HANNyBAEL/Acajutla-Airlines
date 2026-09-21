@@ -37,7 +37,15 @@ const Vuelo = {
     return rows[0];
   },
 
-  listarTodos: async () => {
+  // El id autoincremental refleja el orden de creación: los últimos vuelos
+  // creados aparecen primero, sin importar qué tan lejana sea su fecha de salida.
+  listarTodos: async (fecha) => {
+    const params = [];
+    let filtroFecha = '';
+    if (fecha) {
+      filtroFecha = 'WHERE DATE(f.departure_datetime) = ?';
+      params.push(fecha);
+    }
     const [rows] = await pool.query(`
       SELECT f.*, ao.iata_code AS origin, ad.iata_code AS destination, at.model AS aircraft,
              CASE
@@ -50,8 +58,9 @@ const Vuelo = {
       JOIN airports ad ON rt.destination_id = ad.id
       JOIN aircraft ac ON f.aircraft_id = ac.id
       JOIN aircraft_types at ON ac.type_id = at.id
-      ORDER BY f.departure_datetime DESC
-    `);
+      ${filtroFecha}
+      ORDER BY f.id DESC
+    `, params);
     return rows;
   }
 };

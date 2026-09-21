@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
+import SearchableSelect from '../components/SearchableSelect';
 import { FiUsers, FiTag, FiMap, FiSettings, FiActivity, FiEdit2, FiX } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -72,6 +73,27 @@ const Operaciones = () => {
   };
 
   const rolLabel = (r) => ({ pilot: 'Piloto', copilot: 'Copiloto', cabin: 'Auxiliar de vuelo', maintenance: 'Mantenimiento' }[r] || r);
+
+  // Catálogos extensos: se buscan escribiendo (SearchableSelect) en vez de
+  // recorrer un menú nativo con miles de opciones.
+  const opcionesVuelos = vuelos.map((v) => ({
+    value: v.id,
+    label: v.flight_number + ' · ' + (v.origin || '') + '→' + (v.destination || '') + ' · ' + new Date(v.departure_datetime).toLocaleString('es-SV'),
+    searchText: v.flight_number + ' ' + (v.origin || '') + ' ' + (v.destination || '')
+  }));
+  const opcionesTripulantes = crew
+    .filter((c) => c.active !== 0 && c.active !== false)
+    .map((c) => ({ value: c.id, label: c.full_name + ' (' + rolLabel(c.role_operativo) + ')', searchText: c.full_name + ' ' + rolLabel(c.role_operativo) }));
+  const opcionesClases = clases.map((c) => ({
+    value: c.id,
+    label: c.code + ' - ' + c.name + ' (x' + c.multiplier + ')',
+    searchText: c.code + ' ' + c.name
+  }));
+  const opcionesAeropuertos = aeropuertos.map((a) => ({
+    value: a.id,
+    label: (a.code || a.iata_code) + ' - ' + a.name,
+    searchText: (a.code || a.iata_code) + ' ' + a.name + ' ' + (a.city || '')
+  }));
 
   const asignar = async () => {
     if (!fAsig.flight_id || !fAsig.crew_member_id) return toast.error('Selecciona vuelo y tripulante');
@@ -181,14 +203,8 @@ const Operaciones = () => {
             </div>
           </div>
           <div className="card p-4 grid grid-cols-1 md:grid-cols-6 gap-3">
-            <select className="input-field" value={fAsig.flight_id} onChange={(e) => verCrewVuelo(e.target.value)}>
-              <option value="">-- Vuelo --</option>
-              {vuelos.map((v) => <option key={v.id} value={v.id}>{v.flight_number}</option>)}
-            </select>
-            <select className="input-field" value={fAsig.crew_member_id} onChange={(e) => setFAsig(Object.assign({}, fAsig, { crew_member_id: e.target.value }))}>
-              <option value="">-- Tripulante --</option>
-              {crew.filter((c) => c.active !== 0 && c.active !== false).map((c) => <option key={c.id} value={c.id}>{c.full_name} ({rolLabel(c.role_operativo)})</option>)}
-            </select>
+            <SearchableSelect options={opcionesVuelos} value={fAsig.flight_id} onChange={(valor) => verCrewVuelo(valor)} placeholder="Vuelo: número, origen, destino..." />
+            <SearchableSelect options={opcionesTripulantes} value={fAsig.crew_member_id} onChange={(valor) => setFAsig(Object.assign({}, fAsig, { crew_member_id: valor }))} placeholder="Tripulante: nombre o rol..." />
             <input type="datetime-local" className="input-field" value={fAsig.duty_start} onChange={(e) => setFAsig(Object.assign({}, fAsig, { duty_start: e.target.value }))} />
             <input type="datetime-local" className="input-field" value={fAsig.duty_end} onChange={(e) => setFAsig(Object.assign({}, fAsig, { duty_end: e.target.value }))} />
             <button className="btn-primary" onClick={asignar}>Asignar</button>
@@ -296,14 +312,8 @@ const Operaciones = () => {
             <button className="btn-primary" onClick={crearClase}>Crear clase</button>
           </div>
           <div className="card p-4 grid grid-cols-1 md:grid-cols-5 gap-3">
-            <select className="input-field" value={fFare.flight_id} onChange={(e) => verFares(e.target.value)}>
-              <option value="">-- Vuelo --</option>
-              {vuelos.map((v) => <option key={v.id} value={v.id}>{v.flight_number}</option>)}
-            </select>
-            <select className="input-field" value={fFare.fare_class_id} onChange={(e) => setFFare(Object.assign({}, fFare, { fare_class_id: e.target.value }))}>
-              <option value="">-- Clase --</option>
-              {clases.map((c) => <option key={c.id} value={c.id}>{c.code} - {c.name} (x{c.multiplier})</option>)}
-            </select>
+            <SearchableSelect options={opcionesVuelos} value={fFare.flight_id} onChange={(valor) => verFares(valor)} placeholder="Vuelo: número, origen, destino..." />
+            <SearchableSelect options={opcionesClases} value={fFare.fare_class_id} onChange={(valor) => setFFare(Object.assign({}, fFare, { fare_class_id: valor }))} placeholder="Clase: código o nombre..." />
             <input type="number" step="0.01" className="input-field" placeholder="Precio final con impuestos" value={fFare.price} onChange={(e) => setFFare(Object.assign({}, fFare, { price: e.target.value }))} />
             <input type="number" className="input-field" placeholder="Asientos" value={fFare.seats_allocated} onChange={(e) => setFFare(Object.assign({}, fFare, { seats_allocated: e.target.value }))} />
             <button className="btn-primary" onClick={asignarFare}>Asignar tarifa</button>
@@ -330,10 +340,7 @@ const Operaciones = () => {
       {tab === 'infra' && (
         <div className="space-y-4">
           <div className="card p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-            <select className="input-field" value={fFac.airport_id} onChange={(e) => setFFac(Object.assign({}, fFac, { airport_id: e.target.value }))}>
-              <option value="">-- Aeropuerto --</option>
-              {aeropuertos.map((a) => <option key={a.id} value={a.id}>{a.iata_code} - {a.name}</option>)}
-            </select>
+            <SearchableSelect options={opcionesAeropuertos} value={fFac.airport_id} onChange={(valor) => setFFac(Object.assign({}, fFac, { airport_id: valor }))} placeholder="Aeropuerto: IATA o nombre..." />
             <select className="input-field" value={fFac.type} onChange={(e) => setFFac(Object.assign({}, fFac, { type: e.target.value }))}>
               <option value="terminal">Terminal</option><option value="gate">Puerta de embarque</option><option value="checkin_point">Punto de check-in</option>
             </select>

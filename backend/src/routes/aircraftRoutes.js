@@ -10,6 +10,7 @@ router.post('/', verificarRol('admin', 'operations'), controller.crear);
 router.post('/tipos', verificarRol('admin', 'operations'), controller.crearTipo);
 router.put('/:id', verificarRol('admin', 'operations'), controller.actualizar);
 router.put('/tipos/:id', verificarRol('admin', 'operations'), controller.actualizarTipo);
-router.delete('/tipos/:id', verificarRol('admin', 'operations'), controller.eliminarTipo);
+// Los tipos no se eliminan: sólo se activan/desactivan.
+router.patch('/tipos/:id/estado', verificarRol('admin', 'operations'), controller.cambiarEstadoTipo);
 
 module.exports = router;

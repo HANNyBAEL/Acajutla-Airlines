@@ -28,7 +28,7 @@ const buscarVuelos = async (req, res) => {
 
 const listarVuelos = async (req, res) => {
   try {
-    const vuelos = await Vuelo.listarTodos();
+    const vuelos = await Vuelo.listarTodos(req.query.fecha || null);
     res.json({ exito: true, datos: vuelos });
   } catch (error) {
     console.error('Error al listar vuelos:', error);
@@ -100,13 +100,14 @@ const crearVuelo = async (req, res) => {
       'INSERT INTO flights (route_id, aircraft_id, flight_number, departure_datetime, arrival_datetime, status, base_price, gate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       [routeId, aircraft_id, flight_number.toUpperCase(), departure_datetime, arrival_datetime, 'scheduled', base_price, gate || null]
       );
-      // El precio base es sólo el valor inicial de referencia: cada clase activa
-      // recibe su propia tarifa, cuyo importe ya incluye impuestos.
-      const [clases] = await connection.query('SELECT id FROM fare_classes WHERE active = 1');
+      // Cada clase activa recibe su tarifa inicial = precio base × multiplicador
+      // de la clase (editable desde Operaciones → Clases Tarifarias).
+      const [clases] = await connection.query('SELECT id, multiplier FROM fare_classes WHERE active = 1');
       for (const clase of clases) {
+        const precio = Math.round(Number(base_price) * Number(clase.multiplier || 1) * 100) / 100;
         await connection.query(
           'INSERT INTO flight_fares (flight_id, fare_class_id, price, seats_allocated, active, valid_from, created_by, updated_by) VALUES (?, ?, ?, 0, 1, NOW(), ?, ?)',
-          [result.insertId, clase.id, base_price, req.usuario?.id || null, req.usuario?.id || null]
+          [result.insertId, clase.id, precio, req.usuario?.id || null, req.usuario?.id || null]
         );
       }
       await connection.commit();
