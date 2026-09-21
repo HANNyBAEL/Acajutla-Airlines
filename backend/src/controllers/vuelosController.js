@@ -69,6 +69,19 @@ const crearVuelo = async (req, res) => {
     if (origen_iata === destino_iata) return res.status(400).json({ error: 'El origen y el destino deben ser diferentes' });
     if (new Date(arrival_datetime) <= new Date(departure_datetime)) return res.status(400).json({ error: 'La llegada debe ser posterior a la salida' });
 
+    // Verificación temprana del índice único uk_flight_number_date: identificar
+    // el vuelo existente evita el mensaje genérico de duplicado de MySQL.
+    const [duplicado] = await pool.query(
+      'SELECT id, flight_number, departure_datetime FROM flights WHERE flight_number = ? AND departure_datetime = ?',
+      [flight_number.toUpperCase(), departure_datetime]
+    );
+    if (duplicado.length > 0) {
+      return res.status(409).json({
+        error: 'Ya existe el vuelo ' + flight_number.toUpperCase() + ' con esa misma fecha y hora de salida (vuelo #' + duplicado[0].id + ')',
+        conflicto: { id: duplicado[0].id, flight_number: duplicado[0].flight_number, departure_datetime: duplicado[0].departure_datetime }
+      });
+    }
+
     const [origen] = await pool.query('SELECT id FROM airports WHERE iata_code = ? AND active = 1', [origen_iata.toUpperCase()]);
     const [destino] = await pool.query('SELECT id FROM airports WHERE iata_code = ? AND active = 1', [destino_iata.toUpperCase()]);
     if (origen.length === 0 || destino.length === 0) return res.status(400).json({ error: 'Aeropuerto inválido o inactivo' });
@@ -117,7 +130,12 @@ const crearVuelo = async (req, res) => {
     } finally { connection.release(); }
     res.status(201).json({ exito: true, datos: { id: result.insertId } });
   } catch (error) {
-    if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Ya existe ese número de vuelo en esa fecha y hora' });
+    if (error.code === 'ER_DUP_ENTRY') {
+      // El índice único de flights se valida arriba; si llega aquí es otro
+      // duplicado (p. ej. tarifas) y conviene ver el detalle en el log.
+      console.error('Duplicado al crear vuelo:', error.sqlMessage || error.message);
+      return res.status(409).json({ error: 'Registro duplicado al crear el vuelo. Revisa número, fecha y hora de salida.' });
+    }
     console.error('Error crear vuelo:', error);
     res.status(500).json({ error: 'Error interno' });
   }

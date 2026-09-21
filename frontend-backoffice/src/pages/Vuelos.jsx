@@ -66,7 +66,13 @@ const Vuelos = () => {
       setModal(false);
       cargar();
     } catch (e) {
-      toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al crear el vuelo');
+      const data = e.response ? e.response.data : null;
+      if (e.response && e.response.status === 409 && data && data.conflicto) {
+        const salida = new Date(data.conflicto.departure_datetime).toLocaleString('es-SV');
+        toast.error('Ya existe ' + data.conflicto.flight_number + ' con salida el ' + salida + ' (vuelo #' + data.conflicto.id + '). Cambia la hora o el número de vuelo.', { duration: 7000 });
+      } else {
+        toast.error(data && data.error ? data.error : 'Error al crear el vuelo');
+      }
     } finally { setGuardando(false); }
   };
 
