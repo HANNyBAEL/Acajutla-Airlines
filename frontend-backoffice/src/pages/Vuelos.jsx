@@ -14,6 +14,7 @@ const Vuelos = () => {
   const [aeronaves, setAeronaves] = useState([]);
   const [guardando, setGuardando] = useState(false);
   const [form, setForm] = useState({ flight_number: '', origen_iata: '', destino_iata: '', aircraft_id: '', departure_datetime: '', arrival_datetime: '', base_price: '', gate: '' });
+  const [errorValidacion, setErrorValidacion] = useState('');
   const [modalReprog, setModalReprog] = useState(null);
   const [formReprog, setFormReprog] = useState({ departure_datetime: '', arrival_datetime: '', aircraft_id: '', gate: '' });
   const [guardandoReprog, setGuardandoReprog] = useState(false);
@@ -43,6 +44,7 @@ const Vuelos = () => {
 
   const abrirModal = async () => {
     setForm({ flight_number: '', origen_iata: '', destino_iata: '', aircraft_id: '', departure_datetime: '', arrival_datetime: '', base_price: '', gate: '' });
+    setErrorValidacion('');
     setModal(true);
     try {
       const res = await Promise.all([api.get('/aeropuertos?activos=1'), api.get('/vuelos/aeronaves')]);
@@ -53,11 +55,33 @@ const Vuelos = () => {
     }
   };
 
-  const setCampo = (campo, valor) => setForm((f) => Object.assign({}, f, { [campo]: valor }));
+  const mensajeErrorForm = (f) => {
+    if (f.origen_iata && f.destino_iata && f.origen_iata === f.destino_iata) {
+      return 'El aeropuerto de destino no puede ser igual al de origen.';
+    }
+    if (f.base_price !== '' && Number(f.base_price) <= 0) {
+      return 'El precio base debe ser mayor a 0 USD.';
+    }
+    return '';
+  };
+
+  const setCampo = (campo, valor) => {
+    const nuevoForm = Object.assign({}, form, { [campo]: valor });
+    setForm(nuevoForm);
+    if (campo === 'origen_iata' || campo === 'destino_iata' || campo === 'base_price') {
+      setErrorValidacion(mensajeErrorForm(nuevoForm));
+    }
+  };
 
   const guardar = async () => {
     if (!form.flight_number || !form.aircraft_id || !form.origen_iata || !form.destino_iata || !form.departure_datetime || !form.arrival_datetime || !form.base_price) {
       return toast.error('Completa todos los campos obligatorios (*)');
+    }
+    if (form.origen_iata === form.destino_iata) {
+      return toast.error('El aeropuerto de destino no puede ser igual al de origen.');
+    }
+    if (Number(form.base_price) <= 0) {
+      return toast.error('El precio base debe ser mayor a 0 USD.');
     }
     setGuardando(true);
     try {
@@ -140,6 +164,12 @@ const Vuelos = () => {
 
   const lista = vuelos.filter((v) => JSON.stringify(v).toLowerCase().includes(filtro.toLowerCase()));
 
+  const [pagina, setPagina] = useState(1);
+  const itemsPorPagina = 40;
+  useEffect(() => { setPagina(1); }, [filtro, fechaFiltro]);
+  const vuelosPaginados = lista.slice((pagina - 1) * itemsPorPagina, pagina * itemsPorPagina);
+  const totalPaginas = Math.ceil(lista.length / itemsPorPagina);
+
   const estadoBadge = (e) => ({
     scheduled: 'bg-blue-100 text-blue-700', confirmed: 'bg-green-100 text-green-700',
     delayed: 'bg-orange-100 text-orange-700', cancelled: 'bg-red-100 text-red-700',
@@ -201,18 +231,17 @@ const Vuelos = () => {
               <tr>
                 <th className="w-[12%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Vuelo</th>
                 <th className="w-[16%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Ruta</th>
-                <th className="w-[20%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Salida</th>
-                <th className="w-[18%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Aeronave</th>
+                <th className="w-[22%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Salida</th>
+                <th className="w-[22%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Aeronave</th>
                 <th className="w-[14%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
-                <th className="w-[20%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {cargando ? (
-                <tr><td colSpan="6" className="text-center py-8 text-gray-500">Cargando vuelos...</td></tr>
+                <tr><td colSpan="5" className="text-center py-8 text-gray-500">Cargando vuelos...</td></tr>
               ) : lista.length === 0 ? (
-                <tr><td colSpan="6" className="text-center py-8 text-gray-500">No hay vuelos registrados</td></tr>
-              ) : lista.map((v) => (
+                <tr><td colSpan="5" className="text-center py-8 text-gray-500">No hay vuelos registrados</td></tr>
+              ) : vuelosPaginados.map((v) => (
                 <tr
                   key={v.id}
                   className="hover:bg-gray-50 cursor-pointer transition-colors"
@@ -225,28 +254,18 @@ const Vuelos = () => {
                   <td className="px-6 py-4">
                     <span className={'px-3 py-1 rounded-full text-xs font-medium ' + estadoBadge(estadoDe(v))}>{estadoLabel(estadoDe(v))}</span>
                   </td>
-                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center space-x-3">
-                      {sePuedeCancelar(estadoDe(v)) && (
-                        <button onClick={() => cancelarVuelo(v)} className="text-red-600 hover:text-red-800 flex items-center space-x-1">
-                          <FiXCircle size={16} /><span className="text-sm font-medium">Cancelar</span>
-                        </button>
-                      )}
-                      {sePuedeReprogramar(estadoDe(v)) && (
-                        <button onClick={() => abrirReprog(v)} className="text-primary-600 hover:text-primary-800 flex items-center space-x-1">
-                          <FiRefreshCw size={16} /><span className="text-sm font-medium">Reprogramar</span>
-                        </button>
-                      )}
-                      {!sePuedeCancelar(estadoDe(v)) && !sePuedeReprogramar(estadoDe(v)) && (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
-                    </div>
-                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        {totalPaginas > 1 && (
+          <div className="px-6 py-3 border-t flex items-center justify-between bg-gray-50">
+            <button disabled={pagina === 1} onClick={() => setPagina(pagina - 1)} className="px-3 py-1 bg-white border rounded text-sm disabled:opacity-50">Anterior</button>
+            <span className="text-sm text-gray-600">Página {pagina} de {totalPaginas}</span>
+            <button disabled={pagina === totalPaginas} onClick={() => setPagina(pagina + 1)} className="px-3 py-1 bg-white border rounded text-sm disabled:opacity-50">Siguiente</button>
+          </div>
+        )}
         <div className="p-3 bg-gray-50 border-t border-gray-100 text-center">
           <p className="text-xs text-gray-500">Haz clic en cualquier fila para ver el detalle completo del vuelo</p>
         </div>
@@ -338,18 +357,24 @@ const Vuelos = () => {
                 <SearchableSelect options={aeropuertos.map((a) => ({ value: a.code, label: a.code + ' - ' + a.name, searchText: a.code + ' ' + a.name }))} value={form.origen_iata} onChange={(valor) => setCampo('origen_iata', valor)} placeholder="Código o ciudad..." /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Destino *</label>
                 <SearchableSelect options={aeropuertos.map((a) => ({ value: a.code, label: a.code + ' - ' + a.name, searchText: a.code + ' ' + a.name }))} value={form.destino_iata} onChange={(valor) => setCampo('destino_iata', valor)} placeholder="Código o ciudad..." /></div>
+              {errorValidacion && (
+                <div className="col-span-1 md:col-span-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3 flex items-center">
+                  <FiXCircle className="mr-2 shrink-0" size={18} />
+                  {errorValidacion}
+                </div>
+              )}
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha y hora de salida *</label>
                 <input type="datetime-local" className="input-field" value={form.departure_datetime} onChange={(e) => setCampo('departure_datetime', e.target.value)} /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha y hora de llegada *</label>
                 <input type="datetime-local" className="input-field" value={form.arrival_datetime} onChange={(e) => setCampo('arrival_datetime', e.target.value)} /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Precio base (USD) *</label>
-                <input type="number" className="input-field" value={form.base_price} onChange={(e) => setCampo('base_price', e.target.value)} placeholder="250" /></div>
+                <input type="number" min="0.01" step="0.01" className="input-field" value={form.base_price} onChange={(e) => setCampo('base_price', e.target.value)} placeholder="250" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Puerta de embarque</label>
                 <input className="input-field" value={form.gate} onChange={(e) => setCampo('gate', e.target.value)} placeholder="A12" /></div>
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button className="btn-secondary" onClick={() => setModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando...' : 'Crear Vuelo'}</button>
+              <button className="btn-primary" onClick={guardar} disabled={guardando || errorValidacion}>{guardando ? 'Guardando...' : 'Crear Vuelo'}</button>
             </div>
           </div>
         </div>

@@ -9,6 +9,7 @@ router.post('/waitlist', verificarRol('admin', 'operations', 'cashier', 'agent')
 router.put('/waitlist/:id', verificarRol('admin', 'operations', 'cashier'), c.actualizarWaitlist);
 router.get('/ancillaries', c.listarAncillaries);
 router.post('/ancillaries', verificarRol('admin', 'operations'), c.crearAncillary);
+router.put('/ancillaries/:id', verificarRol('admin', 'operations'), c.actualizarAncillary);
 router.post('/ancillaries/vuelo', verificarRol('admin', 'operations'), c.asignarAncillaryVuelo);
 router.get('/ancillaries/vuelo/:flightId', c.ancillariesDeVuelo);
 router.post('/ancillaries/reserva', verificarRol('admin', 'operations', 'cashier', 'agent'), c.agregarAncillaryReserva);

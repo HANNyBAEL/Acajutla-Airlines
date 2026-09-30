@@ -38,6 +38,39 @@ const crearAeropuerto = async (req, res) => {
   }
 };
 
+const actualizarAeropuerto = async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'id inválido' });
+    const [existe] = await pool.query('SELECT id FROM airports WHERE id = ?', [id]);
+    if (existe.length === 0) return res.status(404).json({ error: 'Aeropuerto no encontrado' });
+
+    const { code, icao_code, name, city, country_id } = req.body || {};
+    if (!code || !name || !city || !country_id) {
+      return res.status(400).json({ error: 'code, name, city y country_id son obligatorios' });
+    }
+    if (!/^[A-Z]{3}$/i.test(code)) {
+      return res.status(400).json({ error: 'El código IATA debe tener 3 letras' });
+    }
+    const [countries] = await pool.query('SELECT code, name FROM countries WHERE id = ? AND active = 1', [country_id]);
+    if (!countries.length) return res.status(400).json({ error: 'Seleccione un país activo válido' });
+
+    try {
+      await pool.query(
+        'UPDATE airports SET iata_code = ?, icao_code = ?, name = ?, city = ?, country = ?, country_code = ?, country_id = ? WHERE id = ?',
+        [code.toUpperCase(), icao_code || null, name, city, countries[0].name, countries[0].code, country_id, id]
+      );
+    } catch (error) {
+      if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Ya existe un aeropuerto con ese código IATA' });
+      throw error;
+    }
+    res.json({ exito: true, mensaje: 'Aeropuerto actualizado' });
+  } catch (error) {
+    console.error('Error actualizar aeropuerto:', error);
+    res.status(500).json({ error: 'Error interno' });
+  }
+};
+
 const cambiarEstado = async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -71,4 +104,4 @@ const cambiarEstado = async (req, res) => {
   }
 };
 
-module.exports = { listarAeropuertos: listarAeropuertos, crearAeropuerto: crearAeropuerto, cambiarEstado: cambiarEstado };
+module.exports = { listarAeropuertos: listarAeropuertos, crearAeropuerto: crearAeropuerto, actualizarAeropuerto: actualizarAeropuerto, cambiarEstado: cambiarEstado };

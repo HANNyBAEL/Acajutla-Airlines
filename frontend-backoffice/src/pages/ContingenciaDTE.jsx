@@ -33,19 +33,26 @@ const ContingenciaDTE = () => {
   const [formEmitir, setFormEmitir] = useState({ reservation_id: '', tipo_dte: '01', tipoContingencia: 1, motivoContin: '' });
 
   const cargar = () => {
-    Promise.all([
-      api.get('/dte-eventos/pendientes'),
-      api.get('/dte-eventos/eventos'),
-      api.get('/dte', { params: { estado: 'accepted' } }),
-      reservasAPI.listar({ status: 'paid' }),
-      api.get('/dte-eventos/mh/estado')
-    ]).then((res) => {
-      setPendientes(res[0].data.datos || []);
-      setEventos(res[1].data.datos || { contingencia: [], invalidacion: [] });
-      setAceptados(res[2].data.datos || []);
-      setFacturables(res[3].data.datos || []);
-      setMh(res[4].data.datos || null);
-    }).catch(() => toast.error('Error al cargar contingencia'));
+    // Cada petición es independiente: si una falla no borra el resto de la pantalla
+    api.get('/dte-eventos/pendientes')
+      .then((r) => setPendientes(r.data.datos || []))
+      .catch(() => toast.error('Error al cargar DTEs en contingencia'));
+
+    api.get('/dte-eventos/eventos')
+      .then((r) => setEventos(r.data.datos || { contingencia: [], invalidacion: [] }))
+      .catch(() => {});
+
+    api.get('/dte', { params: { estado: 'accepted' } })
+      .then((r) => setAceptados(r.data.datos || []))
+      .catch(() => {});
+
+    reservasAPI.listar({ status: 'paid', sin_dte: true })
+      .then((r) => setFacturables(r.data.datos || []))
+      .catch(() => {});
+
+    api.get('/dte-eventos/mh/estado')
+      .then((r) => setMh(r.data.datos || null))
+      .catch(() => {});
   };
 
   useEffect(() => { cargar(); }, []);
@@ -315,8 +322,15 @@ const ContingenciaDTE = () => {
             </div>
             <div className="space-y-3">
               <div><label className="block text-xs font-medium text-gray-700 mb-1">Reserva pagada *</label>
-                <SearchableSelect value={formEmitir.reservation_id} onChange={(valor) => setFormEmitir(Object.assign({}, formEmitir, { reservation_id: valor }))} placeholder="Escribe PNR o nombre..."
-                  options={facturables.map((r) => ({ value: r.id, label: r.pnr + ' - ' + r.customer_first_names + ' ' + r.customer_last_names, searchText: r.pnr + ' ' + r.customer_first_names + ' ' + r.customer_last_names }))} /></div>
+                {facturables.length === 0 ? (
+                  <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm rounded-lg p-3">
+                    No hay reservas pagadas sin DTE pendientes. Primero registre un pago en el módulo <strong>Pagos</strong>.
+                  </div>
+                ) : (
+                  <SearchableSelect value={formEmitir.reservation_id} onChange={(valor) => setFormEmitir(Object.assign({}, formEmitir, { reservation_id: valor }))} placeholder="Escribe PNR o nombre..."
+                    options={facturables.map((r) => ({ value: r.id, label: r.pnr + ' - ' + (r.customer_first || '') + ' ' + (r.customer_last || ''), searchText: r.pnr + ' ' + (r.customer_first || '') + ' ' + (r.customer_last || '') }))} />
+                )}
+              </div>
               <div><label className="block text-xs font-medium text-gray-700 mb-1">Tipo *</label>
                 <select className="input-field" value={formEmitir.tipo_dte} onChange={(e) => setFormEmitir(Object.assign({}, formEmitir, { tipo_dte: e.target.value }))}>
                   <option value="01">01 - FE</option><option value="03">03 - CCFE</option>
@@ -331,7 +345,7 @@ const ContingenciaDTE = () => {
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button className="btn-secondary" onClick={() => setModalEmitir(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={emitirContingencia} disabled={procesando}>{procesando ? 'Emitiendo...' : 'Emitir en contingencia'}</button>
+              <button className="btn-primary" onClick={emitirContingencia} disabled={procesando || facturables.length === 0}>{procesando ? 'Emitiendo...' : 'Emitir en contingencia'}</button>
             </div>
           </div>
         </div>

@@ -1,7 +1,19 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
-import { FiPlus, FiSearch, FiX, FiUserCheck, FiUserX, FiEdit2, FiMail, FiPhone, FiFileText, FiUser, FiBriefcase, FiShield } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiX, FiUserCheck, FiUserX, FiEdit2, FiMail, FiPhone, FiFileText, FiUser, FiBriefcase, FiShield, FiToggleRight, FiToggleLeft, FiUsers } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+
+const KPICard = ({ title, value, icon: Icon, colorClass }) => (
+  <div className="card p-4 flex items-center space-x-4">
+    <div className={`p-3 rounded-xl ${colorClass}`}>
+      <Icon size={24} />
+    </div>
+    <div>
+      <p className="text-sm font-medium text-gray-500">{title}</p>
+      <h3 className="text-2xl font-bold text-gray-800">{value}</h3>
+    </div>
+  </div>
+);
 
 /* ������ Drawer lateral de detalles �������������������������������������������������������������� */
 const EmpleadoDrawer = ({ empleado, onClose, onEditar, onCambiarEstado }) => {
@@ -294,103 +306,59 @@ const Empleados = () => {
         </div>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
+        <KPICard
+          title="Total Empleados"
+          value={empleados.length}
+          icon={FiUsers}
+          colorClass="bg-blue-100 text-blue-600"
+        />
+        <KPICard
+          title="Usuarios Activos"
+          value={empleados.filter((e) => e.user_status === 'active').length}
+          icon={FiUserCheck}
+          colorClass="bg-green-100 text-green-600"
+        />
+        <KPICard
+          title="Personal Inactivo/Suspendido"
+          value={empleados.filter((e) => ['inactive', 'suspended'].includes(e.emp_status)).length}
+          icon={FiUserX}
+          colorClass="bg-red-100 text-red-600"
+        />
+      </div>
+
       {/* Tabla compacta */}
-      <div className="card overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Empleado</th>
-              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Cargo</th>
-              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Usuario</th>
-              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
-              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {cargando ? (
-              <tr><td colSpan="5" className="text-center py-8 text-gray-500">Cargando empleados...</td></tr>
-            ) : lista.length === 0 ? (
-              <tr><td colSpan="5" className="text-center py-8 text-gray-500">No hay empleados registrados</td></tr>
-            ) : lista.map((e) => (
-              <tr
-                key={e.id}
-                className="hover:bg-primary-50 cursor-pointer transition-colors"
-                onClick={() => setDrawerEmp(e)}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {cargando ? (
+          <div className="col-span-full card p-10 text-center text-gray-500">Cargando empleados...</div>
+        ) : lista.length === 0 ? (
+          <div className="col-span-full card p-10 text-center text-gray-500">No hay empleados registrados</div>
+        ) : lista.map((e) => (
+          <div key={e.id} className="card p-5 cursor-pointer hover:shadow-lg transition-all relative flex flex-col items-center text-center" onClick={() => setDrawerEmp(e)}>
+            {e.user_id && (
+              <button
+                className={`absolute top-4 right-4 ${e.user_status === 'active' ? 'text-green-600' : 'text-gray-400 hover:text-gray-600'}`}
+                title={e.user_status === 'active' ? 'Desactivar cuenta' : 'Activar cuenta'}
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  cambiarEstado(e.user_id, e.user_status === 'active' ? 'inactive' : 'active');
+                }}
               >
-                {/* Nombre + avatar */}
-                <td className="px-5 py-3">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-sm flex-shrink-0">
-                      {e.first_names?.[0]}{e.last_names?.[0]}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-800 truncate max-w-[160px]">
-                        {e.first_names} {e.last_names}
-                      </p>
-                      {e.email && (
-                        <p className="text-xs text-gray-400 truncate max-w-[160px]">{e.email}</p>
-                      )}
-                    </div>
-                  </div>
-                </td>
-
-                {/* Cargo */}
-                <td className="px-5 py-3">
-                  <span className="text-sm text-gray-600 truncate max-w-[120px] block">
-                    {e.position || <span className="text-gray-400 italic">�</span>}
-                  </span>
-                </td>
-
-                {/* Usuario */}
-                <td className="px-5 py-3">
-                  {e.username
-                    ? <span className="text-sm font-medium text-gray-800">{e.username}</span>
-                    : <span className="text-xs text-gray-400 italic">Sin cuenta</span>
-                  }
-                </td>
-
-                {/* Estado */}
-                <td className="px-5 py-3">
-                  <span className={'px-2.5 py-0.5 rounded-full text-xs font-medium ' + estadoBadge(e.emp_status || 'active')}>
-                    {estadoLabel(e.emp_status || 'active')}
-                  </span>
-                </td>
-
-                {/* Acciones - stopPropagation para no abrir drawer */}
-                <td className="px-5 py-3" onClick={(ev) => ev.stopPropagation()}>
-                  <div className="flex items-center space-x-3">
-                    <button
-                      onClick={() => abrirModalEditar(e)}
-                      className="text-primary-600 hover:text-primary-800 flex items-center space-x-1 font-medium text-sm"
-                      title="Editar empleado"
-                    >
-                      <FiEdit2 size={15} /><span>Editar</span>
-                    </button>
-                    {e.user_id && (
-                      e.user_status === 'active' ? (
-                        <button
-                          onClick={() => cambiarEstado(e.user_id, 'inactive')}
-                          className="text-red-500 hover:text-red-700 flex items-center space-x-1 text-sm"
-                          title="Desactivar cuenta"
-                        >
-                          <FiUserX size={15} /><span>Desactivar</span>
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => cambiarEstado(e.user_id, 'active')}
-                          className="text-green-600 hover:text-green-700 flex items-center space-x-1 text-sm"
-                          title="Activar cuenta"
-                        >
-                          <FiUserCheck size={15} /><span>Activar</span>
-                        </button>
-                      )
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                {e.user_status === 'active' ? <FiToggleRight size={26} /> : <FiToggleLeft size={26} />}
+              </button>
+            )}
+            <div className="w-16 h-16 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-2xl mb-3 shadow-sm">
+              {e.first_names?.[0]}{e.last_names?.[0]}
+            </div>
+            <h3 className="font-bold text-gray-800 text-lg leading-tight mb-1">{e.first_names} {e.last_names}</h3>
+            <span className="bg-primary-50 text-primary-700 px-3 py-1 rounded-full text-xs font-semibold mb-3">{e.position || 'Sin cargo'}</span>
+            <hr className="w-full my-3 border-gray-100" />
+            <div className="text-xs text-gray-500 flex flex-col gap-2 w-full text-left bg-gray-50 p-3 rounded-lg">
+              <p><strong>Usuario:</strong> {e.username || <span className="italic">Sin cuenta</span>}</p>
+              <p><strong>Email:</strong> {e.email || <span className="italic">No especificado</span>}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
       {lista.length > 0 && !cargando && (

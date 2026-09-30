@@ -1,4 +1,4 @@
-﻿import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 import { authAPI } from '../services/api';
 
 const AuthContext = createContext();
@@ -14,7 +14,10 @@ export const AuthProvider = ({ children }) => {
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('bo_token');
+    // La versión anterior guardaba el token en localStorage y mantenía la
+    // sesión abierta tras cerrar el navegador; se elimina al cargar.
+    localStorage.removeItem('bo_token');
+    const token = sessionStorage.getItem('bo_token');
     if (token) {
       cargarPerfil();
     } else {
@@ -28,7 +31,7 @@ export const AuthProvider = ({ children }) => {
       setUsuario(response.data.datos);
     } catch (error) {
       console.error('Error al cargar perfil:', error);
-      localStorage.removeItem('bo_token');
+      sessionStorage.removeItem('bo_token');
     } finally {
       setCargando(false);
     }
@@ -41,14 +44,14 @@ export const AuthProvider = ({ children }) => {
       return response.data;
     }
 
-    localStorage.setItem('bo_token', response.data.datos.accessToken);
+    sessionStorage.setItem('bo_token', response.data.datos.accessToken);
     setUsuario(response.data.datos.usuario);
     return response.data;
   };
 
   const verificarMFA = async (usuarioId, codigo) => {
     const response = await authAPI.verificarMFA({ usuarioId, codigo });
-    localStorage.setItem('bo_token', response.data.datos.accessToken);
+    sessionStorage.setItem('bo_token', response.data.datos.accessToken);
     setUsuario(response.data.datos.usuario);
     return response.data;
   };
@@ -59,7 +62,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Error al cerrar sesión:', error);
     } finally {
-      localStorage.removeItem('bo_token');
+      sessionStorage.removeItem('bo_token');
       setUsuario(null);
     }
   };

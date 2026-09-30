@@ -102,6 +102,20 @@ const Pagos = () => {
   const pendientesFiltrados = pendientes.filter((r) => coincide(r, buscarPendientes));
   const pagosFiltrados = pagos.filter((p) => coincide(p, buscarPagos));
 
+  const [paginaPendientes, setPaginaPendientes] = useState(1);
+  const [paginaPagos, setPaginaPagos] = useState(1);
+  const itemsPorPagina = 40;
+
+  const pendientesPaginados = pendientesFiltrados.slice((paginaPendientes - 1) * itemsPorPagina, paginaPendientes * itemsPorPagina);
+  const pagosPaginados = pagosFiltrados.slice((paginaPagos - 1) * itemsPorPagina, paginaPagos * itemsPorPagina);
+
+  const totalPaginasPendientes = Math.ceil(pendientesFiltrados.length / itemsPorPagina);
+  const totalPaginasPagos = Math.ceil(pagosFiltrados.length / itemsPorPagina);
+
+  // Al afinar la búsqueda la página actual puede quedar fuera de rango.
+  useEffect(() => { setPaginaPendientes(1); }, [buscarPendientes]);
+  useEffect(() => { setPaginaPagos(1); }, [buscarPagos]);
+
   const InfoFila = ({ icon: Icon, label, value }) => (
     <div className="flex items-center py-2.5 text-sm border-b border-gray-100 last:border-b-0">
       <Icon className="text-primary-600 mr-3 shrink-0" size={16} />
@@ -139,9 +153,9 @@ const Pagos = () => {
           <tbody className="divide-y divide-gray-100">
             {cargando ? (
               <tr><td colSpan="5" className="text-center py-8 text-gray-500">Cargando...</td></tr>
-            ) : pendientesFiltrados.length === 0 ? (
+            ) : pendientesPaginados.length === 0 ? (
               <tr><td colSpan="5" className="text-center py-8 text-gray-500">{pendientes.length ? 'No hay cobros que coincidan con la búsqueda' : 'No hay cobros pendientes'}</td></tr>
-            ) : pendientesFiltrados.map((r) => (
+            ) : pendientesPaginados.map((r) => (
               <tr key={r.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 font-mono font-bold text-primary-700">{r.pnr}</td>
                 <td className="px-6 py-4 text-sm">{r.first_names} {r.last_names}</td>
@@ -152,6 +166,13 @@ const Pagos = () => {
             ))}
           </tbody>
         </table>
+        {totalPaginasPendientes > 1 && (
+          <div className="px-6 py-3 border-t flex items-center justify-between bg-gray-50">
+            <button disabled={paginaPendientes === 1} onClick={() => setPaginaPendientes(paginaPendientes - 1)} className="px-3 py-1 bg-white border rounded text-sm disabled:opacity-50">Anterior</button>
+            <span className="text-sm text-gray-600">Página {paginaPendientes} de {totalPaginasPendientes}</span>
+            <button disabled={paginaPendientes === totalPaginasPendientes} onClick={() => setPaginaPendientes(paginaPendientes + 1)} className="px-3 py-1 bg-white border rounded text-sm disabled:opacity-50">Siguiente</button>
+          </div>
+        )}
       </div>
 
       {/* Tabla de historial de pagos - con drawer */}
@@ -168,6 +189,7 @@ const Pagos = () => {
             <tr>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">#</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">PNR</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Fecha</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Método</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Monto</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
@@ -175,12 +197,13 @@ const Pagos = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {pagosFiltrados.length === 0 ? (
-              <tr><td colSpan="6" className="text-center py-8 text-gray-500">{pagos.length ? 'No hay pagos que coincidan con la búsqueda' : 'Sin pagos registrados'}</td></tr>
-            ) : pagosFiltrados.map((p) => (
+            {pagosPaginados.length === 0 ? (
+              <tr><td colSpan="7" className="text-center py-8 text-gray-500">{pagos.length ? 'No hay pagos que coincidan con la búsqueda' : 'Sin pagos registrados'}</td></tr>
+            ) : pagosPaginados.map((p) => (
               <tr key={p.id} className="hover:bg-gray-50 cursor-pointer transition-colors" onClick={() => setDrawerPago(p)}>
                 <td className="px-6 py-4 text-sm text-gray-600">{p.id}</td>
                 <td className="px-6 py-4 font-mono text-sm text-primary-700">{p.pnr}</td>
+                <td className="px-6 py-4 text-sm text-gray-500">{p.created_at ? new Date(p.created_at).toLocaleString('es-SV') : '-'}</td>
                 <td className="px-6 py-4 text-sm">{metodoLabel(p.method)}{p.card_last_digits ? ' ····' + p.card_last_digits : ''}</td>
                 <td className="px-6 py-4 text-sm font-semibold">{p.type === 'refund' ? '-' : ''}${parseFloat(p.amount).toFixed(2)}</td>
                 <td className="px-6 py-4"><span className={'px-3 py-1 rounded-full text-xs font-medium ' + badge(p.status)[1]}>{badge(p.status)[0]}</span></td>
@@ -202,6 +225,13 @@ const Pagos = () => {
             ))}
           </tbody>
         </table>
+        {totalPaginasPagos > 1 && (
+          <div className="px-6 py-3 border-t flex items-center justify-between bg-gray-50">
+            <button disabled={paginaPagos === 1} onClick={() => setPaginaPagos(paginaPagos - 1)} className="px-3 py-1 bg-white border rounded text-sm disabled:opacity-50">Anterior</button>
+            <span className="text-sm text-gray-600">Página {paginaPagos} de {totalPaginasPagos}</span>
+            <button disabled={paginaPagos === totalPaginasPagos} onClick={() => setPaginaPagos(paginaPagos + 1)} className="px-3 py-1 bg-white border rounded text-sm disabled:opacity-50">Siguiente</button>
+          </div>
+        )}
         <div className="p-3 bg-gray-50 border-t border-gray-100 text-center">
           <p className="text-xs text-gray-500">Haz clic en cualquier fila del historial para ver el detalle del pago</p>
         </div>

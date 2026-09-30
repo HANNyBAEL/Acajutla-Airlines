@@ -44,23 +44,26 @@ async function siguienteControl(tipo) {
 async function generarNota(datos) {
   const { origenUuid, tipoDte, motivo, monto, noGravado } = datos;
   if (!['05', '06'].includes(tipoDte)) throw new Error('Tipo de nota inválido (05 NCE / 06 NDE)');
-  const [orig] = await pool.query("SELECT * FROM dte_headers WHERE uuid_generation = ? AND dte_type IN ('01','03')", [origenUuid]);
-  if (!orig.length) throw new Error('DTE origen no encontrado');
+  const [orig] = await pool.query("SELECT * FROM dte_headers WHERE uuid_generation = ? AND dte_type IN ('01','03','11')", [origenUuid]);
+  if (!orig.length) throw new Error('DTE origen no encontrado o no válido (Solo FE, CCFE o FEXE)');
   const row = orig[0];
   if (!row.reception_seal) throw new Error('El DTE origen debe tener Sello de Recepción');
   const origJson = typeof row.full_json === 'string' ? JSON.parse(row.full_json) : row.full_json;
   const m = Number(monto);
   if (!m || m <= 0) throw new Error('El monto del ajuste debe ser mayor a 0');
   const ng = redondeo(Number(noGravado || 0));
-  const esFEorig = String(origJson.identificacion.tipoDte) === '01';
+  const tipoOrigen = String(origJson.identificacion.tipoDte);
+  const esFE = tipoOrigen === '01';
+  const esCCFE = tipoOrigen === '03';
+  const esFEXE = tipoOrigen === '11';
 
   const ventaGravada = redondeo(m);
-  const totalivaItem = esFEorig ? redondeo((ventaGravada / 1.13) * 0.13) : redondeo(ventaGravada * 0.13);
-  const tributosItem = esFEorig ? null : ['20'];
-  const codTributoItem = esFEorig ? null : '20';
-  const tributosResumen = esFEorig ? null : [{ codigo: '20', descripcion: 'Impuesto al Valor Agregado 13%', valor: totalivaItem }];
+  const totalivaItem = esFEXE ? 0 : (esFE ? redondeo((ventaGravada / 1.13) * 0.13) : redondeo(ventaGravada * 0.13));
+  const tributosItem = esCCFE ? ['20'] : null;
+  const codTributoItem = esCCFE ? '20' : null;
+  const tributosResumen = esCCFE ? [{ codigo: '20', descripcion: 'Impuesto al Valor Agregado 13%', valor: totalivaItem }] : null;
   const subTotalVentas = ventaGravada;
-  const montoTotalOperacion = esFEorig ? subTotalVentas : redondeo(subTotalVentas + totalivaItem);
+  const montoTotalOperacion = esCCFE ? redondeo(subTotalVentas + totalivaItem) : subTotalVentas;
   const totalPagar = redondeo(montoTotalOperacion + ng);
 
   const cuerpo = [{
@@ -89,7 +92,7 @@ async function generarNota(datos) {
 
   const dte = {
     identificacion: {
-      version: 4, ambiente: process.env.DTE_AMBIENTE || '00', tipoDte: tipoDte,
+      version: 3, ambiente: process.env.DTE_AMBIENTE || '00', tipoDte: tipoDte,
       numeroControl: numeroControl, codigoGeneracion: uuid, tipoModelo: 1, tipoOperacion: 1,
       tipoContingencia: null, motivoContin: null, fecEmi: fec, horEmi: hor, tipoMoneda: 'USD', fusion: null
     },
@@ -100,40 +103,60 @@ async function generarNota(datos) {
     }],
     emisor: origJson.emisor,
     receptor: origJson.receptor,
-    otrosDocumentos: null,
     ventaTercero: origJson.ventaTercero || null,
     cuerpoDocumento: cuerpo,
     resumen: {
-      totalNoSuj: 0, totalExenta: 0, totalGravada: ventaGravada, subTotalVentas: subTotalVentas,
-      totalDescu: 0, tributos: tributosResumen,
-      ivaPerci: 0, codigoRetencionMH: null, ivaRete: 0, totalIva: totalivaItem,
-      montoTotalOperacion: montoTotalOperacion, totalNoGravado: ng, totalPagar: totalPagar,
-      totalLetras: numeroALetras(totalPagar),
-      condicionOperacion: 1,
-      pagos: [{ codigo: '01', montoPago: totalPagar, referencia: null, plazo: null, periodo: null }],
-      numPagoElectronico: null
+      totalNoSuj: 0,
+      totalExenta: 0,
+      totalGravada: ventaGravada,
+      subTotalVentas: subTotalVentas,
+      descuNoSuj: 0,
+      descuExenta: 0,
+      descuGravada: 0,
+      porcentajeDescuento: 0,
+      totalDescu: 0,
+      tributos: tributosResumen,
+      ivaPerci: 0,
+      ivaRete: 0,
+      reteRenta: 0,
+      montoTotalOperacion: montoTotalOperacion,
+      totalLetras: numeroALetras(montoTotalOperacion)
+    },
+    extension: {
+      nombEntrega: null,
+      docuEntrega: null,
+      nombRecibe: null,
+      docuRecibe: null,
+      observaciones: null
     },
     apendice: [{ campo: 'motivo', etiqueta: 'Motivo del ajuste', valor: motivo || null }]
   };
 
+  const r_corr = parseInt(numeroControl.split('-').pop(), 10) || 1;
   await pool.query(
-    `INSERT INTO dte_headers (dte_type, control_number, uuid_generation, reception_seal, full_json, emission_date, total_to_pay, reservation_id, transmission_status)
-     VALUES (?,?,?,?,?,?,?,?, 'accepted')`,
-    [tipoDte, numeroControl, uuid, sello, JSON.stringify(dte), fec, totalPagar, row.reservation_id]
+    `INSERT INTO dte_headers (uuid_generation, dte_type, control_number, annual_correlative, emission_date, emission_time,
+        environment, billing_model, operation_type, transmission_status, reception_seal, reservation_id, full_json,
+        issuer_nit, issuer_name, receiver_name, receiver_doc_type, receiver_doc_number,
+        total_non_taxable, total_exempt, total_taxable, total_vat, total_to_pay)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [uuid, tipoDte, numeroControl, r_corr, fec, hor,
+     process.env.DTE_AMBIENTE || '00', 1, 1, 'accepted', sello, row.reservation_id, JSON.stringify(dte),
+     dte.emisor.nit, dte.emisor.nombre, dte.receptor.nombre, dte.receptor.tipoDocumento || null, dte.receptor.numDocumento || null,
+     0, 0, ventaGravada, totalivaItem, totalPagar]
   );
   return { numeroControl: numeroControl, uuid: uuid, sello: sello, totalPagar: totalPagar, tipoDte: tipoDte };
 }
 
 async function listarNotas() {
   const [rows] = await pool.query(
-    "SELECT id, dte_type, control_number, uuid_generation, reception_seal, emission_date, total_to_pay, reservation_id, full_json FROM dte_headers WHERE dte_type IN ('05','06') ORDER BY id DESC"
+    "SELECT id, dte_type, control_number, uuid_generation, reception_seal, emission_date, emission_time, total_to_pay, reservation_id, full_json FROM dte_headers WHERE dte_type IN ('05','06') ORDER BY id DESC"
   );
   return rows;
 }
 
 async function origenes() {
   const [rows] = await pool.query(
-    "SELECT uuid_generation, dte_type, control_number, emission_date, total_to_pay, reception_seal, full_json FROM dte_headers WHERE dte_type IN ('01','03') AND reception_seal IS NOT NULL ORDER BY id DESC"
+    "SELECT uuid_generation, dte_type, control_number, emission_date, emission_time, total_to_pay, reception_seal, full_json FROM dte_headers WHERE dte_type IN ('01','03','11') AND reception_seal IS NOT NULL ORDER BY id DESC"
   );
   return rows;
 }

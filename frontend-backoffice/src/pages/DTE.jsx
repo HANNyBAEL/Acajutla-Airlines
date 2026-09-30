@@ -14,7 +14,7 @@ const DTE = () => {
   const [visor, setVisor] = useState(null);
 
   const cargar = () => {
-    Promise.all([dteAPI.listar(), reservasAPI.listar({ status: 'paid' })])
+    Promise.all([dteAPI.listar(), reservasAPI.listar({ status: 'paid', sin_dte: true })])
       .then((res) => {
         setDtes(res[0].data.datos || []);
         setFacturables(res[1].data.datos || []);
@@ -64,7 +64,7 @@ const DTE = () => {
 
   const aceptados = dtes.filter((d) => d.transmission_status === 'accepted').length;
   const rechazados = dtes.filter((d) => d.transmission_status === 'rejected').length;
-  const pendientes = dtes.filter((d) => d.transmission_status === 'transmitted').length;
+  const pendientes = dtes.filter((d) => d.transmission_status === 'transmitted' || d.transmission_status === 'contingency').length;
 
   return (
     <div className="space-y-6">

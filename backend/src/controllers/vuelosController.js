@@ -68,6 +68,10 @@ const crearVuelo = async (req, res) => {
     }
     if (origen_iata === destino_iata) return res.status(400).json({ error: 'El origen y el destino deben ser diferentes' });
     if (new Date(arrival_datetime) <= new Date(departure_datetime)) return res.status(400).json({ error: 'La llegada debe ser posterior a la salida' });
+    const precioBase = Number(base_price);
+    if (!Number.isFinite(precioBase) || precioBase <= 0) {
+      return res.status(400).json({ error: 'El precio base debe ser mayor a 0 USD.' });
+    }
 
     // Verificación temprana del índice único uk_flight_number_date: identificar
     // el vuelo existente evita el mensaje genérico de duplicado de MySQL.
@@ -111,7 +115,7 @@ const crearVuelo = async (req, res) => {
       await connection.beginTransaction();
       [result] = await connection.query(
       'INSERT INTO flights (route_id, aircraft_id, flight_number, departure_datetime, arrival_datetime, status, base_price, gate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [routeId, aircraft_id, flight_number.toUpperCase(), departure_datetime, arrival_datetime, 'scheduled', base_price, gate || null]
+      [routeId, aircraft_id, flight_number.toUpperCase(), departure_datetime, arrival_datetime, 'scheduled', precioBase, gate || null]
       );
       // Cada clase activa recibe su tarifa inicial = precio base × multiplicador
       // de la clase (editable desde Operaciones → Clases Tarifarias).

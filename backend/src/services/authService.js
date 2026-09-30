@@ -54,7 +54,7 @@ class AuthService {
   }
 
   static async generarTokens(usuario) {
-    const accessToken = jwt.sign({ id: usuario.id, usuario: usuario.username, rol: usuario.role, nombre: usuario.empleado_nombres ? `${usuario.empleado_nombres} ${usuario.empleado_apellidos}` : usuario.username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    const accessToken = jwt.sign({ id: usuario.id, employee_id: usuario.employee_id || null, usuario: usuario.username, rol: usuario.role, nombre: usuario.empleado_nombres ? `${usuario.empleado_nombres} ${usuario.empleado_apellidos}` : usuario.username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
     const refreshToken = jwt.sign({ id: usuario.id, tipo: 'refresh' }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES_IN });
     const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
     const expiraEn = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);

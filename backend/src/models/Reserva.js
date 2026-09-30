@@ -82,6 +82,13 @@ const Reserva = {
                FROM reservations r LEFT JOIN customers c ON r.customer_id = c.id WHERE 1=1`;
     const valores = [];
     if (filtros.status) { sql += ' AND r.status = ?'; valores.push(filtros.status); }
+    // Excluir reservas que ya tienen un DTE válido (no invalidado)
+    if (filtros.sin_dte === 'true' || filtros.sin_dte === true) {
+      sql += ` AND NOT EXISTS (
+        SELECT 1 FROM dte_headers dh
+        WHERE dh.reservation_id = r.id AND dh.transmission_status != 'invalidated'
+      )`;
+    }
     sql += ' ORDER BY r.created_at DESC LIMIT 100';
     const [rows] = await pool.query(sql, valores);
     return rows;

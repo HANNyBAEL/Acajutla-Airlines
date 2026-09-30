@@ -47,10 +47,11 @@ const columnExists = async (db, table, column) => {
     if (!activeUnique.length) await db.query('CREATE UNIQUE INDEX ff_one_active ON flight_fares (active_fare_key)');
 
     // Los vuelos ya existentes reciben una tarifa inicial por cada clase
-    // activa. Después se pueden versionar desde Operaciones sin afectar ventas.
+    // activa, aplicando el multiplicador de la clase (igual que crearVuelo).
+    // Después se pueden versionar desde Operaciones sin afectar ventas.
     await db.query(
       `INSERT INTO flight_fares (flight_id, fare_class_id, price, seats_allocated, active, valid_from)
-       SELECT f.id, fc.id, f.base_price, 0, 1, NOW()
+       SELECT f.id, fc.id, ROUND(f.base_price * COALESCE(fc.multiplier, 1), 2), 0, 1, NOW()
        FROM flights f CROSS JOIN fare_classes fc
        LEFT JOIN flight_fares ff ON ff.flight_id = f.id AND ff.fare_class_id = fc.id AND ff.active = 1
        WHERE fc.active = 1 AND ff.id IS NULL`

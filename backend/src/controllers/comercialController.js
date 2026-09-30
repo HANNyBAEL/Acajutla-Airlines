@@ -83,6 +83,20 @@ const crearAncillary = async (req, res) => {
   }
 };
 
+const actualizarAncillary = async (req, res) => {
+  try {
+    const { code, name, type, description, base_price, active } = req.body;
+    await pool.query(
+      'UPDATE ancillaries SET code = ?, name = ?, type = ?, description = ?, base_price = ?, active = COALESCE(?, active) WHERE id = ?',
+      [code, name, type, description || null, base_price, active, req.params.id]
+    );
+    res.json({ exito: true });
+  } catch (e) {
+    if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'El código ya existe' });
+    res.status(500).json({ error: 'Error interno' });
+  }
+};
+
 const asignarAncillaryVuelo = async (req, res) => {
   try {
     const { flight_id, ancillary_id, stock, price_override } = req.body;
@@ -228,6 +242,6 @@ const reporteConciliacion = async (req, res) => {
 
 module.exports = {
   listarWaitlist, agregarWaitlist, actualizarWaitlist,
-  listarAncillaries, crearAncillary, asignarAncillaryVuelo, ancillariesDeVuelo, agregarAncillaryReserva, ancillariesDeReserva,
+  listarAncillaries, crearAncillary, actualizarAncillary, asignarAncillaryVuelo, ancillariesDeVuelo, agregarAncillaryReserva, ancillariesDeReserva,
   kpi, reporteOcupacion, reporteAncillaries, reporteCanales, reporteConciliacion
 };

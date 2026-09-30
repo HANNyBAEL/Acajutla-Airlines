@@ -140,6 +140,18 @@ const hacerCheckin = async (req, res) => {
     if (!fs.length) { await conn.rollback(); return res.status(404).json({ error: 'Segmento no encontrado' }); }
     const s = fs[0];
     if (!['paid', 'confirmed'].includes(s.res_status)) { await conn.rollback(); return res.status(400).json({ error: 'La reserva debe estar pagada o confirmada' }); }
+    
+    const [crewRows] = await conn.query(
+      `SELECT cm.role_operativo FROM flight_crew fc JOIN crew_members cm ON cm.id = fc.crew_member_id WHERE fc.flight_id = ?`,
+      [s.flight_id]
+    );
+    const hasPilot = crewRows.some(c => c.role_operativo === 'pilot');
+    const hasCopilot = crewRows.some(c => c.role_operativo === 'copiloto');
+    if (!hasPilot || !hasCopilot) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'OP-01: Operación bloqueada. El vuelo no tiene asignada la tripulación técnica mínima (Piloto y Copiloto).' });
+    }
+
     if (new Date(s.departure_datetime) < new Date()) { await conn.rollback(); return res.status(400).json({ error: 'El vuelo ya salió' }); }
     // Hora límite de check-in: configurable (config_params.checkin_cierre_min),
     // 45 minutos antes de la salida por defecto.
@@ -208,6 +220,12 @@ const manifiesto = async (req, res) => {
 
 const cerrarVuelo = async (req, res) => {
   try {
+    const [flightRows] = await pool.query("SELECT gate, aircraft_id FROM flights WHERE id = ?", [req.params.id]);
+    if (!flightRows.length) return res.status(404).json({ error: 'Vuelo no encontrado' });
+    const f = flightRows[0];
+    if (!f.gate) return res.status(409).json({ error: 'OP-02: Operación bloqueada. Falta asignar Puerta de Embarque (Gate).' });
+    if (!f.aircraft_id) return res.status(409).json({ error: 'OP-03: Operación bloqueada. Falta asignar Aeronave.' });
+
     const [pend] = await pool.query(
       "SELECT COUNT(*) AS n FROM flight_segments WHERE flight_id = ? AND checkin_status = 'checked_in'", [req.params.id]
     );

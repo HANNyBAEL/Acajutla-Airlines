@@ -10,7 +10,7 @@ const pendientes = async (req, res) => {
 const eventoContingencia = async (req, res) => {
   try {
     if (!(await mhSimulator.estaOperativo())) return res.status(409).json({ error: 'MH sigue caído; no es posible transmitir el lote todavía' });
-    const r = await svc.transmitirEventoContingencia(req.body);
+    const r = await svc.transmitirEventoContingencia(req.body, req.usuario?.employee_id || req.usuario?.id);
     res.json({ exito: true, mensaje: 'Evento de contingencia transmitido y aceptado', datos: r });
   } catch (e) { res.status(400).json({ error: e.message }); }
 };

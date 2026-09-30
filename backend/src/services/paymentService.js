@@ -14,9 +14,12 @@ const procesarPago = async (datos, usuario) => {
     }
 
     const pendiente = parseFloat(reserva.estimated_total) - parseFloat(reserva.paid_total || 0);
-    const monto = parseFloat(datos.amount || pendiente);
+    let monto = parseFloat(datos.amount || pendiente);
     if (isNaN(monto) || monto <= 0) throw new Error('El monto debe ser mayor a 0');
-    if (monto > pendiente + 0.01) throw new Error('El monto excede el saldo pendiente (' + pendiente.toFixed(2) + ')');
+    if (monto > pendiente) {
+      // Si el frontend envía el total original, lo ajustamos al saldo pendiente
+      monto = pendiente;
+    }
 
     let gateway;
     if (datos.method === 'card') {

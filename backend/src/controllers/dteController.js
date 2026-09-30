@@ -50,7 +50,7 @@ const kpis = async (req, res) => {
       `SELECT COUNT(*) AS total,
               SUM(transmission_status = 'accepted') AS aceptados,
               SUM(transmission_status = 'rejected') AS rechazados,
-              SUM(transmission_status = 'transmitted') AS pendientes,
+              SUM(transmission_status IN ('transmitted','contingency')) AS pendientes,
               SUM(CASE WHEN DATE(emission_date) = CURDATE() THEN total_to_pay ELSE 0 END) AS facturado_hoy
        FROM dte_headers`
     );

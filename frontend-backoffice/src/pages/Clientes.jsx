@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
-import { FiPlus, FiSearch, FiX, FiEdit2, FiUser, FiMail, FiPhone, FiFileText, FiCalendar, FiHash } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiX, FiUser, FiMail, FiPhone, FiFileText, FiCalendar, FiHash } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const Clientes = () => {
@@ -105,21 +105,20 @@ const Clientes = () => {
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Documento</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Email</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Teléfono</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Acción</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {cargando ? (
-              <tr><td colSpan="5" className="text-center py-8 text-gray-500">Cargando...</td></tr>
+              <tr><td colSpan="4" className="text-center py-8 text-gray-500">Cargando...</td></tr>
             ) : lista.length === 0 ? (
-              <tr><td colSpan="5" className="text-center py-8 text-gray-500">No hay clientes</td></tr>
+              <tr><td colSpan="4" className="text-center py-8 text-gray-500">No hay clientes</td></tr>
             ) : lista.map((c) => (
               <tr key={c.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setDrawerCliente(c)}>
-                <td className="px-6 py-4 flex items-center space-x-2">
-                  <div className="bg-primary-600 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm font-medium">
+                <td className="px-6 py-4 flex items-center space-x-2 w-64 max-w-xs">
+                  <div className="bg-primary-600 text-white rounded-full min-w-[2rem] w-8 h-8 flex items-center justify-center text-sm font-medium flex-shrink-0">
                     {avatarInitials(c)}
                   </div>
-                  <span className="font-medium text-gray-800">{c.first_names} {c.last_names}</span>
+                  <span className="font-medium text-gray-800 truncate" title={`${c.first_names} ${c.last_names}`}>{c.first_names} {c.last_names}</span>
                 </td>
                 <td className="px-6 py-4 text-sm">
                   {c.document_number ? (
@@ -128,12 +127,6 @@ const Clientes = () => {
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-600">{c.email || '-'}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{c.phone || '-'}</td>
-                <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                  <button type="button" onClick={() => editar(c)} className="text-primary-600 hover:text-primary-800 flex items-center space-x-1">
-                    <FiEdit2 size={16} />
-                    <span className="text-sm">Editar</span>
-                  </button>
-                </td>
               </tr>
             ))}
           </tbody>

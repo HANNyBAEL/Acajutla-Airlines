@@ -77,14 +77,18 @@ const NuevaReserva = () => {
     return actuales.concat([{ origen: anterior.destino, destino: 'MIA', fecha: '', vuelos: [], vueloId: null, buscando: false }]);
   });
 
-  const buscarVuelos = async (indice) => {
+  const buscarVuelos = async (indice, mantenerSeleccion = false) => {
     const trayecto = trayectos[indice];
     if (!trayecto.fecha) return toast.error('Selecciona la fecha del trayecto ' + (indice + 1));
-    setTrayectos((actuales) => actuales.map((t, i) => i === indice ? Object.assign({}, t, { buscando: true, vueloId: null }) : t));
+    setTrayectos((actuales) => actuales.map((t, i) => i === indice ? Object.assign({}, t, { buscando: true, vueloId: mantenerSeleccion ? t.vueloId : null }) : t));
     try {
       const r = await api.get('/vuelos/buscar', { params: { origen: trayecto.origen, destino: trayecto.destino, fecha: trayecto.fecha, clase } });
       const resultados = r.data.datos || [];
-      setTrayectos((actuales) => actuales.map((t, i) => i === indice ? Object.assign({}, t, { vuelos: resultados, buscando: false }) : t));
+      setTrayectos((actuales) => actuales.map((t, i) => {
+        if (i !== indice) return t;
+        const seleccion = t.vueloId && resultados.some((v) => v.id === t.vueloId) ? t.vueloId : null;
+        return Object.assign({}, t, { vuelos: resultados, buscando: false, vueloId: seleccion });
+      }));
       if (!resultados.length) toast.error('No hay vuelos para ese trayecto y fecha');
     } catch (e) { toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al buscar vuelos'); }
     finally { setTrayectos((actuales) => actuales.map((t, i) => i === indice ? Object.assign({}, t, { buscando: false }) : t)); }
@@ -112,6 +116,7 @@ const NuevaReserva = () => {
         document_type: MAP_DOC[c.document_type] || '13',
         document_number: c.document_number || '',
         birth_date: c.birth_date ? String(c.birth_date).slice(0, 10) : '',
+        passenger_type: c.birth_date ? (tipoPorEdad(c.birth_date) || 'adult') : 'adult',
       }) : p));
     }
   };
@@ -120,6 +125,17 @@ const NuevaReserva = () => {
     setAutoRellenar(checked);
     if (checked && clienteSel) seleccionarCliente(clienteSel);
   };
+
+  // Al cambiar la clase se repite la búsqueda conservando el vuelo elegido
+  // para que el resumen muestre de inmediato el precio de la nueva clase.
+  useEffect(() => {
+    trayectos.forEach((t, i) => {
+      if (t.fecha && t.vuelos.length > 0) {
+        buscarVuelos(i, true);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clase]);
 
   const setCampoCliente = (campo, valor) => setClienteForm((f) => Object.assign({}, f, { [campo]: valor }));
 
@@ -291,7 +307,7 @@ const NuevaReserva = () => {
                   )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <select className="input-field" value={p.passenger_type} onChange={(e) => setPax(i, 'passenger_type', e.target.value)}>
+                  <select className="input-field disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed" disabled={true} value={p.passenger_type} onChange={(e) => setPax(i, 'passenger_type', e.target.value)} title={'Calculado automáticamente según la fecha de nacimiento'}>
                     <option value="adult">Adulto</option><option value="child">Niño</option><option value="infant">Bebé</option>
                   </select>
                   <input className="input-field" placeholder="Nombres" value={p.first_names} onChange={(e) => setPax(i, 'first_names', e.target.value)} />

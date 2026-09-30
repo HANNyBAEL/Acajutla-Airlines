@@ -84,44 +84,62 @@ async function generarPDF(header) {
   doc.font('Helvetica-Bold').fontSize(11).text(nombreTipo, M, y, { width: CW, align: 'center', lineBreak: false });
   y += 20;
 
-  box(y, 64);
-  const colW = CW / 2 - 74;
-  let y1 = y + 10;
-  y1 = kv(M + 6, y1, 'Código de Generación', id.codigoGeneracion, colW);
-  y1 = kv(M + 6, y1, 'Número de Control', id.numeroControl, colW);
-  doc.image(qrBuffer, M + CW / 2 - 25, y + 7, { width: 50, height: 50 });
-  let y2 = y + 10;
+  box(y, 70);
+  const colW = CW / 2 - 40;
+  
+  // Columna Izquierda (Valores largos, los ponemos en dos líneas)
+  doc.font('Helvetica-Bold').fontSize(7).fillColor('#000').text('Código de Generación:', M + 6, y + 8);
+  doc.font('Helvetica').fontSize(7).text(id.codigoGeneracion || '-', M + 6, y + 17, { width: colW });
+  
+  doc.font('Helvetica-Bold').fontSize(7).text('Número de Control:', M + 6, y + 32);
+  doc.font('Helvetica').fontSize(7).text(id.numeroControl || '-', M + 6, y + 41, { width: colW });
+  
+  doc.image(qrBuffer, M + CW / 2 - 25, y + 10, { width: 50, height: 50 });
+  
+  // Columna Derecha (Valores cortos)
+  let y2 = y + 8;
   y2 = kv(M + CW / 2 + 34, y2, 'Modelo de Facturación', id.tipoModelo === 2 ? '2 - Diferido' : '1 - Previo', colW);
   y2 = kv(M + CW / 2 + 34, y2, 'Tipo de Transmisión', id.tipoOperacion === 2 ? '2 - Contingencia' : '1 - Normal', colW);
-  y2 = kv(M + CW / 2 + 34, y2, 'Fecha y Hora de Generación', (id.fecEmi || '-') + ' ' + (id.horEmi || ''), colW);
-  y += 64 + GAP;
+  y2 = kv(M + CW / 2 + 34, y2, 'Fecha y Hora de Gener.', (id.fecEmi || '-') + ' ' + (id.horEmi || ''), colW);
+  y2 = kv(M + CW / 2 + 34, y2, 'Tipo de Contingencia', id.tipoContingencia, colW);
+  y2 = kv(M + CW / 2 + 34, y2, 'Motivo Contingencia', id.motivoContin, colW);
+  
+  y += 70 + GAP;
 
   box(y, 24);
   kv(M + 6, y + 7, 'Sello de Recepción', sello || (header.transmission_status === 'contingency' ? 'PENDIENTE (CONTINGENCIA)' : null), CW - 12);
   y += 24 + GAP;
 
   const hw = (CW - 8) / 2;
-  const hER = 118;
+  const hER = 122; // Original height for standard boxes
   halfBox(M, y, hw, hER, 'EMISOR');
   halfBox(M + hw + 8, y, hw, hER, 'RECEPTOR');
   const ew = hw - 12;
   let e1 = y + 18;
   e1 = kv(M + 6, e1, 'Nombre', emisor.nombre, ew);
   e1 = kv(M + 6, e1, 'NIT', emisor.nit, ew);
-  e1 = kv(M + 6, e1, 'NRC', emisor.nrc, ew);
+  if (!esFE || emisor.nrc) e1 = kv(M + 6, e1, 'NRC', emisor.nrc, ew);
   e1 = kv(M + 6, e1, 'Actividad económica', (emisor.codActividad || '') + ' ' + (emisor.descActividad || ''), ew);
   e1 = kv(M + 6, e1, 'Dirección', emisor.direccion ? emisor.direccion.complemento : null, ew);
   e1 = kv(M + 6, e1, 'Teléfono', emisor.telefono, ew);
   e1 = kv(M + 6, e1, 'Correo electrónico', emisor.correo, ew);
-  kv(M + 6, e1, 'Nombre Comercial', emisor.nombreComercial, ew);
+  e1 = kv(M + 6, e1, 'Nombre Comercial', emisor.nombreComercial, ew);
+  
   const rx = M + hw + 8;
   let r1 = y + 18;
   r1 = kv(rx + 6, r1, 'Nombre', receptor.nombre, ew);
-  r1 = kv(rx + 6, r1, 'Tipo de doc. de Identificación', CAT022[receptor.tipoDocumento] || dsh(receptor.tipoDocumento), ew);
-  r1 = kv(rx + 6, r1, 'N° de doc. de Identificación', receptor.numDocumento, ew);
-  if (!esFE) r1 = kv(rx + 6, r1, 'NIT', receptor.nit, ew);
-  r1 = kv(rx + 6, r1, 'NRC', receptor.nrc, ew);
-  r1 = kv(rx + 6, r1, 'Actividad económica', receptor.descActividad, ew);
+  
+  if (['01', '11', '14'].includes(id.tipoDte)) {
+    r1 = kv(rx + 6, r1, 'Tipo de doc.', CAT022[receptor.tipoDocumento] || dsh(receptor.tipoDocumento), ew);
+    r1 = kv(rx + 6, r1, 'N° de doc.', receptor.numDocumento, ew);
+  }
+  if (!['01', '14'].includes(id.tipoDte)) {
+    if (receptor.nit) r1 = kv(rx + 6, r1, 'NIT', receptor.nit, ew);
+    if (receptor.nrc) r1 = kv(rx + 6, r1, 'NRC', receptor.nrc, ew);
+  }
+  if (!['01', '14'].includes(id.tipoDte)) {
+    r1 = kv(rx + 6, r1, 'Actividad económica', receptor.descActividad, ew);
+  }
   r1 = kv(rx + 6, r1, 'Dirección', receptor.direccion ? receptor.direccion.complemento : null, ew);
   r1 = kv(rx + 6, r1, 'Teléfono', receptor.telefono, ew);
   kv(rx + 6, r1, 'Correo electrónico', receptor.correo, ew);
@@ -150,9 +168,9 @@ async function generarPDF(header) {
 
   if (y > 640) { doc.addPage(); y = M; }
   const cols = [
-    { t: 'N°', w: 18 }, { t: 'Cantidad', w: 40 }, { t: 'Unidad', w: 34 }, { t: 'Código', w: 40 },
-    { t: 'Descripción', w: 150 }, { t: 'Precio Unitario', w: 52 }, { t: 'Descuento por ítem', w: 46 },
-    { t: 'Otros Montos No Afectos', w: 46 }, { t: 'Ventas No Sujetas', w: 42 }, { t: 'Ventas Exentas', w: 42 }, { t: 'Ventas Gravadas', w: 45 }
+    { t: 'N°', w: 16 }, { t: 'Cant.', w: 32 }, { t: 'Unidad', w: 30 }, { t: 'Código', w: 38 },
+    { t: 'Descripción', w: 147.28 }, { t: 'Precio Uni.', w: 44 }, { t: 'Desc. ítem', w: 42 },
+    { t: 'Otros Montos', w: 42 }, { t: 'V. No Sujetas', w: 40 }, { t: 'V. Exentas', w: 40 }, { t: 'Ventas Gravadas', w: 44 }
   ];
   doc.rect(M, y, CW, 20).fill('#e8e8e8');
   let x = M;
@@ -210,7 +228,6 @@ async function generarPDF(header) {
   y += hF + GAP;
 
   doc.font('Helvetica').fontSize(7).fillColor('#000').text('Página 1 de 1', M, 788, { width: CW, align: 'center', lineBreak: false });
-  doc.font('Helvetica').fontSize(6.5).fillColor('#444').text('Nota: El campo "Tipo de doc. de Identificación" será dinámico, es decir de acuerdo al tipo de documento seleccionado por la persona que está realizando el DTE así aparecerá en la Versión Legible. Ejemplo, si se seleccionó el tipo de documento pasaporte, aparecerá la palabra pasaporte y el número de documento respectivo a la par.', M, 798, { width: CW, align: 'center' });
 
   return doc;
 }

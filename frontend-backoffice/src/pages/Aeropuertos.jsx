@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
-import { FiPlus, FiSearch, FiX, FiGlobe, FiMapPin, FiToggleLeft, FiToggleRight } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiX, FiGlobe, FiMapPin, FiToggleRight, FiToggleLeft } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const Aeropuertos = () => {
@@ -11,6 +11,7 @@ const Aeropuertos = () => {
   const [modal, setModal] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [form, setForm] = useState({ code: '', icao_code: '', name: '', city: '', country_id: '' });
+  const [aeropuertoEditando, setAeropuertoEditando] = useState(null);
   // Drawer state
   const [drawerAeropuerto, setDrawerAeropuerto] = useState(null);
 
@@ -24,7 +25,20 @@ const Aeropuertos = () => {
   useEffect(() => { api.get('/fiscalidad/paises').then((r) => setPaises(r.data.datos || [])).catch(() => {}); }, []);
 
   const abrirModal = () => {
+    setAeropuertoEditando(null);
     setForm({ code: '', icao_code: '', name: '', city: '', country_id: '' });
+    setModal(true);
+  };
+
+  const editarAeropuerto = (a) => {
+    setAeropuertoEditando(a);
+    setForm({
+      code: a.code || '',
+      icao_code: a.icao_code || '',
+      name: a.name || '',
+      city: a.city || '',
+      country_id: a.country_id || '',
+    });
     setModal(true);
   };
 
@@ -34,9 +48,15 @@ const Aeropuertos = () => {
     if (!form.code || !form.name || !form.city || !form.country_id) return toast.error('Completa código, nombre, ciudad y país');
     setGuardando(true);
     try {
-      await api.post('/aeropuertos', form);
-      toast.success('Aeropuerto registrado');
+      if (aeropuertoEditando) {
+        await api.put('/aeropuertos/' + aeropuertoEditando.id, form);
+        toast.success('Aeropuerto actualizado');
+      } else {
+        await api.post('/aeropuertos', form);
+        toast.success('Aeropuerto registrado');
+      }
       setModal(false);
+      setAeropuertoEditando(null);
       cargar();
     } catch (e) {
       toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al guardar');
@@ -59,6 +79,12 @@ const Aeropuertos = () => {
   };
 
   const lista = aeropuertos.filter((a) => JSON.stringify(a).toLowerCase().includes(filtro.toLowerCase()));
+
+  const [pagina, setPagina] = useState(1);
+  const itemsPorPagina = 40;
+  useEffect(() => { setPagina(1); }, [filtro]);
+  const aeropuertosPaginados = lista.slice((pagina - 1) * itemsPorPagina, pagina * itemsPorPagina);
+  const totalPaginas = Math.ceil(lista.length / itemsPorPagina);
 
   const InfoFila = ({ icon: Icon, label, value }) => (
     <div className="flex items-center py-2">
@@ -96,35 +122,35 @@ const Aeropuertos = () => {
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Ciudad</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">País</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {cargando ? (
-              <tr><td colSpan="6" className="text-center py-8 text-gray-500">Cargando...</td></tr>
+              <tr><td colSpan="5" className="text-center py-8 text-gray-500">Cargando...</td></tr>
             ) : lista.length === 0 ? (
-              <tr><td colSpan="6" className="text-center py-8 text-gray-500">No hay aeropuertos</td></tr>
-            ) : lista.map((a) => (
+              <tr><td colSpan="5" className="text-center py-8 text-gray-500">No hay aeropuertos</td></tr>
+            ) : aeropuertosPaginados.map((a) => (
               <tr key={a.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setDrawerAeropuerto(a)}>
                 <td className="px-6 py-4 font-bold text-primary-700">{a.code}</td>
                 <td className="px-6 py-4 text-sm text-gray-800">{a.name}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{a.city}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{a.country}</td>
                 <td className="px-6 py-4">
-                  <span className={'px-3 py-1 rounded-full text-xs font-medium ' + (a.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700')}>
-                    {a.active ? 'Activo' : 'Inactivo'}
-                  </span>
-                </td>
-                <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => cambiarEstado(a)} className={'flex items-center space-x-1 ' + (a.active ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800')}>
-                    {a.active ? <FiToggleRight size={18} /> : <FiToggleLeft size={18} />}
-                    <span className="text-sm font-medium">{a.active ? 'Desactivar' : 'Activar'}</span>
+                  <button className={a.active ? 'text-green-700' : 'text-red-700'} onClick={(e) => { e.stopPropagation(); cambiarEstado(a); }}>
+                    {a.active ? <FiToggleRight size={22}/> : <FiToggleLeft size={22}/>}
                   </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        {totalPaginas > 1 && (
+          <div className="px-6 py-3 border-t flex items-center justify-between bg-gray-50">
+            <button disabled={pagina === 1} onClick={() => setPagina(pagina - 1)} className="px-3 py-1 bg-white border rounded text-sm disabled:opacity-50">Anterior</button>
+            <span className="text-sm text-gray-600">Página {pagina} de {totalPaginas}</span>
+            <button disabled={pagina === totalPaginas} onClick={() => setPagina(pagina + 1)} className="px-3 py-1 bg-white border rounded text-sm disabled:opacity-50">Siguiente</button>
+          </div>
+        )}
         <p className="text-sm text-gray-500 mt-2">Haz clic en cualquier fila para ver detalles</p>
       </div>
 
@@ -157,10 +183,13 @@ const Aeropuertos = () => {
               <InfoFila icon={FiToggleRight} label="Estado" value={drawerAeropuerto.active ? 'Activo' : 'Inactivo'} />
             </div>
             <div className="px-6 pt-5 pb-10 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
-              <button onClick={() => cambiarEstado(drawerAeropuerto)} className="btn-primary">
+              <button onClick={() => { const a = drawerAeropuerto; setDrawerAeropuerto(null); cambiarEstado(a); }} className="btn-secondary">
                 {drawerAeropuerto.active ? 'Desactivar' : 'Activar'}
               </button>
-              <button onClick={() => setDrawerAeropuerto(null)} className="btn-secondary ml-2">Cerrar</button>
+              <button onClick={() => { const a = drawerAeropuerto; setDrawerAeropuerto(null); editarAeropuerto(a); }} className="btn-primary">
+                Editar aeropuerto
+              </button>
+              <button onClick={() => setDrawerAeropuerto(null)} className="btn-secondary">Cerrar</button>
             </div>
           </div>
         </>
@@ -171,7 +200,7 @@ const Aeropuertos = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-800">Registrar Aeropuerto</h2>
+              <h2 className="text-xl font-bold text-gray-800">{aeropuertoEditando ? 'Editar Aeropuerto' : 'Registrar Aeropuerto'}</h2>
               <button onClick={() => setModal(false)} className="text-gray-500 hover:text-gray-700">
                 <FiX size={22} />
               </button>
@@ -200,7 +229,7 @@ const Aeropuertos = () => {
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button className="btn-secondary" onClick={() => setModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar'}</button>
+              <button className="btn-primary" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando...' : aeropuertoEditando ? 'Guardar cambios' : 'Guardar'}</button>
             </div>
           </div>
         </div>

@@ -32,7 +32,7 @@ const dashboard = async (req, res) => {
       "SELECT COALESCE(SUM(amount),0) AS total FROM payments WHERE status = 'approved' AND type = 'payment' AND DATE(payment_date) = CURDATE()"
     );
     const [dte] = await pool.query(
-      "SELECT COALESCE(SUM(transmission_status='accepted'),0) AS aceptados, COALESCE(SUM(transmission_status='rejected'),0) AS rechazados, COALESCE(SUM(transmission_status='transmitted'),0) AS pendientes, COALESCE(SUM(transmission_status='contingency'),0) AS contingencia FROM dte_headers WHERE DATE(emission_date) = CURDATE()"
+      "SELECT COALESCE(SUM(transmission_status='accepted'),0) AS aceptados, COALESCE(SUM(transmission_status='rejected'),0) AS rechazados, COALESCE(SUM(transmission_status IN ('transmitted','contingency')),0) AS pendientes, COALESCE(SUM(transmission_status='contingency'),0) AS contingencia FROM dte_headers WHERE DATE(emission_date) = CURDATE()"
     );
     const [cont24] = await pool.query(
       "SELECT COUNT(*) AS total FROM dte_headers WHERE transmission_status IN ('contingency','transmitted') AND emission_date < (NOW() - INTERVAL 24 HOUR)"

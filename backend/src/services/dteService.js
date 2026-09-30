@@ -21,6 +21,7 @@ const CAT017 = { cash: '01', card: '03', transfer: '05', paypal: '08' };
 const CAT022 = { DUI: '13', NIT: '36', Passport: '3', '13': '13', '36': '36', '3': '3' };
 
 const redondeo = (v) => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
+const redondeo8 = (v) => Math.round((Number(v) + Number.EPSILON) * 1e8) / 1e8;
 const pad = (n) => (n < 10 ? '0' + n : '' + n);
 const fmtFecha = (d) => { const x = new Date(d); return x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate()); };
 const fmtHora = (d) => { const x = new Date(d); return pad(x.getHours()) + ':' + pad(x.getMinutes()) + ':' + pad(x.getSeconds()); };
@@ -31,7 +32,7 @@ const siguienteCorrelativo = async (tipo) => {
   const anio = new Date().getFullYear();
   const [r] = await pool.query('SELECT COALESCE(MAX(annual_correlative), 0) + 1 AS n FROM dte_headers WHERE dte_type = ? AND YEAR(emission_date) = ?', [tipo, anio]);
   const seq = r[0].n;
-  return { numero: 'DTE' + tipo + CONFIG.establecimiento + CONFIG.puntoVenta + String(seq).padStart(15, '0'), seq: seq };
+  return { numero: 'DTE-' + tipo + '-' + CONFIG.establecimiento + CONFIG.puntoVenta + '-' + String(seq).padStart(15, '0'), seq: seq };
 };
 
 const emitirDTE = async (opciones) => {
@@ -62,7 +63,7 @@ const emitirDTE = async (opciones) => {
     [reservation_id]
   );
   const pago = pagos[0] || null;
-  const precioPorPax = redondeo(parseFloat(reserva.estimated_total) / pax.length);
+  const precioPorPax = redondeo8(parseFloat(reserva.estimated_total) / pax.length);
 
   const receptor = {
     tipoDocumento: CAT022[reserva.c_doctype] || '13',
@@ -77,7 +78,7 @@ const emitirDTE = async (opciones) => {
 
   const corr = await siguienteCorrelativo(tipo_dte);
   const identificacion = {
-    version: tipo_dte === '01' ? 2 : 4,
+    version: 3,
     ambiente: CONFIG.ambiente,
     tipoDte: tipo_dte,
     codigoGeneracion: uuidV4(),
@@ -99,7 +100,7 @@ const emitirDTE = async (opciones) => {
         numItem: i + 1, tipoItem: 2, codigo: 'PAX-' + p.id, codTributo: null, uniMedida: 99,
         descripcion: 'Boleto aéreo - ' + p.first_names + ' ' + p.last_names + ' (Vuelos: ' + vuelosTxt + ')',
         precioUni: ventaGravada, montoDescu: 0, ventaNoSuj: 0, ventaExenta: 0, ventaGravada: ventaGravada,
-        tributos: null, ivaItem: redondeo((ventaGravada / 1.13) * 0.13), psv: 0, noGravado: 0
+        tributos: null, ivaItem: redondeo8((ventaGravada / 1.13) * 0.13), psv: 0, noGravado: 0
       };
     });
     const totalGravada = redondeo(cuerpo.reduce((s, it) => s + it.ventaGravada, 0));
@@ -115,7 +116,7 @@ const emitirDTE = async (opciones) => {
     };
   } else {
     cuerpo = pax.map((p, i) => {
-      const base = redondeo(precioPorPax / 1.13);
+      const base = redondeo8(precioPorPax / 1.13);
       return {
         numItem: i + 1, tipoItem: 2, codigo: 'PAX-' + p.id, codTributo: '20', uniMedida: 99,
         descripcion: 'Boleto aéreo - ' + p.first_names + ' ' + p.last_names + ' (Vuelos: ' + vuelosTxt + ')',
@@ -168,23 +169,34 @@ const emitirDTE = async (opciones) => {
 
   const ivaGuardado = tipo_dte === '01' ? resumen.totalIva : redondeo(resumen.totalGravada * 0.13);
   const estadoInicial = cont ? 'contingency' : 'transmitted';
-  const [head] = await pool.query(
-    `INSERT INTO dte_headers (uuid_generation, dte_type, control_number, annual_correlative, emission_date, emission_time,
-      environment, billing_model, operation_type, transmission_status, reservation_id, full_json,
-      issuer_nit, issuer_name, receiver_name, receiver_doc_type, receiver_doc_number,
-      total_non_taxable, total_exempt, total_taxable, total_vat, total_to_pay, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, NOW())`,
-    [identificacion.codigoGeneracion, tipo_dte, identificacion.numeroControl, corr.seq, identificacion.fecEmi, identificacion.horEmi,
-     CONFIG.ambiente, identificacion.tipoModelo, identificacion.tipoOperacion, estadoInicial, reservation_id, JSON.stringify(dte),
-     CONFIG.nit, CONFIG.nombre, dte.receptor.nombre, dte.receptor.tipoDocumento, dte.receptor.numDocumento,
-     resumen.totalGravada, ivaGuardado, resumen.totalPagar]
-  );
-  for (const it of cuerpo) {
-    await pool.query(
-      `INSERT INTO dte_items (header_id, item_number, item_type, quantity, unit_measure, description, unit_price, discount_amount, sale_non_taxable, sale_exempt, sale_taxable, vat_item, tribute_code)
-       VALUES (?, ?, ?, 1, ?, ?, ?, ?, 0, 0, ?, ?, ?)`,
-      [head.insertId, it.numItem, it.tipoItem, it.uniMedida, it.descripcion, it.precioUni, it.montoDescu, it.ventaGravada, it.ivaItem || 0, it.codTributo]
+  const conn = await pool.getConnection();
+  await conn.beginTransaction();
+  let head;
+  try {
+    [head] = await conn.query(
+      `INSERT INTO dte_headers (uuid_generation, dte_type, control_number, annual_correlative, emission_date, emission_time,
+        environment, billing_model, operation_type, transmission_status, reservation_id, full_json,
+        issuer_nit, issuer_name, receiver_name, receiver_doc_type, receiver_doc_number,
+        total_non_taxable, total_exempt, total_taxable, total_vat, total_to_pay, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, NOW())`,
+      [identificacion.codigoGeneracion, tipo_dte, identificacion.numeroControl, corr.seq, identificacion.fecEmi, identificacion.horEmi,
+       CONFIG.ambiente, identificacion.tipoModelo, identificacion.tipoOperacion, estadoInicial, reservation_id, JSON.stringify(dte),
+       CONFIG.nit, CONFIG.nombre, dte.receptor.nombre, dte.receptor.tipoDocumento, dte.receptor.numDocumento,
+       resumen.totalGravada, ivaGuardado, resumen.totalPagar]
     );
+    for (const it of cuerpo) {
+      await conn.query(
+        `INSERT INTO dte_items (header_id, item_number, item_type, quantity, unit_measure, description, unit_price, discount_amount, sale_non_taxable, sale_exempt, sale_taxable, vat_item, tribute_code)
+         VALUES (?, ?, ?, 1, ?, ?, ?, ?, 0, 0, ?, ?, ?)`,
+        [head.insertId, it.numItem, it.tipoItem, it.uniMedida, it.descripcion, it.precioUni, it.montoDescu, it.ventaGravada, it.ivaItem || 0, it.codTributo]
+      );
+    }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw new Error('Error al guardar DTE en base de datos: ' + err.message);
+  } finally {
+    conn.release();
   }
 
   if (cont) {

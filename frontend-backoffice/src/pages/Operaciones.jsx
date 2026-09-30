@@ -1,8 +1,20 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
 import SearchableSelect from '../components/SearchableSelect';
-import { FiUsers, FiTag, FiMap, FiSettings, FiActivity, FiEdit2, FiX } from 'react-icons/fi';
+import { FiUsers, FiUser, FiTag, FiMap, FiSettings, FiActivity, FiEdit2, FiX, FiToggleLeft, FiToggleRight, FiPlus, FiBriefcase, FiCheckCircle, FiAlertTriangle, FiTrendingUp, FiAward, FiMonitor } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+
+const KPICard = ({ title, value, icon: Icon, colorClass = "text-primary-600 bg-primary-50" }) => (
+  <div className="card p-4 flex items-center space-x-4">
+    <div className={`p-3 rounded-full ${colorClass}`}>
+      <Icon size={24} />
+    </div>
+    <div>
+      <p className="text-sm font-medium text-gray-500">{title}</p>
+      <p className="text-2xl font-bold text-gray-800">{value}</p>
+    </div>
+  </div>
+);
 
 const Operaciones = () => {
   const [tab, setTab] = useState('tripulacion');
@@ -25,6 +37,22 @@ const Operaciones = () => {
   const [fFare, setFFare] = useState({ flight_id: '', fare_class_id: '', price: '', seats_allocated: '' });
   const [faresVuelo, setFaresVuelo] = useState([]);
   const [fFac, setFFac] = useState({ airport_id: '', type: 'gate', code: '' });
+  const [drawerTripulacion, setDrawerTripulacion] = useState(null);
+  const [drawerFacilidad, setDrawerFacilidad] = useState(null);
+  const [drawerConfig, setDrawerConfig] = useState(null);
+  
+  const [modalNuevoTripulante, setModalNuevoTripulante] = useState(false);
+  const [modalAsignarTripulacion, setModalAsignarTripulacion] = useState(false);
+  const [modalNuevaClase, setModalNuevaClase] = useState(false);
+  const [modalAsignarTarifa, setModalAsignarTarifa] = useState(false);
+  const [modalNuevaInstalacion, setModalNuevaInstalacion] = useState(false);
+
+  const InfoFila = ({ label, valor }) => (
+    <div className="mb-4">
+      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{label}</div>
+      <div className="text-sm text-gray-900 mt-1">{valor || '-'}</div>
+    </div>
+  );
 
   const cargarBase = () => {
     api.get('/operaciones/tripulacion').then((r) => setCrew(r.data.datos || [])).catch(() => {});
@@ -173,6 +201,25 @@ const Operaciones = () => {
     { id: 'traza', label: 'Trazabilidad DTE', icon: FiActivity }
   ];
 
+  // Máximo 40 filas por vista; el resto se pagina.
+  const itemsPorPagina = 40;
+  const [paginaCrew, setPaginaCrew] = useState(1);
+  const [paginaFac, setPaginaFac] = useState(1);
+  const [paginaConfig, setPaginaConfig] = useState(1);
+  const crewPaginado = crew.slice((paginaCrew - 1) * itemsPorPagina, paginaCrew * itemsPorPagina);
+  const facilitiesPaginadas = facilities.slice((paginaFac - 1) * itemsPorPagina, paginaFac * itemsPorPagina);
+  const configPaginada = config.slice((paginaConfig - 1) * itemsPorPagina, paginaConfig * itemsPorPagina);
+  const totalPaginas = (n) => Math.ceil(n / itemsPorPagina);
+  const PiePagina = ({ pagina, total, setPagina }) => (
+    total > 1 ? (
+      <div className="px-4 py-3 border-t flex items-center justify-between bg-gray-50">
+        <button disabled={pagina === 1} onClick={() => setPagina(pagina - 1)} className="px-3 py-1 bg-white border rounded text-sm disabled:opacity-50">Anterior</button>
+        <span className="text-sm text-gray-600">Página {pagina} de {total}</span>
+        <button disabled={pagina === total} onClick={() => setPagina(pagina + 1)} className="px-3 py-1 bg-white border rounded text-sm disabled:opacity-50">Siguiente</button>
+      </div>
+    ) : null
+  );
+
   return (
     <div className="space-y-6">
       <div>
@@ -188,54 +235,66 @@ const Operaciones = () => {
       </div>
 
       {tab === 'tripulacion' && (
-        <div className="space-y-4">
-          <div className="card p-4 grid grid-cols-1 md:grid-cols-5 gap-3">
-            <input className="input-field" placeholder="Nombre completo" value={fCrew.full_name} onChange={(e) => setFCrew(Object.assign({}, fCrew, { full_name: e.target.value }))} />
-            <select className="input-field" value={fCrew.role_operativo} onChange={(e) => setFCrew(Object.assign({}, fCrew, { role_operativo: e.target.value }))}>
-              <option value="pilot">Piloto</option><option value="copilot">Copiloto</option>
-              <option value="cabin">Auxiliar de vuelo</option><option value="maintenance">Mantenimiento</option>
-            </select>
-            <input className="input-field" placeholder="Tipo licencia" value={fCrew.license_type} onChange={(e) => setFCrew(Object.assign({}, fCrew, { license_type: e.target.value }))} />
-            <input className="input-field" placeholder="N° licencia" value={fCrew.license_number} onChange={(e) => setFCrew(Object.assign({}, fCrew, { license_number: e.target.value }))} />
-            <div className="flex gap-2">
-              <input type="date" className="input-field" value={fCrew.license_expiry} onChange={(e) => setFCrew(Object.assign({}, fCrew, { license_expiry: e.target.value }))} />
-              <button className="btn-primary whitespace-nowrap" onClick={crearTripulante}>Crear</button>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <KPICard title="Total Tripulantes" value={crew.length} icon={FiUsers} colorClass="text-blue-600 bg-blue-50" />
+            <KPICard title="Pilotos" value={crew.filter(c => c.role_operativo === 'pilot').length} icon={FiAward} colorClass="text-indigo-600 bg-indigo-50" />
+            <KPICard title="Activos" value={crew.filter(c => c.active !== 0 && c.active !== false).length} icon={FiCheckCircle} colorClass="text-green-600 bg-green-50" />
+            <KPICard title="Inactivos" value={crew.filter(c => c.active === 0 || c.active === false).length} icon={FiAlertTriangle} colorClass="text-red-600 bg-red-50" />
+          </div>
+          
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold">Gestión de Tripulación</h2>
+              <p className="text-sm text-gray-500">Administra el personal, sus roles, licencias y estado operativo.</p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button className="btn-secondary flex items-center gap-2" onClick={() => setModalAsignarTripulacion(true)}>
+                <FiPlus /> Asignar a Vuelo
+              </button>
+              <button className="btn-primary flex items-center gap-2" onClick={() => setModalNuevoTripulante(true)}>
+                <FiPlus /> Nuevo Tripulante
+              </button>
             </div>
           </div>
-          <div className="card p-4 grid grid-cols-1 md:grid-cols-6 gap-3">
-            <SearchableSelect options={opcionesVuelos} value={fAsig.flight_id} onChange={(valor) => verCrewVuelo(valor)} placeholder="Vuelo: número, origen, destino..." />
-            <SearchableSelect options={opcionesTripulantes} value={fAsig.crew_member_id} onChange={(valor) => setFAsig(Object.assign({}, fAsig, { crew_member_id: valor }))} placeholder="Tripulante: nombre o rol..." />
-            <input type="datetime-local" className="input-field" value={fAsig.duty_start} onChange={(e) => setFAsig(Object.assign({}, fAsig, { duty_start: e.target.value }))} />
-            <input type="datetime-local" className="input-field" value={fAsig.duty_end} onChange={(e) => setFAsig(Object.assign({}, fAsig, { duty_end: e.target.value }))} />
-            <button className="btn-primary" onClick={asignar}>Asignar</button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {crewPaginado.length === 0 ? (
+              <div className="col-span-full card p-10 text-center text-gray-500">No hay tripulantes para mostrar.</div>
+            ) : (
+              crewPaginado.map((c) => (
+                <div key={c.id} className={`card p-5 cursor-pointer hover:shadow-lg transition-all relative flex flex-col items-center text-center ${!c.active ? 'opacity-60' : ''}`} onClick={() => setDrawerTripulacion(c)}>
+                  <div className="absolute top-4 right-4">
+                    <button type="button" className={c.active ? 'text-green-700' : 'text-red-700'} onClick={(e) => { 
+                      e.stopPropagation(); 
+                      api.put('/operaciones/tripulacion/' + c.id, { ...c, license_expiry: c.license_expiry ? String(c.license_expiry).slice(0, 10) : '', active: !c.active }).then(cargarBase).catch(() => toast.error('Error al cambiar estado')); 
+                    }}>
+                      {c.active ? <FiToggleRight size={22}/> : <FiToggleLeft size={22}/>}
+                    </button>
+                  </div>
+                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-500 mb-3">
+                    <FiUser size={32} />
+                  </div>
+                  <h3 className="font-bold text-gray-800 text-lg">{c.full_name}</h3>
+                  <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold mt-1 mb-2">
+                    {rolLabel(c.role_operativo)}
+                  </span>
+                  <hr className="w-full my-3" />
+                  <div className="text-xs text-gray-500 flex flex-col gap-1 w-full text-left">
+                    <div className="flex justify-between">
+                      <span className="font-semibold">Licencia:</span>
+                      <span>{c.license_type} {c.license_number}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-semibold">Vence:</span>
+                      <span>{c.license_expiry ? String(c.license_expiry).slice(0, 10) : '-'}</span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
-          <div className="card overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b"><tr>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Tripulante</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Rol</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Licencia</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Vence</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Acción</th>
-              </tr></thead>
-              <tbody className="divide-y">
-                {crew.map((c) => (
-                  <tr key={c.id} className={!c.active ? 'opacity-60' : ''}>
-                    <td className="px-4 py-2 text-sm">{c.full_name}</td>
-                    <td className="px-4 py-2 text-sm">{rolLabel(c.role_operativo)}</td>
-                    <td className="px-4 py-2 text-sm">{c.license_type} {c.license_number}</td>
-                    <td className="px-4 py-2 text-sm">{c.license_expiry ? String(c.license_expiry).slice(0, 10) : '-'}</td>
-                    <td className="px-4 py-2 text-sm">{c.active ? 'Activo' : 'Inactivo'}</td>
-                    <td className="px-4 py-2">
-                      <button type="button" onClick={() => editarTripulante(c)} className="text-primary-600 hover:text-primary-800 flex items-center space-x-1">
-                        <FiEdit2 size={16} /><span className="text-sm">Editar</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mt-4">
+            <PiePagina pagina={paginaCrew} total={totalPaginas(crew.length)} setPagina={setPaginaCrew} />
           </div>
           {modalCrew && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -303,20 +362,26 @@ const Operaciones = () => {
       )}
 
       {tab === 'clases' && (
-        <div className="space-y-4">
-          <div className="card p-4 grid grid-cols-1 md:grid-cols-5 gap-3">
-            <input className="input-field" placeholder="Código (Y, B, M...)" value={fClase.code} onChange={(e) => setFClase(Object.assign({}, fClase, { code: e.target.value }))} />
-            <input className="input-field" placeholder="Nombre" value={fClase.name} onChange={(e) => setFClase(Object.assign({}, fClase, { name: e.target.value }))} />
-            <input type="number" step="0.01" className="input-field" value={fClase.multiplier} onChange={(e) => setFClase(Object.assign({}, fClase, { multiplier: e.target.value }))} />
-            <input className="input-field" placeholder="Condiciones" value={fClase.conditions} onChange={(e) => setFClase(Object.assign({}, fClase, { conditions: e.target.value }))} />
-            <button className="btn-primary" onClick={crearClase}>Crear clase</button>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <KPICard title="Total Clases" value={clases.length} icon={FiTag} colorClass="text-purple-600 bg-purple-50" />
+            <KPICard title="Clases Premium (>1x)" value={clases.filter(c => parseFloat(c.multiplier) > 1).length} icon={FiTrendingUp} colorClass="text-emerald-600 bg-emerald-50" />
+            <KPICard title="Clases Económicas" value={clases.filter(c => parseFloat(c.multiplier) <= 1).length} icon={FiBriefcase} colorClass="text-orange-600 bg-orange-50" />
           </div>
-          <div className="card p-4 grid grid-cols-1 md:grid-cols-5 gap-3">
-            <SearchableSelect options={opcionesVuelos} value={fFare.flight_id} onChange={(valor) => verFares(valor)} placeholder="Vuelo: número, origen, destino..." />
-            <SearchableSelect options={opcionesClases} value={fFare.fare_class_id} onChange={(valor) => setFFare(Object.assign({}, fFare, { fare_class_id: valor }))} placeholder="Clase: código o nombre..." />
-            <input type="number" step="0.01" className="input-field" placeholder="Precio final con impuestos" value={fFare.price} onChange={(e) => setFFare(Object.assign({}, fFare, { price: e.target.value }))} />
-            <input type="number" className="input-field" placeholder="Asientos" value={fFare.seats_allocated} onChange={(e) => setFFare(Object.assign({}, fFare, { seats_allocated: e.target.value }))} />
-            <button className="btn-primary" onClick={asignarFare}>Asignar tarifa</button>
+
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold">Clases Tarifarias</h2>
+              <p className="text-sm text-gray-500">Gestiona los multiplicadores y asignación de tarifas a vuelos.</p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button className="btn-secondary flex items-center gap-2" onClick={() => setModalAsignarTarifa(true)}>
+                <FiPlus /> Asignar Tarifa
+              </button>
+              <button className="btn-primary flex items-center gap-2" onClick={() => setModalNuevaClase(true)}>
+                <FiPlus /> Nueva Clase
+              </button>
+            </div>
           </div>
           {fFare.flight_id && (
             <div className="card overflow-hidden">
@@ -338,14 +403,23 @@ const Operaciones = () => {
       )}
 
       {tab === 'infra' && (
-        <div className="space-y-4">
-          <div className="card p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-            <SearchableSelect options={opcionesAeropuertos} value={fFac.airport_id} onChange={(valor) => setFFac(Object.assign({}, fFac, { airport_id: valor }))} placeholder="Aeropuerto: IATA o nombre..." />
-            <select className="input-field" value={fFac.type} onChange={(e) => setFFac(Object.assign({}, fFac, { type: e.target.value }))}>
-              <option value="terminal">Terminal</option><option value="gate">Puerta de embarque</option><option value="checkin_point">Punto de check-in</option>
-            </select>
-            <input className="input-field" placeholder="Código (T1, A5, C3...)" value={fFac.code} onChange={(e) => setFFac(Object.assign({}, fFac, { code: e.target.value }))} />
-            <button className="btn-primary" onClick={crearFac}>Crear instalación</button>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <KPICard title="Total Instalaciones" value={facilities.length} icon={FiMap} colorClass="text-teal-600 bg-teal-50" />
+            <KPICard title="Puertas (Gates)" value={facilities.filter(f => f.type === 'gate').length} icon={FiMonitor} colorClass="text-blue-600 bg-blue-50" />
+            <KPICard title="Instalaciones Activas" value={facilities.filter(f => f.active).length} icon={FiCheckCircle} colorClass="text-green-600 bg-green-50" />
+          </div>
+
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold">Infraestructura</h2>
+              <p className="text-sm text-gray-500">Controla puertas de embarque, terminales y puntos de atención.</p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button className="btn-primary flex items-center gap-2" onClick={() => setModalNuevaInstalacion(true)}>
+                <FiPlus /> Nueva Instalación
+              </button>
+            </div>
           </div>
           <div className="card overflow-hidden">
             <table className="w-full">
@@ -356,16 +430,24 @@ const Operaciones = () => {
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Activa</th>
               </tr></thead>
               <tbody className="divide-y">
-                {facilities.map((f) => (
-                  <tr key={f.id}>
+                {facilitiesPaginadas.map((f) => (
+                  <tr key={f.id} onClick={() => setDrawerFacilidad(f)} className="cursor-pointer hover:bg-gray-50">
                     <td className="px-4 py-2 text-sm">{f.iata_code}</td>
                     <td className="px-4 py-2 text-sm">{f.type}</td>
                     <td className="px-4 py-2 text-sm font-mono">{f.code}</td>
-                    <td className="px-4 py-2 text-sm">{f.active ? 'Sí' : 'No'}</td>
+                    <td className="px-4 py-2 text-sm">
+                      <button type="button" className={f.active ? 'text-green-700' : 'text-red-700'} onClick={(e) => { 
+                        e.stopPropagation(); 
+                        api.put('/operaciones/infraestructura/' + f.id, { active: !f.active }).then(cargarBase).catch(() => toast.error('Error al cambiar estado')); 
+                      }}>
+                        {f.active ? <FiToggleRight size={22}/> : <FiToggleLeft size={22}/>}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            <PiePagina pagina={paginaFac} total={totalPaginas(facilities.length)} setPagina={setPaginaFac} />
           </div>
         </div>
       )}
@@ -377,19 +459,18 @@ const Operaciones = () => {
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Parámetro</th>
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Valor</th>
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Descripción</th>
-              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Acción</th>
             </tr></thead>
             <tbody className="divide-y">
-              {config.map((c) => (
-                <tr key={c.param_key}>
+              {configPaginada.map((c) => (
+                <tr key={c.param_key} onClick={() => setDrawerConfig(c)} className="cursor-pointer hover:bg-gray-50">
                   <td className="px-4 py-2 text-sm font-mono">{c.param_key}</td>
-                  <td className="px-4 py-2"><input className="input-field py-1" defaultValue={c.param_value} onBlur={(e) => e.target.value !== c.param_value && guardarConfig(c.param_key, e.target.value)} /></td>
+                  <td className="px-4 py-2 text-sm">{c.param_value}</td>
                   <td className="px-4 py-2 text-sm text-gray-500">{c.description}</td>
-                  <td className="px-4 py-2 text-xs text-gray-400">Guarda al salir del campo</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <PiePagina pagina={paginaConfig} total={totalPaginas(config.length)} setPagina={setPaginaConfig} />
         </div>
       )}
 
@@ -415,6 +496,244 @@ const Operaciones = () => {
               </ol>
             </div>
           )}
+        </div>
+      )}
+                {modalNuevoTripulante && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-gray-800">Nuevo Tripulante</h2>
+                  <button onClick={() => setModalNuevoTripulante(false)} className="text-gray-500 hover:text-gray-700"><FiX size={22} /></button>
+                </div>
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nombre completo *</label>
+                    <input className="input-field" placeholder="Nombre completo" value={fCrew.full_name} onChange={(e) => setFCrew(Object.assign({}, fCrew, { full_name: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Rol operativo *</label>
+                    <select className="input-field" value={fCrew.role_operativo} onChange={(e) => setFCrew(Object.assign({}, fCrew, { role_operativo: e.target.value }))}>
+                      <option value="pilot">Piloto</option><option value="copilot">Copiloto</option>
+                      <option value="cabin">Auxiliar de vuelo</option><option value="maintenance">Mantenimiento</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Tipo licencia</label>
+                      <input className="input-field" placeholder="Tipo licencia" value={fCrew.license_type} onChange={(e) => setFCrew(Object.assign({}, fCrew, { license_type: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">N° licencia</label>
+                      <input className="input-field" placeholder="N° licencia" value={fCrew.license_number} onChange={(e) => setFCrew(Object.assign({}, fCrew, { license_number: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Vencimiento licencia</label>
+                    <input type="date" className="input-field" value={fCrew.license_expiry} onChange={(e) => setFCrew(Object.assign({}, fCrew, { license_expiry: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="flex justify-end space-x-2 mt-6">
+                  <button className="btn-secondary" onClick={() => setModalNuevoTripulante(false)}>Cancelar</button>
+                  <button className="btn-primary" onClick={crearTripulante}>Crear</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {modalAsignarTripulacion && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-gray-800">Asignar a Vuelo</h2>
+                  <button onClick={() => setModalAsignarTripulacion(false)} className="text-gray-500 hover:text-gray-700"><FiX size={22} /></button>
+                </div>
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Vuelo</label>
+                    <SearchableSelect options={opcionesVuelos} value={fAsig.flight_id} onChange={(valor) => verCrewVuelo(valor)} placeholder="Vuelo: número, origen, destino..." />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tripulante</label>
+                    <SearchableSelect options={opcionesTripulantes} value={fAsig.crew_member_id} onChange={(valor) => setFAsig(Object.assign({}, fAsig, { crew_member_id: valor }))} placeholder="Tripulante: nombre o rol..." />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Inicio de turno</label>
+                    <input type="datetime-local" className="input-field" value={fAsig.duty_start} onChange={(e) => setFAsig(Object.assign({}, fAsig, { duty_start: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Fin de turno</label>
+                    <input type="datetime-local" className="input-field" value={fAsig.duty_end} onChange={(e) => setFAsig(Object.assign({}, fAsig, { duty_end: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="flex justify-end space-x-2 mt-6">
+                  <button className="btn-secondary" onClick={() => setModalAsignarTripulacion(false)}>Cancelar</button>
+                  <button className="btn-primary" onClick={asignar}>Asignar</button>
+                </div>
+              </div>
+            </div>
+          )}
+        {modalNuevaClase && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-gray-800">Nueva Clase Tarifaria</h2>
+                  <button onClick={() => setModalNuevaClase(false)} className="text-gray-500 hover:text-gray-700"><FiX size={22} /></button>
+                </div>
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Código (Y, B, M...)</label>
+                    <input className="input-field" placeholder="Código" value={fClase.code} onChange={(e) => setFClase(Object.assign({}, fClase, { code: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+                    <input className="input-field" placeholder="Nombre" value={fClase.name} onChange={(e) => setFClase(Object.assign({}, fClase, { name: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Multiplicador</label>
+                    <input type="number" step="0.01" className="input-field" value={fClase.multiplier} onChange={(e) => setFClase(Object.assign({}, fClase, { multiplier: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Condiciones</label>
+                    <input className="input-field" placeholder="Condiciones" value={fClase.conditions} onChange={(e) => setFClase(Object.assign({}, fClase, { conditions: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="flex justify-end space-x-2 mt-6">
+                  <button className="btn-secondary" onClick={() => setModalNuevaClase(false)}>Cancelar</button>
+                  <button className="btn-primary" onClick={crearClase}>Crear</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {modalAsignarTarifa && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-gray-800">Asignar Tarifa</h2>
+                  <button onClick={() => setModalAsignarTarifa(false)} className="text-gray-500 hover:text-gray-700"><FiX size={22} /></button>
+                </div>
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Vuelo</label>
+                    <SearchableSelect options={opcionesVuelos} value={fFare.flight_id} onChange={(valor) => verFares(valor)} placeholder="Vuelo: número, origen, destino..." />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Clase Tarifaria</label>
+                    <SearchableSelect options={opcionesClases} value={fFare.fare_class_id} onChange={(valor) => setFFare(Object.assign({}, fFare, { fare_class_id: valor }))} placeholder="Clase: código o nombre..." />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Precio final con impuestos</label>
+                    <input type="number" step="0.01" className="input-field" placeholder="Precio" value={fFare.price} onChange={(e) => setFFare(Object.assign({}, fFare, { price: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Asientos Asignados</label>
+                    <input type="number" className="input-field" placeholder="Asientos" value={fFare.seats_allocated} onChange={(e) => setFFare(Object.assign({}, fFare, { seats_allocated: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="flex justify-end space-x-2 mt-6">
+                  <button className="btn-secondary" onClick={() => setModalAsignarTarifa(false)}>Cancelar</button>
+                  <button className="btn-primary" onClick={asignarFare}>Asignar</button>
+                </div>
+              </div>
+            </div>
+          )}
+        {modalNuevaInstalacion && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-gray-800">Nueva Instalación</h2>
+                  <button onClick={() => setModalNuevaInstalacion(false)} className="text-gray-500 hover:text-gray-700"><FiX size={22} /></button>
+                </div>
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Aeropuerto</label>
+                    <SearchableSelect options={opcionesAeropuertos} value={fFac.airport_id} onChange={(valor) => setFFac(Object.assign({}, fFac, { airport_id: valor }))} placeholder="Aeropuerto: IATA o nombre..." />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+                    <select className="input-field" value={fFac.type} onChange={(e) => setFFac(Object.assign({}, fFac, { type: e.target.value }))}>
+                      <option value="terminal">Terminal</option><option value="gate">Puerta de embarque</option><option value="checkin_point">Punto de check-in</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Código (T1, A5, C3...)</label>
+                    <input className="input-field" placeholder="Código" value={fFac.code} onChange={(e) => setFFac(Object.assign({}, fFac, { code: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="flex justify-end space-x-2 mt-6">
+                  <button className="btn-secondary" onClick={() => setModalNuevaInstalacion(false)}>Cancelar</button>
+                  <button className="btn-primary" onClick={crearFac}>Crear</button>
+                </div>
+              </div>
+            </div>
+          )}
+      {/* Drawers */}
+      {drawerTripulacion && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-end">
+          <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-slide-in">
+            <div className="p-6 border-b flex justify-between items-center bg-gray-50">
+              <h2 className="text-xl font-bold text-gray-800">Detalles de Tripulante</h2>
+              <button onClick={() => setDrawerTripulacion(null)} className="text-gray-500 hover:text-gray-700"><FiX size={24} /></button>
+            </div>
+            <div className="p-6 flex-1 overflow-y-auto">
+              <InfoFila label="Tripulante" valor={drawerTripulacion.full_name} />
+              <InfoFila label="Rol" valor={rolLabel(drawerTripulacion.role_operativo)} />
+              <InfoFila label="Licencia" valor={`${drawerTripulacion.license_type || ''} ${drawerTripulacion.license_number || ''}`} />
+              <InfoFila label="Vence" valor={drawerTripulacion.license_expiry ? String(drawerTripulacion.license_expiry).slice(0, 10) : '-'} />
+              <InfoFila label="Estado" valor={drawerTripulacion.active ? 'Activo' : 'Inactivo'} />
+            </div>
+            <div className="p-6 border-t bg-gray-50 flex gap-3">
+              <button className="btn-primary flex-1 flex items-center justify-center space-x-2" onClick={() => { setDrawerTripulacion(null); editarTripulante(drawerTripulacion); }}>
+                <FiEdit2 /><span>Editar</span>
+              </button>
+              <button className="btn-secondary flex-1" onClick={() => setDrawerTripulacion(null)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {drawerFacilidad && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-end">
+          <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-slide-in">
+            <div className="p-6 border-b flex justify-between items-center bg-gray-50">
+              <h2 className="text-xl font-bold text-gray-800">Detalles de Infraestructura</h2>
+              <button onClick={() => setDrawerFacilidad(null)} className="text-gray-500 hover:text-gray-700"><FiX size={24} /></button>
+            </div>
+            <div className="p-6 flex-1 overflow-y-auto">
+              <InfoFila label="Aeropuerto" valor={drawerFacilidad.iata_code} />
+              <InfoFila label="Tipo" valor={drawerFacilidad.type} />
+              <InfoFila label="Código" valor={drawerFacilidad.code} />
+              <InfoFila label="Activa" valor={drawerFacilidad.active ? 'Sí' : 'No'} />
+            </div>
+            <div className="p-6 border-t bg-gray-50 flex gap-3">
+              <button className="btn-secondary flex-1" onClick={() => setDrawerFacilidad(null)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {drawerConfig && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-end">
+          <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-slide-in">
+            <div className="p-6 border-b flex justify-between items-center bg-gray-50">
+              <h2 className="text-xl font-bold text-gray-800">Detalles de Parámetro</h2>
+              <button onClick={() => setDrawerConfig(null)} className="text-gray-500 hover:text-gray-700"><FiX size={24} /></button>
+            </div>
+            <div className="p-6 flex-1 overflow-y-auto">
+              <InfoFila label="Parámetro" valor={drawerConfig.param_key} />
+              <InfoFila label="Descripción" valor={drawerConfig.description} />
+              <div className="mb-4">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Valor</div>
+                <div className="mt-1">
+                  <input className="input-field py-1" value={drawerConfig.param_value} onChange={(e) => setDrawerConfig({...drawerConfig, param_value: e.target.value})} />
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t bg-gray-50 flex gap-3">
+              <button className="btn-primary flex-1" onClick={() => { guardarConfig(drawerConfig.param_key, drawerConfig.param_value); setDrawerConfig(null); }}>Guardar Cambios</button>
+              <button className="btn-secondary flex-1" onClick={() => setDrawerConfig(null)}>Cerrar</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

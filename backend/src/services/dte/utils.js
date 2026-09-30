@@ -13,7 +13,7 @@ const generarNumeroControl = async (tipoDte, establecimiento = 'M001', puntoVent
   const anio = new Date().getFullYear();
   const [rows] = await pool.query(`SELECT COALESCE(MAX(annual_correlative), 0) + 1 AS siguiente FROM dte_headers WHERE YEAR(emission_date) = ? AND dte_type = ?`, [anio, tipoDte]);
   const correlativo = rows[0].siguiente;
-  return `DTE${tipoDte}${establecimiento}${puntoVenta}${String(correlativo).padStart(15, '0')}`;
+  return `DTE-${tipoDte}-${establecimiento}${puntoVenta}-${String(correlativo).padStart(15, '0')}`;
 };
 
 const formatearFecha = (fecha = new Date()) => fecha.toISOString().split('T')[0];
