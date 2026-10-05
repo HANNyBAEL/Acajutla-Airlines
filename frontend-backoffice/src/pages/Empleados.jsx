@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
-import { FiPlus, FiSearch, FiX, FiUserCheck, FiUserX, FiEdit2, FiMail, FiPhone, FiFileText, FiUser, FiBriefcase, FiShield, FiToggleRight, FiToggleLeft, FiUsers } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiX, FiUserCheck, FiUserX, FiEdit2, FiMail, FiPhone, FiFileText, FiUser, FiBriefcase, FiShield, FiToggleRight, FiToggleLeft, FiUsers, FiEye, FiEyeOff } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const KPICard = ({ title, value, icon: Icon, colorClass }) => (
@@ -163,6 +163,7 @@ const Empleados = () => {
   const [guardando, setGuardando] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [drawerEmp, setDrawerEmp] = useState(null);
+  const [mostrarPassword, setMostrarPassword] = useState(false);
   const [form, setForm] = useState({
     first_names: '',
     last_names: '',
@@ -441,11 +442,16 @@ const Empleados = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {editandoId ? 'Nueva contraseña' : 'Contraseña'}
                 </label>
-                <input
-                  type="password" className="input-field" value={form.password}
-                  onChange={(e) => setCampo('password', e.target.value)}
-                  placeholder={editandoId ? '(Sin cambios si está vacío)' : 'Mínimo 6 caracteres'}
-                />
+                <div className="relative">
+                  <input
+                    type={mostrarPassword ? "text" : "password"} className="input-field pr-10" value={form.password}
+                    onChange={(e) => setCampo('password', e.target.value)}
+                    placeholder={editandoId ? '(Sin cambios si está vacío)' : 'Mínimo 6 caracteres'}
+                  />
+                  <button type="button" onClick={() => setMostrarPassword(!mostrarPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none" aria-label={mostrarPassword ? "Ocultar contraseña" : "Mostrar contraseña"}>
+                    {mostrarPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>

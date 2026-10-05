@@ -20,7 +20,7 @@ const Vuelo = {
       JOIN aircraft ac ON f.aircraft_id = ac.id
       JOIN aircraft_types at ON ac.type_id = at.id
       JOIN flight_fares ff ON ff.flight_id = f.id AND ff.active = 1
-        AND (ff.valid_to IS NULL OR ff.valid_to > NOW())
+        AND (ff.valid_to IS NULL OR ff.valid_to > CONVERT_TZ(NOW(), 'UTC', 'America/El_Salvador'))
       JOIN fare_classes fc ON fc.id = ff.fare_class_id AND fc.code = ? AND fc.active = 1
       WHERE ao.iata_code = ? AND ad.iata_code = ?
         AND DATE(f.departure_datetime) = ?
@@ -49,7 +49,7 @@ const Vuelo = {
     const [rows] = await pool.query(`
       SELECT f.*, ao.iata_code AS origin, ad.iata_code AS destination, at.model AS aircraft,
              CASE
-               WHEN f.departure_datetime <= NOW() AND f.status IN ('scheduled', 'confirmed', 'delayed') THEN 'deployed'
+               WHEN f.departure_datetime <= CONVERT_TZ(NOW(), 'UTC', 'America/El_Salvador') AND f.status IN ('scheduled', 'confirmed', 'delayed') THEN 'deployed'
                ELSE f.status
              END AS display_status
       FROM flights f

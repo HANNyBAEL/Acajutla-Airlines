@@ -178,7 +178,7 @@ const Vuelos = () => {
 
   const estadoLabel = (e) => ({
     scheduled: 'Programado', confirmed: 'Confirmado', in_progress: 'En curso',
-    delayed: 'Retrasado', completed: 'Finalizado', cancelled: 'Cancelado', deployed: 'Desplegado',
+    delayed: 'Retrasado', completed: 'Finalizado', cancelled: 'Cancelado', deployed: 'En vuelo',
   }[e] || e);
 
   const estadoDe = (vuelo) => vuelo?.display_status || vuelo?.status;

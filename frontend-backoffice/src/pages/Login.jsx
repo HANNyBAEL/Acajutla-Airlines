@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiSend } from 'react-icons/fi';
+import { FiSend, FiEye, FiEyeOff } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const Login = () => {
   const [form, setForm] = useState({ usuario: '', password: '' });
+  const [mostrarPassword, setMostrarPassword] = useState(false);
   const [mfa, setMfa] = useState({ codigo: '' });
   const [requiereMFA, setRequiereMFA] = useState(false);
   const [usuarioId, setUsuarioId] = useState(null);
@@ -50,7 +51,12 @@ const Login = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-              <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="input-field" placeholder="••••••••" required />
+              <div className="relative">
+                <input type={mostrarPassword ? "text" : "password"} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="input-field pr-10" placeholder="••••••••" required />
+                <button type="button" onClick={() => setMostrarPassword(!mostrarPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none" aria-label={mostrarPassword ? "Ocultar contraseña" : "Mostrar contraseña"}>
+                  {mostrarPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                </button>
+              </div>
             </div>
             <button type="submit" disabled={cargando} className="btn-primary w-full py-3">{cargando ? 'Ingresando...' : 'Iniciar Sesión'}</button>
           </form>
