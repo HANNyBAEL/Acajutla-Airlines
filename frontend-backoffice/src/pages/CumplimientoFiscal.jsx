@@ -13,13 +13,15 @@ const CumplimientoFiscal = () => {
   const [fechaEv, setFechaEv] = useState('');
   const [resultado, setResultado] = useState(null);
   const [aplicando, setAplicando] = useState(false);
+  const [filtroRetorno, setFiltroRetorno] = useState('');
 
   const cargar = () => {
     api.get('/dte').then((r) => setDtes(r.data.datos || [])).catch(() => {});
   };
   useEffect(() => { cargar(); }, []);
 
-  const sellados = dtes.filter((d) => d.reception_seal && ['01','11','14'].includes(String(d.dte_type)));
+  const sellados = dtes.filter((d) => d.reception_seal && d.transmission_status === 'accepted' && ['01','11','14'].includes(String(d.dte_type)));
+  const selladosFiltrados = sellados.filter(d => (d.uuid_generation || '').toLowerCase().includes(filtroRetorno.toLowerCase()) || (d.pnr || '').toLowerCase().includes(filtroRetorno.toLowerCase()) || (d.receiver_name || '').toLowerCase().includes(filtroRetorno.toLowerCase()));
 
   const aplicar = async () => {
     setAplicando(true);
@@ -68,8 +70,8 @@ const CumplimientoFiscal = () => {
           <div className="md:col-span-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">DTEs sellados (máx 50, mismo tipo/emisor/receptor)</label>
             <div className="max-h-40 overflow-y-auto border rounded p-2 space-y-1">
-              {sellados.length === 0 ? <p className="text-sm text-gray-500">Sin DTEs sellados FE/FEXE/FSEE</p> :
-                sellados.map((d) => (
+              {selladosFiltrados.length === 0 ? <p className="text-sm text-gray-500">Sin DTEs</p> :
+                selladosFiltrados.map((d) => (
                   <label key={d.uuid_generation} className="flex items-center space-x-2 text-sm">
                     <input type="checkbox" checked={sel.includes(d.uuid_generation)} onChange={() => toggle(d.uuid_generation)} />
                     <span className="font-mono text-xs">{d.uuid_generation.slice(0,8)}... ({d.dte_type})</span>

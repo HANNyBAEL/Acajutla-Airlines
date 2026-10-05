@@ -1,3 +1,4 @@
+process.env.TZ = 'America/El_Salvador';
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
@@ -32,6 +33,16 @@ app.get('/', (req, res) => {
   res.json({ nombre: 'SkyManager API - Acajutla Airlines', version: '1.0.0', estado: 'âœ… Operativo', timestamp: new Date().toISOString() });
 });
 app.get('/health', (req, res) => res.json({ ok: true, service: 'skymanager-api' }));
+
+
+const { auditar } = require('./middleware/audit');
+const globalAuditor = auditar();
+app.use((req, res, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+    return globalAuditor(req, res, next);
+  }
+  next();
+});
 
 // Rutas
 const authRoutes = require('./routes/authRoutes');

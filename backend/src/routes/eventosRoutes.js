@@ -12,5 +12,7 @@ router.put('/mh/estado', verificarRol('admin'), auditar('CAMBIAR_ESTADO_MH', 'dt
 router.post('/emitir-contingencia', auditar('EMITIR_DTE_CONTINGENCIA', 'dte'), c.emitirContingencia);
 router.post('/evento-contingencia', auditar('EVENTO_CONTINGENCIA', 'dte'), c.eventoContingencia);
 router.post('/invalidar/:uuid', auditar('INVALIDAR_DTE', 'dte'), c.invalidar);
+router.post('/retorno/:uuid', auditar('RETORNO_DTE', 'dte'), c.retorno);
+router.post('/operaciones-especiales', auditar('OPERACIONES_ESPECIALES', 'dte'), c.operacionesEspeciales);
 
 module.exports = router;

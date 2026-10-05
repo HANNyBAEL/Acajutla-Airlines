@@ -63,7 +63,54 @@ const emitirDTE = async (opciones) => {
     [reservation_id]
   );
   const pago = pagos[0] || null;
-  const precioPorPax = redondeo8(parseFloat(reserva.estimated_total) / pax.length);
+
+  // Los tributos NO se calculan aquí: se toman de las líneas fiscales que se
+  // congelaron en la reserva a partir de las reglas de "Fiscalidad y tasas".
+  // Si no hay reglas registradas, el DTE no lleva impuestos.
+  // - Reglas de El Salvador  -> tributos del DTE (IVA = código 20).
+  // - Reglas de otros países -> cargos de terceros (noGravado): la aerolínea
+  //   los cobra por cuenta de la autoridad extranjera y no son tributos del MH.
+  const [lineasFiscales] = await pool.query(
+    `SELECT rtl.passenger_id, rtl.code, rtl.name, rtl.amount, c.code AS country_code
+     FROM reservation_tax_lines rtl LEFT JOIN countries c ON c.id = rtl.country_id
+     WHERE rtl.reservation_id = ? ORDER BY rtl.id`,
+    [reservation_id]
+  );
+  const PAIS_EMISOR = 'SV';
+  const esLocal = (l) => !l.country_code || String(l.country_code).toUpperCase() === PAIS_EMISOR;
+  const esIVA = (code) => ['20', 'IVA'].includes(String(code || '').toUpperCase());
+  const codigoTributo = (code) => (esIVA(code) ? '20' : String(code));
+  const impuestosPorPax = new Map(pax.map((p) => [p.id, { iva: 0, otros: new Map(), terceros: 0 }]));
+  const tributosResumen = new Map();
+  const cargosTerceros = new Map();
+  let totalImpuestos = 0;
+  for (const l of lineasFiscales) {
+    const monto = Number(l.amount) || 0;
+    totalImpuestos += monto;
+    const destino = impuestosPorPax.get(l.passenger_id);
+    if (!esLocal(l)) {
+      const clave = String(l.country_code).toUpperCase() + ' ' + l.code;
+      const previo = cargosTerceros.get(clave) || { clave, nombre: l.name, valor: 0 };
+      previo.valor += monto;
+      cargosTerceros.set(clave, previo);
+      if (destino) destino.terceros += monto;
+      continue;
+    }
+    const codigo = codigoTributo(l.code);
+    const previo = tributosResumen.get(codigo) || { codigo, descripcion: l.name, valor: 0 };
+    previo.valor += monto;
+    tributosResumen.set(codigo, previo);
+    if (!destino) continue;
+    if (esIVA(l.code)) destino.iva += monto;
+    else destino.otros.set(codigo, (destino.otros.get(codigo) || 0) + monto);
+  }
+  // Base neta por pasajero = total de la reserva sin impuestos, repartido igual.
+  const precioPorPax = redondeo8((parseFloat(reserva.estimated_total) - totalImpuestos) / pax.length);
+  const tributosLista = (filtro) => {
+    const lista = [...tributosResumen.values()].filter((t) => filtro(t.codigo)).map((t) => ({ ...t, valor: redondeo(t.valor) }));
+    return lista.length ? lista : null;
+  };
+  const totalNoGravado = redondeo([...cargosTerceros.values()].reduce((s, c) => s + c.valor, 0));
 
   const receptor = {
     tipoDocumento: CAT022[reserva.c_doctype] || '13',
@@ -93,50 +140,75 @@ const emitirDTE = async (opciones) => {
   };
 
   let cuerpo, resumen;
+  const codigoPago = CAT017[pago ? pago.method : 'cash'] || '01';
+  const referenciaPago = codigoPago === '01' ? null : (pago ? pago.external_reference : null);
   if (tipo_dte === '01') {
+    // FE: el precio unitario incluye el IVA registrado (si existe); los demás
+    // tributos de Fiscalidad y tasas se informan aparte y se suman al total.
     cuerpo = pax.map((p, i) => {
-      const ventaGravada = precioPorPax;
+      const imp = impuestosPorPax.get(p.id);
+      const ivaItem = redondeo8(imp.iva);
+      const ventaGravada = redondeo8(precioPorPax + ivaItem);
+      const otros = [...imp.otros.keys()];
       return {
         numItem: i + 1, tipoItem: 2, codigo: 'PAX-' + p.id, codTributo: null, uniMedida: 99,
         descripcion: 'Boleto aéreo - ' + p.first_names + ' ' + p.last_names + ' (Vuelos: ' + vuelosTxt + ')',
         precioUni: ventaGravada, montoDescu: 0, ventaNoSuj: 0, ventaExenta: 0, ventaGravada: ventaGravada,
-        tributos: null, ivaItem: redondeo8((ventaGravada / 1.13) * 0.13), psv: 0, noGravado: 0
+        tributos: otros.length ? otros : null, ivaItem: ivaItem, psv: 0, noGravado: redondeo(imp.terceros)
       };
     });
     const totalGravada = redondeo(cuerpo.reduce((s, it) => s + it.ventaGravada, 0));
     const totalIva = redondeo(cuerpo.reduce((s, it) => s + it.ivaItem, 0));
+    const otrosTributos = tributosLista((c) => c !== '20');
+    const totalOtros = redondeo((otrosTributos || []).reduce((s, t) => s + t.valor, 0));
+    const montoOperacion = redondeo(totalGravada + totalOtros);
+    const total = redondeo(montoOperacion + totalNoGravado);
     resumen = {
       totalNoSuj: 0, totalExenta: 0, totalGravada: totalGravada, subTotalVentas: totalGravada,
       descuNoSuj: 0, descuExenta: 0, descuGravada: 0, porcentajeDescuento: 0, totalDescu: 0,
-      tributos: null, subTotal: totalGravada, ivaRete: 0, totalIva: totalIva,
-      montoTotalOperacion: totalGravada, totalNoGravado: 0, totalPagar: totalGravada, totalLetras: null,
+      tributos: otrosTributos, subTotal: totalGravada, ivaRete: 0, totalIva: totalIva,
+      montoTotalOperacion: montoOperacion, totalNoGravado: totalNoGravado, totalPagar: total, totalLetras: null,
       condicionOperacion: 1,
-      pagos: [{ codigo: CAT017[pago ? pago.method : 'cash'] || '01', montoPago: totalGravada, referencia: pago ? pago.external_reference : null, plazo: null, periodo: null }],
+      pagos: [{ codigo: codigoPago, montoPago: total, referencia: referenciaPago, plazo: null, periodo: null }],
       numPagoElectronico: null, observaciones: null
     };
   } else {
+    // CCFE: precio sin impuestos; todos los tributos registrados se suman encima.
     cuerpo = pax.map((p, i) => {
-      const base = redondeo8(precioPorPax / 1.13);
+      const imp = impuestosPorPax.get(p.id);
+      const codigos = [...(imp.iva > 0 ? ['20'] : []), ...imp.otros.keys()];
       return {
-        numItem: i + 1, tipoItem: 2, codigo: 'PAX-' + p.id, codTributo: '20', uniMedida: 99,
+        numItem: i + 1, tipoItem: 2, codigo: 'PAX-' + p.id, codTributo: codigos.length ? codigos[0] : null, uniMedida: 99,
         descripcion: 'Boleto aéreo - ' + p.first_names + ' ' + p.last_names + ' (Vuelos: ' + vuelosTxt + ')',
-        precioUni: base, montoDescu: 0, ventaNoSuj: 0, ventaExenta: 0, ventaGravada: base,
-        tributos: ['20'], psv: 0, noGravado: 0
+        precioUni: precioPorPax, montoDescu: 0, ventaNoSuj: 0, ventaExenta: 0, ventaGravada: precioPorPax,
+        tributos: codigos.length ? codigos : null, psv: 0, noGravado: redondeo(imp.terceros)
       };
     });
     const totalGravada = redondeo(cuerpo.reduce((s, it) => s + it.ventaGravada, 0));
-    const iva = redondeo(totalGravada * 0.13);
-    const total = redondeo(totalGravada + iva);
+    const tributos = tributosLista(() => true);
+    const montoOperacion = redondeo(totalGravada + (tributos || []).reduce((s, t) => s + t.valor, 0));
+    const total = redondeo(montoOperacion + totalNoGravado);
     resumen = {
       totalNoSuj: 0, totalExenta: 0, totalGravada: totalGravada, subTotalVentas: totalGravada,
       descuNoSuj: 0, descuExenta: 0, descuGravada: 0, porcentajeDescuento: 0, totalDescu: 0,
-      tributos: [{ codigo: '20', descripcion: 'Impuesto al Valor Agregado 13%', valor: iva }],
-      subTotal: totalGravada, ivaPerci: 0, ivaRete: 0,
-      montoTotalOperacion: total, totalNoGravado: 0, totalPagar: total, totalLetras: null,
+      tributos: tributos, subTotal: totalGravada, ivaPerci: 0, ivaRete: 0,
+      montoTotalOperacion: montoOperacion, totalNoGravado: totalNoGravado, totalPagar: total, totalLetras: null,
       condicionOperacion: 1,
-      pagos: [{ codigo: CAT017[pago ? pago.method : 'cash'] || '01', montoPago: total, referencia: pago ? pago.external_reference : null, plazo: null, periodo: null }],
+      pagos: [{ codigo: codigoPago, montoPago: total, referencia: referenciaPago, plazo: null, periodo: null }],
       numPagoElectronico: null, observaciones: null
     };
+  }
+
+  const apendice = [
+    { campo: 'PNR', etiqueta: 'Código de reserva', valor: reserva.pnr },
+    { campo: 'VUELOS', etiqueta: 'Vuelos facturados', valor: vuelosTxt }
+  ];
+  if (cargosTerceros.size) {
+    // Detalle de lo cobrado por cuenta de autoridades extranjeras (no gravado).
+    apendice.push({
+      campo: 'TERCEROS', etiqueta: 'Cargos por cuenta de terceros',
+      valor: [...cargosTerceros.values()].map((c) => c.clave + ' ' + c.nombre + ': ' + redondeo(c.valor).toFixed(2)).join('; ').slice(0, 150)
+    });
   }
 
   const dte = {
@@ -161,13 +233,10 @@ const emitirDTE = async (opciones) => {
     compraTercero: null,
     cuerpoDocumento: cuerpo,
     resumen: resumen,
-    apendice: [
-      { campo: 'PNR', etiqueta: 'Código de reserva', valor: reserva.pnr },
-      { campo: 'VUELOS', etiqueta: 'Vuelos facturados', valor: vuelosTxt }
-    ]
+    apendice: apendice
   };
 
-  const ivaGuardado = tipo_dte === '01' ? resumen.totalIva : redondeo(resumen.totalGravada * 0.13);
+  const ivaGuardado = tipo_dte === '01' ? resumen.totalIva : redondeo((tributosResumen.get('20') || { valor: 0 }).valor);
   const estadoInicial = cont ? 'contingency' : 'transmitted';
   const conn = await pool.getConnection();
   await conn.beginTransaction();

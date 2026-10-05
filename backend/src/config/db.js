@@ -13,6 +13,8 @@ const pool = mysql.createPool({
   connectTimeout: 15000,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
+  timezone: '-06:00',
+  dateStrings: true,
   ssl: {
     rejectUnauthorized: false
   }

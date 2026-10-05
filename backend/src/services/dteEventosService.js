@@ -135,9 +135,28 @@ const invalidarDTE = async (uuidDte, datos) => {
   if (doc.transmission_status !== 'accepted') throw new Error('Solo se pueden invalidar DTEs con Sello de Recepción (aceptados)');
 
   const uuid = uuidV4();
-  const requiereMismaFecha = ['03', '05', '06', '07', '08'].includes(doc.dte_type);
+
+  const fechaTransmisionDTE = doc.reception_date ? new Date(doc.reception_date) : new Date(doc.created_at);
+  const ahora = new Date();
+  if (['01', '11', '14'].includes(doc.dte_type)) {
+    const limite = new Date(fechaTransmisionDTE);
+    limite.setMonth(limite.getMonth() + 3);
+    if (ahora > limite) throw new Error('El plazo de 3 meses para invalidar este documento ha expirado.');
+  } else {
+    const limite = new Date(fechaTransmisionDTE.getFullYear(), fechaTransmisionDTE.getMonth() + 1, 1);
+    let diasHabiles = 0;
+    while (diasHabiles < 10) {
+      const dia = limite.getDay();
+      if (dia !== 0 && dia !== 6) diasHabiles++;
+      if (diasHabiles < 10) limite.setDate(limite.getDate() + 1);
+    }
+    limite.setHours(23, 59, 59, 999);
+    if (ahora > limite) throw new Error('El plazo de 10 días hábiles del mes siguiente para invalidar ha expirado.');
+  }
+
+  const requiereMismaFecha = ['03', '04', '05', '06', '07', '08', '09', '15'].includes(doc.dte_type);
   const fechaEvento = requiereMismaFecha ? fmtFecha(doc.emission_date) : fmtFecha(new Date());
-  const nulaReemplazo = ['05', '06'].includes(doc.dte_type) && Number(datos.tipoAnulacion) !== 2;
+  const nulaReemplazo = Number(datos.tipoAnulacion) === 2 || ['05', '07'].includes(doc.dte_type);
 
   const evento = {
     identificacion: {
@@ -171,6 +190,54 @@ const invalidarDTE = async (uuidDte, datos) => {
   return { event_id: ev.insertId, uuid: uuid, sello: sello, evento: evento };
 };
 
+const retornarDTE = async (uuidDte, datos) => {
+  const [h] = await pool.query('SELECT * FROM dte_headers WHERE uuid_generation = ?', [uuidDte]);
+  if (!h.length) throw new Error('DTE no encontrado');
+  const doc = h[0];
+  if (doc.transmission_status !== 'accepted') throw new Error('Solo se puede retornar de DTEs con Sello de Recepcin (aceptados)');
+  if (!['01', '11', '14'].includes(doc.dte_type)) throw new Error('El evento de retorno solo aplica a FE, FEXE o FSEE');
+  const fechaTransmisionDTE = new Date(doc.reception_date || doc.created_at);
+  const ahora = new Date();
+  const limite = new Date(fechaTransmisionDTE);
+  limite.setMonth(limite.getMonth() + 3);
+  if (ahora > limite) throw new Error('El plazo legal de 3 meses para emitir un evento de retorno ha expirado');
+  const uuid = uuidV4();
+  const evento = {
+    identificacion: { version: 1, ambiente: CONFIG.ambiente, codigoGeneracion: uuid, fechaEvento: fmtFecha(ahora), horaEvento: fmtHora(ahora) },
+    emisor: { nit: CONFIG.nit, nombre: CONFIG.nombre, tipoEstablecimiento: '2', telefono: CONFIG.telefono, correo: CONFIG.correo },
+    documentosRelacionados: [{ tipoDocumento: doc.dte_type, codigoGeneracion: doc.uuid_generation, fechaGeneracion: fmtFecha(doc.emission_date) }],
+    motivo: { descripcion: datos.motivo, responsable: { nombre: datos.responsable?.nombre, tipoDocumento: datos.responsable?.tipoDoc, numDocumento: datos.responsable?.numDoc } }
+  };
+  const [ev] = await pool.query('INSERT INTO dte_return_events (uuid, dte_id, motivo, responsable_nombre, responsable_tipo_doc, responsable_num_doc, full_json) VALUES (?, ?, ?, ?, ?, ?, ?)', [uuid, doc.id, datos.motivo, datos.responsable?.nombre, datos.responsable?.tipoDoc, datos.responsable?.numDoc, JSON.stringify(evento)]);
+  const sello = 'SELLO-' + crypto.randomBytes(12).toString('hex').toUpperCase();
+  await pool.query('UPDATE dte_return_events SET sello = ? WHERE id = ?', [sello, ev.insertId]);
+  await pool.query('UPDATE dte_headers SET transmission_status = ? WHERE id = ?', ['returned', doc.id]);
+  return { event_id: ev.insertId, uuid: uuid, sello: sello, evento: evento };
+};
+
+const operacionesEspeciales = async (datos) => {
+  const uuid = uuidV4();
+  const evento = {
+    identificacion: {
+      version: 1, ambiente: CONFIG.ambiente, codigoGeneracion: uuid,
+      fechaEvento: fmtFecha(new Date()), horaEvento: fmtHora(new Date())
+    },
+    emisor: {
+      nit: CONFIG.nit, nombre: CONFIG.nombre,
+      tipoEstablecimiento: '2', telefono: CONFIG.telefono, correo: CONFIG.correo
+    },
+    motivo: {
+      descripcion: datos.motivo || 'Operaciones Especiales Mensuales',
+      responsable: { nombre: datos.responsable?.nombre, tipoDocumento: datos.responsable?.tipoDoc, numDocumento: datos.responsable?.numDoc }
+    },
+    documentos: datos.documentos || []
+  };
+  const [ev] = await pool.query('INSERT INTO dte_special_operations_events (uuid, periodo, tipo_documento, responsable_nombre, full_json) VALUES (?, ?, ?, ?, ?)', [uuid, datos.periodo || '2026-09', datos.tipoDocumento || 'Factura Simplificada', datos.responsable?.nombre, JSON.stringify(evento)]);
+  const sello = 'SELLO-' + crypto.randomBytes(12).toString('hex').toUpperCase();
+  await pool.query('UPDATE dte_special_operations_events SET sello = ? WHERE id = ?', [sello, ev.insertId]);
+  return { event_id: ev.insertId, uuid: uuid, sello: sello, evento: evento };
+};
+
 const listarEventos = async () => {
   // La base de datos previa usa la nomenclatura en inglés. Se conserva la
   // compatibilidad mientras las instalaciones nuevas usan el esquema actual.
@@ -192,4 +259,4 @@ const listarEventos = async () => {
   return { contingencia: cont, invalidacion: inv };
 };
 
-module.exports = { listarPendientes, transmitirEventoContingencia, invalidarDTE, listarEventos };
+module.exports = { listarPendientes, transmitirEventoContingencia, invalidarDTE, retornarDTE, operacionesEspeciales, listarEventos };

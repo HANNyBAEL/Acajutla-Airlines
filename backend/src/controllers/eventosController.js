@@ -22,6 +22,20 @@ const invalidar = async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 };
 
+const retorno = async (req, res) => {
+  try {
+    const r = await svc.retornarDTE(req.params.uuid, req.body);
+    res.json({ exito: true, mensaje: 'Evento de retorno transmitido', datos: r });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+};
+
+const operacionesEspeciales = async (req, res) => {
+  try {
+    const r = await svc.operacionesEspeciales(req.body);
+    res.status(201).json({ exito: true, mensaje: 'Evento de operaciones especiales transmitido', datos: r });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+};
+
 const eventos = async (req, res) => {
   try { res.json({ exito: true, datos: await svc.listarEventos() }); }
   catch (e) { res.status(500).json({ error: 'Error interno' }); }
@@ -50,4 +64,4 @@ const cambiarEstadoMH = async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 };
 
-module.exports = { pendientes, eventoContingencia, invalidar, eventos, emitirContingencia, estadoMH, cambiarEstadoMH };
+module.exports = { pendientes, eventoContingencia, invalidar, retorno, operacionesEspeciales, eventos, emitirContingencia, estadoMH, cambiarEstadoMH };

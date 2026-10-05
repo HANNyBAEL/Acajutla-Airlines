@@ -57,16 +57,26 @@ const eventoRetorno = async (req, res) => {
       ventaNoSuj: 0, ventaExenta: 0, ventaGravada: esFSEE ? 0 : perDTE, compra: esFSEE ? perDTE : 0,
       tributos: null, ivaRete: 0, reteRenta: 0, seguro: 0, flete: 0, noGravado: 0
     }));
-    const totalGrav = esFEEE = esFSEE ? 0 : FC.r2(perDTE * dtes.length);
+    const totalGrav = esFSEE ? 0 : FC.r2(perDTE * dtes.length);
     const totalCompra = esFSEE ? FC.r2(perDTE * dtes.length) : 0;
     const subTotal = FC.r2(totalGrav + totalCompra);
-    const tributo = FC.r2(totalGrav * 0.13);
+    // El IVA se replica en la proporción que tenían los DTE originales (cuyos
+    // tributos provienen de "Fiscalidad y tasas"); no hay tasa fija en código.
+    let ivaOrig = 0, gravOrig = 0, descIva = null;
+    for (const d of dtes) {
+      const rs = d.resumen || {};
+      const t20 = (Array.isArray(rs.tributos) ? rs.tributos : []).find((t) => String(t.codigo) === '20');
+      if (t20 && !descIva) descIva = t20.descripcion;
+      ivaOrig += Number(String(d.identificacion.tipoDte) === '03' ? (t20 ? t20.valor : 0) : (rs.totalIva || 0)) || 0;
+      gravOrig += Number(rs.totalGravada) || 0;
+    }
+    const tributo = gravOrig > 0 ? FC.r2(totalGrav * (ivaOrig / gravOrig)) : 0;
     const resumen = {
       totalNoSuj: 0, totalExenta: 0, totalGravada: totalGrav, totalCompraExcluidos: totalCompra,
       subTotalVentas: subTotal, totalNoGravado: 0, totalSeguro: 0, totalFlete: 0,
       montoTotalOperacion: FC.r2(subTotal + tributo), ivaRetenido: 0, reteRenta: 0,
-      tributos: totalGrav > 0 ? [{ codigo: '20', descripcion: 'Impuesto al Valor Agregado 13%', valor: tributo }] : null,
-      totalPagar: FC.r2(subTotal + tributo), totalLetras: null, totalNoOnerosas: 0, totaliva: FC.r2(totalGrav * 0.13), saldoFavor: 0
+      tributos: tributo > 0 ? [{ codigo: '20', descripcion: descIva || 'Impuesto al Valor Agregado', valor: tributo }] : null,
+      totalPagar: FC.r2(subTotal + tributo), totalLetras: null, totalNoOnerosas: 0, totaliva: tributo, saldoFavor: 0
     };
     const fh = new Date();
     const json = {

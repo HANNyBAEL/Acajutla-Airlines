@@ -58,10 +58,17 @@ async function generarNota(datos) {
   const esFEXE = tipoOrigen === '11';
 
   const ventaGravada = redondeo(m);
-  const totalivaItem = esFEXE ? 0 : (esFE ? redondeo((ventaGravada / 1.13) * 0.13) : redondeo(ventaGravada * 0.13));
-  const tributosItem = esCCFE ? ['20'] : null;
-  const codTributoItem = esCCFE ? '20' : null;
-  const tributosResumen = esCCFE ? [{ codigo: '20', descripcion: 'Impuesto al Valor Agregado 13%', valor: totalivaItem }] : null;
+  // El IVA no se fija aquí: se replica la proporción que tenía el DTE de origen,
+  // cuyos tributos provienen de las reglas de "Fiscalidad y tasas".
+  const resOrig = origJson.resumen || {};
+  const tributoIvaOrig = (Array.isArray(resOrig.tributos) ? resOrig.tributos : []).find((t) => String(t.codigo) === '20');
+  const ivaOrig = Number(esCCFE ? (tributoIvaOrig ? tributoIvaOrig.valor : 0) : (resOrig.totalIva || 0)) || 0;
+  const proporcionIva = Number(resOrig.totalGravada) > 0 ? ivaOrig / Number(resOrig.totalGravada) : 0;
+  const totalivaItem = esFEXE ? 0 : redondeo(ventaGravada * proporcionIva);
+  const llevaIva = esCCFE && totalivaItem > 0;
+  const tributosItem = llevaIva ? ['20'] : null;
+  const codTributoItem = llevaIva ? '20' : null;
+  const tributosResumen = llevaIva ? [{ codigo: '20', descripcion: tributoIvaOrig.descripcion || 'Impuesto al Valor Agregado', valor: totalivaItem }] : null;
   const subTotalVentas = ventaGravada;
   const montoTotalOperacion = esCCFE ? redondeo(subTotalVentas + totalivaItem) : subTotalVentas;
   const totalPagar = redondeo(montoTotalOperacion + ng);
