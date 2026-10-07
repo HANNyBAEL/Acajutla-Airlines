@@ -161,11 +161,16 @@ const NuevaReserva = () => {
   };
 
   const vuelosSeleccionados = trayectos.map((t) => t.vuelos.find((v) => v.id === t.vueloId)).filter(Boolean);
+  const vuelosSinCupo = vuelosSeleccionados.filter((vuelo) => pasajeros.length > Number(vuelo.available_seats || 0));
   const totalEstimado = vuelosSeleccionados.reduce((total, vuelo) => total + Number(vuelo.total_price ?? 0), 0) * pasajeros.length;
 
   const guardar = async () => {
     if (!clienteId) return toast.error('Selecciona un cliente o agrega uno nuevo');
     if (trayectos.some((t) => !t.vueloId)) return toast.error('Selecciona un vuelo para cada trayecto');
+    const vueloSinCupo = vuelosSeleccionados.find((vuelo) => pasajeros.length > Number(vuelo.available_seats || 0));
+    if (vueloSinCupo) {
+      return toast.error(`No se puede completar la compra: el vuelo ${vueloSinCupo.flight_number} tiene ${Number(vueloSinCupo.available_seats || 0)} asientos disponibles y se solicitaron ${pasajeros.length} boletos.`, { duration: 8000 });
+    }
     for (let i = 0; i < pasajeros.length; i++) {
       const p = pasajeros[i];
       if (!p.first_names || !p.last_names || !p.document_number || !p.birth_date)
@@ -297,6 +302,11 @@ const NuevaReserva = () => {
               </button>
             </div>
           </div>
+          {vuelosSinCupo.length > 0 && (
+            <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              No se puede completar la compra: {vuelosSinCupo.map((vuelo) => `${vuelo.flight_number} tiene ${Number(vuelo.available_seats || 0)} asientos disponibles`).join('; ')} y se solicitaron {pasajeros.length} boletos. Reduce los pasajeros o elige otro vuelo.
+            </div>
+          )}
           <div className="space-y-4">
             {pasajeros.map((p, i) => (
               <div key={i} className="p-4 bg-gray-50 rounded-lg space-y-3">

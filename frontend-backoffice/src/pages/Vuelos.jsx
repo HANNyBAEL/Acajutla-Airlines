@@ -3,6 +3,8 @@ import api from '../services/api';
 import SearchableSelect from '../components/SearchableSelect';
 import { FiPlus, FiSearch, FiX, FiXCircle, FiRefreshCw, FiMapPin, FiClock, FiCpu, FiDollarSign, FiCalendar } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { confirmarAccion } from '../utils/confirm';
+import Swal from 'sweetalert2';
 
 const Vuelos = () => {
   const [vuelos, setVuelos] = useState([]);
@@ -95,14 +97,23 @@ const Vuelos = () => {
         const salida = new Date(data.conflicto.departure_datetime).toLocaleString('es-SV');
         toast.error('Ya existe ' + data.conflicto.flight_number + ' con salida el ' + salida + ' (vuelo #' + data.conflicto.id + '). Cambia la hora o el número de vuelo.', { duration: 7000 });
       } else {
-        toast.error(data && data.error ? data.error : 'Error al crear el vuelo');
+        toast.error(data && data.error ? data.error : 'Error al crear el vuelo', { duration: 8000 });
       }
     } finally { setGuardando(false); }
   };
 
   const cancelarVuelo = async (v) => {
-    const motivo = window.prompt('Motivo de la cancelación del vuelo ' + v.flight_number + ':', 'Cancelado por operaciones');
-    if (motivo === null) return;
+    const { value: motivo } = await Swal.fire({
+      title: 'Cancelar vuelo',
+      text: 'Motivo de la cancelación del vuelo ' + v.flight_number + ':',
+      input: 'text',
+      inputValue: 'Cancelado por operaciones',
+      showCancelButton: true,
+      confirmButtonText: 'Continuar',
+      cancelButtonText: 'Cancelar',
+      customClass: { popup: 'rounded-2xl', confirmButton: 'px-4 py-2 font-semibold bg-red-600 text-white rounded-lg', cancelButton: 'px-4 py-2 font-medium bg-gray-500 text-white rounded-lg' }
+    });
+    if (!motivo) return;
     try {
       await api.patch('/vuelos/' + v.id + '/cancelar', { motivo: motivo, confirmar: false });
       toast.success('Vuelo ' + v.flight_number + ' cancelado');
@@ -111,7 +122,12 @@ const Vuelos = () => {
     } catch (e) {
       const data = e.response ? e.response.data : null;
       if (e.response && e.response.status === 409 && data && data.requiereConfirmacion) {
-        const ok = window.confirm('El vuelo ' + v.flight_number + ' tiene ' + data.afectados + ' reserva(s) activa(s). ¿Cancelar de todos modos?');
+        const ok = await confirmarAccion({
+          title: 'Reservas afectadas',
+          text: 'El vuelo ' + v.flight_number + ' tiene ' + data.afectados + ' reserva(s) activa(s). ¿Cancelar de todos modos?',
+          confirmText: 'Sí, cancelar vuelo',
+          isDanger: true
+        });
         if (!ok) return;
         try {
           await api.patch('/vuelos/' + v.id + '/cancelar', { motivo: motivo, confirmar: true });
@@ -119,10 +135,10 @@ const Vuelos = () => {
           setDrawerVuelo(null);
           cargar();
         } catch (e2) {
-          toast.error(e2.response && e2.response.data && e2.response.data.error ? e2.response.data.error : 'Error al cancelar');
+          toast.error(e2.response && e2.response.data && e2.response.data.error ? e2.response.data.error : 'Error al cancelar', { duration: 8000 });
         }
       } else {
-        toast.error(data && data.error ? data.error : 'Error al cancelar');
+        toast.error(data && data.error ? data.error : 'Error al cancelar', { duration: 8000 });
       }
     }
   };
@@ -158,7 +174,7 @@ const Vuelos = () => {
       setModalReprog(null);
       cargar();
     } catch (e) {
-      toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al reprogramar');
+      toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al reprogramar', { duration: 8000 });
     } finally { setGuardandoReprog(false); }
   };
 
@@ -352,7 +368,12 @@ const Vuelos = () => {
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Número de vuelo *</label>
                 <input className="input-field" value={form.flight_number} onChange={(e) => setCampo('flight_number', e.target.value)} placeholder="AA-210" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Aeronave *</label>
-                <SearchableSelect options={aeronaves.map((a) => ({ value: a.id, label: a.registration + ' · ' + a.model, searchText: a.registration + ' ' + a.model }))} value={form.aircraft_id} onChange={(valor) => setCampo('aircraft_id', valor)} placeholder="Matrícula o modelo..." /></div>
+                <SearchableSelect options={aeronaves.map((a) => {
+                  const estados = { available: 'Disponible', in_flight: 'En vuelo', maintenance: 'Mantenimiento', out_of_service: 'Fuera de servicio' };
+                  const modelo = a.model || 'Tipo sin definir';
+                  const estado = estados[a.status] || a.status || 'Estado desconocido';
+                  return { value: a.id, label: a.registration + ' · ' + modelo + ' · ' + estado, searchText: a.registration + ' ' + modelo + ' ' + estado };
+                })} value={form.aircraft_id} onChange={(valor) => setCampo('aircraft_id', valor)} placeholder="Matrícula o modelo..." /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Origen *</label>
                 <SearchableSelect options={aeropuertos.map((a) => ({ value: a.code, label: a.code + ' - ' + a.name, searchText: a.code + ' ' + a.name }))} value={form.origen_iata} onChange={(valor) => setCampo('origen_iata', valor)} placeholder="Código o ciudad..." /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Destino *</label>

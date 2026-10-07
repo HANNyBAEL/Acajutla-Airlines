@@ -17,7 +17,7 @@ const dashboard = async (req, res) => {
       "SELECT status, COUNT(*) AS total FROM flights WHERE DATE(departure_datetime) = CURDATE() GROUP BY status"
     );
     const [pax24] = await pool.query(
-      "SELECT COUNT(*) AS total FROM passengers p JOIN reservations r ON r.id = p.reservation_id WHERE r.created_at >= (NOW() - INTERVAL 24 HOUR)"
+      "SELECT COUNT(*) AS total FROM passengers p JOIN reservations r ON r.id = p.reservation_id WHERE r.status IN ('paid', 'confirmed') AND r.created_at >= (NOW() - INTERVAL 24 HOUR)"
     );
     const [ocup] = await pool.query(
       "SELECT ROUND(AVG(t.ocupacion), 2) AS promedio FROM (SELECT (SELECT COUNT(*) FROM flight_segments fs JOIN reservations r ON r.id = fs.reservation_id WHERE fs.flight_id = f.id AND r.status IN ('paid','confirmed')) / at.total_capacity * 100 AS ocupacion FROM flights f JOIN aircraft ac ON ac.id = f.aircraft_id JOIN aircraft_types at ON at.id = ac.type_id WHERE DATE(f.departure_datetime) = CURDATE()) t"

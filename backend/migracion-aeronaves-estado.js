@@ -15,7 +15,7 @@ const columnExists = async (db, table, column) => {
     password: process.env.DB_PASSWORD, database: process.env.DB_NAME, ssl: { rejectUnauthorized: false }
   });
   try {
-    // Los tipos de aeronave no se eliminan (vuelos y aeronaves los referencian);
+    // Los tipos relacionados con aeronaves no pueden eliminarse desde la aplicación;
     // sólo se desactivan para excluirlos de registros nuevos.
     if (!(await columnExists(db, 'aircraft_types', 'active'))) {
       await db.query('ALTER TABLE aircraft_types ADD COLUMN active TINYINT(1) NOT NULL DEFAULT 1');

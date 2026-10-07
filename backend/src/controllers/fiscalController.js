@@ -96,10 +96,12 @@ const eventoRetorno = async (req, res) => {
 const validarInvalidacion = async (req, res) => {
   try {
     const { dteUuid, fechaEvento } = req.body;
-    const [r] = await pool.query('SELECT dte_type, reception_seal, full_json, emission_date FROM dte_headers WHERE uuid_generation = ?', [dteUuid]);
+    if (!dteUuid || !fechaEvento) return res.status(400).json({ error: 'dteUuid y fechaEvento son obligatorios' });
+    const [r] = await pool.query('SELECT dte_type, transmission_status, reception_seal, full_json, emission_date, reception_date, created_at FROM dte_headers WHERE uuid_generation = ?', [dteUuid]);
     if (!r.length) return res.status(404).json({ error: 'DTE no encontrado' });
-    const json = typeof r.full_json === 'string' ? JSON.parse(r.full_json) : r.full_json;
-    const v = FC.validarPlazoInvalidacion(json, fechaEvento, new Date().toISOString(), r.emission_date);
+    if (r[0].transmission_status !== 'accepted' || !r[0].reception_seal) return res.status(409).json({ exito: true, datos: { ok: false, mensaje: 'Solo se valida el plazo para DTEs aceptados con Sello de Recepción.' } });
+    const json = typeof r[0].full_json === 'string' ? JSON.parse(r[0].full_json) : r[0].full_json;
+    const v = FC.validarPlazoInvalidacion(json, fechaEvento, new Date(), r[0].reception_date || r[0].created_at);
     res.json({ exito: true, datos: v });
   } catch (e) { res.status(500).json({ error: e.message }); }
 };

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../services/api';
 import { FiPlus, FiSearch, FiX, FiCpu, FiLayers, FiHash, FiToggleLeft, FiToggleRight } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { confirmarAccion } from '../utils/confirm';
 
 const ESTADOS_AERONAVE = [
   ['available', 'Disponible / Buena condición'],
@@ -67,9 +68,38 @@ const Aeronaves = () => {
     } finally { setGuardando(false); }
   };
 
-  // Nada se elimina: las aeronaves se desactivan poniéndolas fuera de servicio
-  // (dejan de poder asignarse a vuelos nuevos) y los tipos se activan/desactivan
-  // desde el modal de edición del tipo.
+  const eliminarAeronave = async (a) => {
+    const confirmado = await confirmarAccion({
+      title: '¿Estás seguro?',
+      text: `¿Eliminar definitivamente la aeronave ${a.registration}? Solo se permite si no tiene vuelos ni historial relacionado.`,
+      confirmText: 'Sí, eliminar',
+      isDanger: true
+    });
+    if (!confirmado) return;
+    try {
+      await api.delete('/aeronaves/' + a.id);
+      toast.success('Aeronave eliminada');
+      setDrawerAeronave(null);
+      cargar();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo eliminar la aeronave'); }
+  };
+
+  const eliminarTipo = async (t) => {
+    const confirmado = await confirmarAccion({
+      title: '¿Estás seguro?',
+      text: `¿Eliminar definitivamente ${t.manufacturer} ${t.model}? Solo se permite si no hay aeronaves asociadas.`,
+      confirmText: 'Sí, eliminar',
+      isDanger: true
+    });
+    if (!confirmado) return;
+    try {
+      await api.delete('/aeronaves/tipos/' + t.id);
+      toast.success('Tipo de aeronave eliminado');
+      cargar();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo eliminar el tipo'); }
+  };
+
+  // Las aeronaves y tipos solo pueden eliminarse si no tienen registros relacionados.
   const cambiarEstadoTipo = async (t, active) => {
     try {
       const r = await api.patch('/aeronaves/tipos/' + t.id + '/estado', { active: active });
@@ -243,6 +273,7 @@ const Aeronaves = () => {
                   <button className={t.active ? 'text-green-700' : 'text-red-700'} onClick={(e) => { e.stopPropagation(); cambiarEstadoTipo(t, !t.active); }}>
                     {t.active ? <FiToggleRight size={22}/> : <FiToggleLeft size={22}/>}
                   </button>
+                  <button className="ml-3 text-red-700 disabled:text-gray-300" disabled={Number(t.aircraft_count) > 0} title={Number(t.aircraft_count) ? 'Tiene aeronaves asociadas' : 'Eliminar tipo'} onClick={(e) => { e.stopPropagation(); eliminarTipo(t); }}>Eliminar</button>
                 </td>
               </tr>
             ))}
@@ -296,9 +327,10 @@ const Aeronaves = () => {
                 </p>
               )}
             </div>
-            <div className="px-6 pt-5 pb-10 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
-              <button onClick={() => setDrawerAeronave(null)} className="btn-secondary">Cerrar</button>
-              <button className="btn-primary" onClick={guardarEstado} disabled={guardando || estadoDrawer === drawerAeronave.status}>
+            <div className="px-4 sm:px-6 py-4 border-t border-gray-200 bg-gray-50 grid grid-cols-2 gap-4">
+              <button onClick={() => setDrawerAeronave(null)} className="btn-secondary w-full">Cerrar</button>
+              <button onClick={() => eliminarAeronave(drawerAeronave)} disabled={Number(drawerAeronave.flight_count) > 0} title={Number(drawerAeronave.flight_count) ? 'Tiene historial de vuelos' : 'Eliminar aeronave'} className="btn-secondary w-full text-red-700 disabled:cursor-not-allowed disabled:opacity-50">Eliminar</button>
+              <button className="btn-primary w-full col-span-2" onClick={guardarEstado} disabled={guardando || estadoDrawer === drawerAeronave.status}>
                 {guardando ? 'Guardando...' : 'Guardar estado'}
               </button>
             </div>
@@ -396,3 +428,4 @@ const Aeronaves = () => {
 };
 
 export default Aeronaves;
+

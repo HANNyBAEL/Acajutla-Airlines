@@ -39,6 +39,10 @@ const emitirDTE = async (opciones) => {
   const { reservation_id, tipo_dte, receptor: override, contingencia } = opciones;
   const cont = contingencia || null;
   if (!['01', '03'].includes(tipo_dte)) throw new Error('Tipo de DTE no soportado (use 01 FE o 03 CCFE)');
+  if (cont && ![1, 2, 3, 4, 5].includes(Number(cont.tipoContingencia))) throw new Error('Tipo de contingencia inválido (CAT-005)');
+  if (cont?.motivoContin != null && typeof cont.motivoContin !== 'string') throw new Error('El motivo de contingencia debe ser texto');
+  if (cont && Number(cont.tipoContingencia) === 5 && !cont.motivoContin?.trim()) throw new Error('Indique el motivo de contingencia para el tipo 5');
+  if (cont?.motivoContin && cont.motivoContin.length > 500) throw new Error('El motivo de contingencia no puede exceder 500 caracteres');
 
   const [res] = await pool.query(
     `SELECT r.*, c.first_names AS c_first, c.last_names AS c_last, c.email AS c_email,

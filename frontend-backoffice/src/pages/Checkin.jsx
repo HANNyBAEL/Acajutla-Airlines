@@ -3,6 +3,7 @@ import { checkinAPI } from '../services/api';
 import SearchableSelect from '../components/SearchableSelect';
 import { FiSearch, FiUserCheck, FiLogIn, FiX, FiPrinter } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { confirmarAccion } from '../utils/confirm';
 
 const ESTADO_PAX = {
   pending: ['Pendiente', 'bg-gray-100 text-gray-700'],
@@ -87,7 +88,13 @@ const Checkin = () => {
 
   const cerrarVuelo = async () => {
     if (!vueloSel) return;
-    if (!window.confirm('¿Cerrar el vuelo y reconciliar el manifiesto?')) return;
+    const confirmado = await confirmarAccion({
+      title: '¿Cerrar vuelo?',
+      text: '¿Cerrar el vuelo y reconciliar el manifiesto?',
+      confirmText: 'Sí, cerrar vuelo',
+      isDanger: false
+    });
+    if (!confirmado) return;
     try {
       await checkinAPI.cerrarVuelo(vueloSel);
       toast.success('Vuelo cerrado');
@@ -274,3 +281,4 @@ const Checkin = () => {
   );
 };
 export default Checkin;
+

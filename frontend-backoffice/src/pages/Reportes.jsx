@@ -38,9 +38,15 @@ const Reportes = () => {
 
   const exportarCSV = () => {
     if (!conciliacion.length) return toast.error('No hay datos para exportar');
-    const head = 'fecha,pagos_aprobados,facturado_dte,diferencia,estado';
-    const lines = conciliacion.map((c) => [c.fecha, c.pagos, c.facturado, c.diferencia, c.estado].join(','));
-    const blob = new Blob([head + '\n' + lines.join('\n')], { type: 'text/csv' });
+    const head = 'Fecha;Pagos Aprobados ($);Facturado DTE ($);Diferencia ($);Estado';
+    const lines = conciliacion.map((c) => {
+      const p = Number(c.pagos).toFixed(2);
+      const f = Number(c.facturado).toFixed(2);
+      const d = Number(c.diferencia).toFixed(2);
+      return `${c.fecha};${p};${f};${d};${c.estado}`;
+    });
+    const csvContent = '\uFEFF' + head + '\n' + lines.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

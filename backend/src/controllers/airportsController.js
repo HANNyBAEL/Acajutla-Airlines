@@ -3,7 +3,8 @@ const pool = require('../config/db');
 const listarAeropuertos = async (req, res) => {
   try {
     let sql = `SELECT a.id, a.iata_code AS code, a.icao_code, a.name, a.city,
-      COALESCE(c.name, a.country) AS country, COALESCE(c.code, a.country_code) AS country_code, a.country_id, a.active
+      COALESCE(c.name, a.country) AS country, COALESCE(c.code, a.country_code) AS country_code, a.country_id, a.active,
+      (SELECT COUNT(*) FROM routes r WHERE r.origin_id = a.id OR r.destination_id = a.id) AS route_count
       FROM airports a LEFT JOIN countries c ON c.id = a.country_id`;
     if (req.query.activos === '1') sql += ' WHERE a.active = 1';
     sql += ' ORDER BY a.iata_code';
@@ -104,4 +105,22 @@ const cambiarEstado = async (req, res) => {
   }
 };
 
-module.exports = { listarAeropuertos: listarAeropuertos, crearAeropuerto: crearAeropuerto, actualizarAeropuerto: actualizarAeropuerto, cambiarEstado: cambiarEstado };
+const eliminarAeropuerto = async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id inválido' });
+  try {
+    const [rutas] = await pool.query('SELECT COUNT(*) AS total FROM routes WHERE origin_id = ? OR destination_id = ?', [id, id]);
+    if (Number(rutas[0].total) > 0) {
+      return res.status(409).json({ error: 'No se puede eliminar: el aeropuerto está relacionado con rutas', historial: { rutas: Number(rutas[0].total) } });
+    }
+    const [result] = await pool.query('DELETE FROM airports WHERE id = ?', [id]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Aeropuerto no encontrado' });
+    res.json({ exito: true, mensaje: 'Aeropuerto eliminado' });
+  } catch (error) {
+    if (error.code === 'ER_ROW_IS_REFERENCED_2') return res.status(409).json({ error: 'No se puede eliminar: existen registros relacionados' });
+    console.error('Error eliminar aeropuerto:', error);
+    res.status(500).json({ error: 'Error interno' });
+  }
+};
+
+module.exports = { listarAeropuertos: listarAeropuertos, crearAeropuerto: crearAeropuerto, actualizarAeropuerto: actualizarAeropuerto, cambiarEstado: cambiarEstado, eliminarAeropuerto: eliminarAeropuerto };

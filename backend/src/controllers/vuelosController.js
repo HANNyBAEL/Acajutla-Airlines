@@ -3,6 +3,30 @@ const Vuelo = require('../models/Vuelo');
 const { obtenerImpuestos } = require('../services/taxService');
 const { resolverClase } = require('../utils/fareClass');
 
+const buscarConflictoAeronave = async ({ aircraftId, departure, arrival, turnaroundMin, excluirVueloId = null }) => {
+  const condicionExclusion = excluirVueloId ? ' AND id <> ?' : '';
+  const parametros = [aircraftId, departure, departure, turnaroundMin, arrival, turnaroundMin];
+  if (excluirVueloId) parametros.push(excluirVueloId);
+  const [vuelos] = await pool.query(
+    `SELECT id, flight_number, departure_datetime, arrival_datetime
+     FROM flights
+     WHERE aircraft_id = ? AND status <> 'cancelled'
+       AND (DATE(departure_datetime) = DATE(?)
+         OR NOT (? >= DATE_ADD(arrival_datetime, INTERVAL ? MINUTE)
+           OR ? <= DATE_SUB(departure_datetime, INTERVAL ? MINUTE)))${condicionExclusion}
+     ORDER BY departure_datetime
+     LIMIT 1`,
+    parametros
+  );
+  return vuelos[0] || null;
+};
+
+const obtenerTurnaroundMinimo = async () => {
+  const [config] = await pool.query("SELECT param_value FROM config_params WHERE param_key = 'turnaround_min'");
+  const valor = parseInt(config[0]?.param_value || '45', 10);
+  return Number.isFinite(valor) && valor >= 0 ? valor : 45;
+};
+
 const cotizarVuelo = async (vuelo) => {
   const impuestos = await obtenerImpuestos(vuelo.id, Number(vuelo.price || vuelo.sale_price || 0));
   return {
@@ -49,9 +73,8 @@ const obtenerVuelo = async (req, res) => {
 const listarAeronaves = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT a.id, a.registration, t.model, t.total_capacity
-       FROM aircraft a JOIN aircraft_types t ON a.type_id = t.id
-       WHERE a.status IN ('available','in_flight')
+      `SELECT a.id, a.registration, a.status, t.model, t.total_capacity
+       FROM aircraft a LEFT JOIN aircraft_types t ON a.type_id = t.id
        ORDER BY a.registration`
     );
     res.json({ exito: true, datos: rows });
@@ -65,6 +88,12 @@ const crearVuelo = async (req, res) => {
     const { origen_iata, destino_iata, aircraft_id, flight_number, departure_datetime, arrival_datetime, base_price, gate } = req.body;
     if (!origen_iata || !destino_iata || !aircraft_id || !flight_number || !departure_datetime || !arrival_datetime || !base_price) {
       return res.status(400).json({ error: 'Faltan campos obligatorios' });
+    }
+    const [aeronaves] = await pool.query('SELECT id, registration, status FROM aircraft WHERE id = ?', [aircraft_id]);
+    if (!aeronaves.length) return res.status(400).json({ error: 'La aeronave seleccionada no existe' });
+    if (!['available', 'in_flight'].includes(aeronaves[0].status)) {
+      const estado = aeronaves[0].status === 'maintenance' ? 'en mantenimiento' : 'fuera de servicio';
+      return res.status(409).json({ error: `La aeronave ${aeronaves[0].registration} está ${estado} y no se puede asignar a un vuelo.` });
     }
     if (origen_iata === destino_iata) return res.status(400).json({ error: 'El origen y el destino deben ser diferentes' });
     if (new Date(arrival_datetime) <= new Date(departure_datetime)) return res.status(400).json({ error: 'La llegada debe ser posterior a la salida' });
@@ -90,6 +119,17 @@ const crearVuelo = async (req, res) => {
     const [destino] = await pool.query('SELECT id FROM airports WHERE iata_code = ? AND active = 1', [destino_iata.toUpperCase()]);
     if (origen.length === 0 || destino.length === 0) return res.status(400).json({ error: 'Aeropuerto inválido o inactivo' });
 
+    // ===== RN-OP-02: turnaround mínimo de aeronave entre vuelos =====
+    const tmin = await obtenerTurnaroundMinimo();
+    const conflictoAeronave = await buscarConflictoAeronave({ aircraftId: aircraft_id, departure: departure_datetime, arrival: arrival_datetime, turnaroundMin: tmin });
+    if (conflictoAeronave) {
+      return res.status(409).json({
+        error: `La aeronave ya tiene asignado el vuelo ${conflictoAeronave.flight_number} para esa fecha u horario. Selecciona otra fecha o aeronave.`,
+        conflictoAeronave
+      });
+    }
+    // ===== FIN RN-OP-02 =====
+
     const [rutas] = await pool.query('SELECT id FROM routes WHERE origin_id = ? AND destination_id = ?', [origen[0].id, destino[0].id]);
     let routeId;
     if (rutas.length > 0) {
@@ -98,16 +138,6 @@ const crearVuelo = async (req, res) => {
       const [nr] = await pool.query('INSERT INTO routes (origin_id, destination_id, route_code, active) VALUES (?, ?, ?, 1)', [origen[0].id, destino[0].id, origen_iata.toUpperCase() + '-' + destino_iata.toUpperCase()]);
       routeId = nr.insertId;
     }
-
-    // ===== RN-OP-02: turnaround mínimo de aeronave entre vuelos =====
-    const [cfgT] = await pool.query("SELECT param_value FROM config_params WHERE param_key='turnaround_min'");
-    const tmin = parseInt(cfgT.length ? cfgT[0].param_value : '45', 10);
-    const [confTurn] = await pool.query(
-      'SELECT flight_number FROM flights WHERE aircraft_id = ? AND NOT (? >= DATE_ADD(arrival_datetime, INTERVAL ? MINUTE) OR ? <= DATE_SUB(departure_datetime, INTERVAL ? MINUTE))',
-      [aircraft_id, departure_datetime, tmin, arrival_datetime, tmin]
-    );
-    if (confTurn.length) return res.status(409).json({ error: 'RN-OP-02: turnaround insuficiente con el vuelo ' + confTurn[0].flight_number });
-    // ===== FIN RN-OP-02 =====
 
     const connection = await pool.getConnection();
     let result;
@@ -141,7 +171,7 @@ const crearVuelo = async (req, res) => {
       return res.status(409).json({ error: 'Registro duplicado al crear el vuelo. Revisa número, fecha y hora de salida.' });
     }
     console.error('Error crear vuelo:', error);
-    res.status(500).json({ error: 'Error interno' });
+    res.status(500).json({ error: 'Error interno: ' + (error.sqlMessage || error.message || 'Desconocido') });
   }
 };
 
@@ -275,7 +305,7 @@ const reprogramarVuelo = async (req, res) => {
     const id = parseInt(req.params.id, 10);
     const { departure_datetime, arrival_datetime, aircraft_id, gate } = req.body || {};
 
-    const [vuelos] = await pool.query('SELECT id, flight_number, status, departure_datetime FROM flights WHERE id = ?', [id]);
+    const [vuelos] = await pool.query('SELECT id, aircraft_id, flight_number, status, departure_datetime FROM flights WHERE id = ?', [id]);
     if (vuelos.length === 0) return res.status(404).json({ error: 'Vuelo no encontrado' });
     const vuelo = vuelos[0];
 
@@ -287,6 +317,28 @@ const reprogramarVuelo = async (req, res) => {
     }
     if (new Date(arrival_datetime) <= new Date(departure_datetime)) {
       return res.status(400).json({ error: 'La llegada debe ser posterior a la salida' });
+    }
+
+    const aeronaveDestino = aircraft_id || vuelo.aircraft_id;
+    const [aeronaves] = await pool.query('SELECT id, registration, status FROM aircraft WHERE id = ?', [aeronaveDestino]);
+    if (!aeronaves.length) return res.status(400).json({ error: 'La aeronave seleccionada no existe' });
+    if (!['available', 'in_flight'].includes(aeronaves[0].status)) {
+      const estado = aeronaves[0].status === 'maintenance' ? 'en mantenimiento' : 'fuera de servicio';
+      return res.status(409).json({ error: `La aeronave ${aeronaves[0].registration} está ${estado} y no se puede asignar a un vuelo.` });
+    }
+    const tmin = await obtenerTurnaroundMinimo();
+    const conflictoAeronave = await buscarConflictoAeronave({
+      aircraftId: aeronaveDestino,
+      departure: departure_datetime,
+      arrival: arrival_datetime,
+      turnaroundMin: tmin,
+      excluirVueloId: id
+    });
+    if (conflictoAeronave) {
+      return res.status(409).json({
+        error: `La aeronave ya tiene asignado el vuelo ${conflictoAeronave.flight_number} para esa fecha u horario. Selecciona otra fecha o aeronave.`,
+        conflictoAeronave
+      });
     }
 
     const nuevoStatus = vuelo.status === 'cancelled' ? 'scheduled' : vuelo.status;
@@ -307,7 +359,7 @@ const reprogramarVuelo = async (req, res) => {
     res.json({ exito: true, mensaje: 'Vuelo ' + vuelo.flight_number + ' reprogramado', datos: { id: id, flight_number: vuelo.flight_number, nuevo_estado: nuevoStatus } });
   } catch (error) {
     console.error('Error reprogramar vuelo:', error);
-    res.status(500).json({ error: 'Error interno al reprogramar' });
+    res.status(500).json({ error: 'Error interno al reprogramar: ' + (error.sqlMessage || error.message || 'Desconocido') });
   }
 };
 

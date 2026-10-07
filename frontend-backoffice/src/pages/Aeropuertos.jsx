@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../services/api';
 import { FiPlus, FiSearch, FiX, FiGlobe, FiMapPin, FiToggleRight, FiToggleLeft } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { confirmarAccion } from '../utils/confirm';
 
 const Aeropuertos = () => {
   const [aeropuertos, setAeropuertos] = useState([]);
@@ -67,7 +68,13 @@ const Aeropuertos = () => {
     const mensaje = a.active
       ? `¿Desactivar el aeropuerto ${a.code}? Sus vuelos dejarán de aparecer en el buscador y en los vuelos nuevos.`
       : `¿Activar nuevamente el aeropuerto ${a.code}?`;
-    if (!window.confirm(mensaje)) return;
+    const confirmado = await confirmarAccion({
+      title: '¿Cambiar estado?',
+      text: mensaje,
+      confirmText: a.active ? 'Sí, desactivar' : 'Sí, activar',
+      isDanger: a.active
+    });
+    if (!confirmado) return;
     try {
       const r = await api.patch(`/aeropuertos/${a.id}/estado`, { active: !a.active });
       toast.success(a.active ? 'Aeropuerto desactivado' : 'Aeropuerto activado');
@@ -76,6 +83,22 @@ const Aeropuertos = () => {
     } catch (e) {
       toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al cambiar estado');
     }
+  };
+
+  const eliminar = async (a) => {
+    const confirmado = await confirmarAccion({
+      title: '¿Estás seguro?',
+      text: `¿Eliminar definitivamente el aeropuerto ${a.code}? Solo se permite si no tiene rutas ni historial relacionado.`,
+      confirmText: 'Sí, eliminar',
+      isDanger: true
+    });
+    if (!confirmado) return;
+    try {
+      await api.delete(`/aeropuertos/${a.id}`);
+      toast.success('Aeropuerto eliminado');
+      setDrawerAeropuerto(null);
+      cargar();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo eliminar el aeropuerto'); }
   };
 
   const lista = aeropuertos.filter((a) => JSON.stringify(a).toLowerCase().includes(filtro.toLowerCase()));
@@ -182,14 +205,15 @@ const Aeropuertos = () => {
               <InfoFila icon={FiMapPin} label="Código país" value={drawerAeropuerto.country_code || '-'} />
               <InfoFila icon={FiToggleRight} label="Estado" value={drawerAeropuerto.active ? 'Activo' : 'Inactivo'} />
             </div>
-            <div className="px-6 pt-5 pb-10 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
-              <button onClick={() => { const a = drawerAeropuerto; setDrawerAeropuerto(null); cambiarEstado(a); }} className="btn-secondary">
+            <div className="px-4 sm:px-6 py-4 border-t border-gray-200 bg-gray-50 grid grid-cols-2 gap-4">
+              <button onClick={() => { const a = drawerAeropuerto; setDrawerAeropuerto(null); cambiarEstado(a); }} className="btn-secondary w-full">
                 {drawerAeropuerto.active ? 'Desactivar' : 'Activar'}
               </button>
-              <button onClick={() => { const a = drawerAeropuerto; setDrawerAeropuerto(null); editarAeropuerto(a); }} className="btn-primary">
+              <button onClick={() => { const a = drawerAeropuerto; setDrawerAeropuerto(null); editarAeropuerto(a); }} className="btn-primary w-full">
                 Editar aeropuerto
               </button>
-              <button onClick={() => setDrawerAeropuerto(null)} className="btn-secondary">Cerrar</button>
+              <button onClick={() => eliminar(drawerAeropuerto)} disabled={Number(drawerAeropuerto.route_count) > 0} title={Number(drawerAeropuerto.route_count) ? 'Tiene historial de rutas' : 'Eliminar aeropuerto'} className="btn-secondary w-full text-red-700 disabled:cursor-not-allowed disabled:opacity-50">Eliminar</button>
+              <button onClick={() => setDrawerAeropuerto(null)} className="btn-secondary w-full">Cerrar</button>
             </div>
           </div>
         </>
@@ -239,3 +263,4 @@ const Aeropuertos = () => {
 };
 
 export default Aeropuertos;
+

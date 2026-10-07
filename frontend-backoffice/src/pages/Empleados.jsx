@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../services/api';
 import { FiPlus, FiSearch, FiX, FiUserCheck, FiUserX, FiEdit2, FiMail, FiPhone, FiFileText, FiUser, FiBriefcase, FiShield, FiToggleRight, FiToggleLeft, FiUsers, FiEye, FiEyeOff } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { confirmarAccion } from '../utils/confirm';
 
 const KPICard = ({ title, value, icon: Icon, colorClass }) => (
   <div className="card p-4 flex items-center space-x-4">
@@ -258,7 +259,13 @@ const Empleados = () => {
   };
 
   const cambiarEstado = async (userId, nuevoEstado) => {
-    if (!window.confirm('¿Cambiar el estado de la cuenta de usuario?')) return;
+    const confirmado = await confirmarAccion({
+      title: '¿Cambiar estado?',
+      text: '¿Cambiar el estado de la cuenta de usuario?',
+      confirmText: 'Sí, cambiar',
+      isDanger: true
+    });
+    if (!confirmado) return;
     try {
       await api.patch('/empleados/' + userId + '/status', { status: nuevoEstado });
       toast.success('Estado actualizado');
@@ -481,3 +488,4 @@ const Empleados = () => {
 };
 
 export default Empleados;
+

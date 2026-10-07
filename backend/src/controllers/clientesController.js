@@ -3,7 +3,9 @@ const pool = require('../config/db');
 const listarClientes = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id, first_names, last_names, document_type, document_number, birth_date, email, phone FROM customers ORDER BY id DESC LIMIT 50'
+      `SELECT c.id, c.first_names, c.last_names, c.document_type, c.document_number, c.birth_date, c.email, c.phone,
+              (SELECT COUNT(*) FROM reservations r WHERE r.customer_id = c.id) AS reservation_count
+       FROM customers c ORDER BY c.id DESC LIMIT 50`
     );
     res.json({ exito: true, datos: rows });
   } catch (error) {
@@ -59,6 +61,24 @@ const actualizarCliente = async (req, res) => {
   }
 };
 
+const eliminarCliente = async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id inválido' });
+  try {
+    const [reservas] = await pool.query('SELECT COUNT(*) AS total FROM reservations WHERE customer_id = ?', [id]);
+    if (Number(reservas[0].total) > 0) {
+      return res.status(409).json({ error: 'No se puede eliminar: el cliente tiene historial de reservas', historial: { reservas: Number(reservas[0].total) } });
+    }
+    const [result] = await pool.query('DELETE FROM customers WHERE id = ?', [id]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Cliente no encontrado' });
+    res.json({ exito: true, mensaje: 'Cliente eliminado' });
+  } catch (error) {
+    if (error.code === 'ER_ROW_IS_REFERENCED_2') return res.status(409).json({ error: 'No se puede eliminar: existen registros relacionados' });
+    console.error('Error eliminar cliente:', error);
+    res.status(500).json({ error: 'Error interno' });
+  }
+};
+
 const buscar = async (req, res) => {
   try {
     const q = (req.query.q || '').trim();
@@ -74,4 +94,4 @@ const buscar = async (req, res) => {
     res.json({ exito: true, datos: rows });
   } catch (e) { res.status(500).json({ error: 'Error interno' }); }
 };
-module.exports = { listarClientes, crearCliente, actualizarCliente, buscar };
+module.exports = { listarClientes, crearCliente, actualizarCliente, eliminarCliente, buscar };

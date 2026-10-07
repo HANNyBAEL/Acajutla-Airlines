@@ -49,11 +49,14 @@ const validarIdentificacion = (identificacion, tipoDte) => {
     if (!catalogs.DTE_CONTINGENCIA.includes(tipoDte)) {
       errores.push(`Tipo DTE ${tipoDte} no permite contingencia`);
     }
-    if (!identificacion.tipoContingencia) {
-      errores.push('tipoContingencia requerido en contingencia');
+    if (!catalogs.CAT005[String(identificacion.tipoContingencia)]) {
+      errores.push('tipoContingencia inválido o requerido en contingencia');
     }
-    if (String(identificacion.tipoContingencia) === '5' && !identificacion.motivoContin) {
+    if (String(identificacion.tipoContingencia) === '5' && (typeof identificacion.motivoContin !== 'string' || !identificacion.motivoContin.trim())) {
       errores.push('motivoContin requerido cuando tipoContingencia=5');
+    }
+    if (typeof identificacion.motivoContin === 'string' && identificacion.motivoContin.length > 500) {
+      errores.push('motivoContin no puede exceder 500 caracteres');
     }
   } else {
     // Modo normal: estos campos deben ser null

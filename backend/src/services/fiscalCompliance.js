@@ -84,9 +84,26 @@ function asegurarNCE_NDE(json) {
   return json;
 }
 
-function addMonths(d, m) { const x = new Date(d); x.setMonth(x.getMonth() + m); return x; }
+function fechaLocal(valor) {
+  if (valor instanceof Date) return new Date(valor.getTime());
+  if (typeof valor === 'string') {
+    const sql = valor.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (sql) return new Date(Number(sql[1]), Number(sql[2]) - 1, Number(sql[3]), Number(sql[4] || 0), Number(sql[5] || 0), Number(sql[6] || 0));
+  }
+  return new Date(valor);
+}
+
+function addMonths(d, m) {
+  const x = fechaLocal(d);
+  const day = x.getDate();
+  const lastDay = new Date(x.getFullYear(), x.getMonth() + m + 1, 0).getDate();
+  const result = new Date(x.getFullYear(), x.getMonth() + m, Math.min(day, lastDay), x.getHours(), x.getMinutes(), x.getSeconds(), x.getMilliseconds());
+  result.setHours(23, 59, 59, 999);
+  return result;
+}
 function businessDay10(dSello) {
-  const base = new Date(dSello); base.setMonth(base.getMonth() + 1); base.setDate(1);
+  const sello = fechaLocal(dSello);
+  const base = new Date(sello.getFullYear(), sello.getMonth() + 1, 1);
   let count = 0; const x = new Date(base);
   while (count < 10) { const day = x.getDay(); if (day !== 0 && day !== 6) count++; if (count < 10) x.setDate(x.getDate() + 1); }
   x.setHours(23, 59, 59, 999); return x;
@@ -94,17 +111,23 @@ function businessDay10(dSello) {
 
 function validarPlazoInvalidacion(jsonDTE, fechaEvento, now, selloFecha) {
   const t = String(jsonDTE.identificacion.tipoDte);
-  const fec = new Date(jsonDTE.identificacion.fecEmi);
-  const ev = new Date(fechaEvento);
-  const nowD = new Date(now);
-  const sello = new Date(selloFecha || now);
+  const fec = fechaLocal(jsonDTE.identificacion.fecEmi);
+  const ev = fechaLocal(fechaEvento);
+  const nowD = fechaLocal(now);
+  const sello = fechaLocal(selloFecha || now);
+  if ([fec, ev, nowD, sello].some((d) => Number.isNaN(d.getTime()))) return { ok: false, mensaje: 'Fecha inválida para determinar el plazo de invalidación.' };
+  const fechaEventoDia = new Date(ev.getFullYear(), ev.getMonth(), ev.getDate());
+  const hoyDia = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate());
+  if (fechaEventoDia > hoyDia) return { ok: false, mensaje: 'La fecha del evento no puede estar en el futuro.' };
   if (['01','11','14'].includes(t)) {
-    if (ev < fec) return { ok: false, mensaje: 'La fecha del evento no puede anteceder la fecha de generación del DTE.' };
+    const fecInicio = new Date(fec.getFullYear(), fec.getMonth(), fec.getDate());
+    const evInicio = new Date(ev.getFullYear(), ev.getMonth(), ev.getDate());
+    if (evInicio < fecInicio) return { ok: false, mensaje: 'La fecha del evento no puede anteceder la fecha de generación del DTE.' };
     if (ev > addMonths(fec, 3)) return { ok: false, mensaje: 'FE/FEXE/FSEE: la fecha del evento excede 3 meses posteriores a la fecha de generación.' };
     if (nowD > addMonths(sello, 3)) return { ok: false, mensaje: 'FE/FEXE/FSEE: la transmisión excede 3 meses desde el Sello de Recepción.' };
     return { ok: true, mensaje: 'Dentro del plazo de 3 meses (FE/FEXE/FSEE).' };
   }
-  if (ev.toDateString() !== fec.toDateString()) return { ok: false, mensaje: 'Para este tipo de DTE la fecha del evento debe ser igual a la fecha de generación.' };
+  if (ev.getFullYear() !== fec.getFullYear() || ev.getMonth() !== fec.getMonth() || ev.getDate() !== fec.getDate()) return { ok: false, mensaje: 'Para este tipo de DTE la fecha del evento debe ser igual a la fecha de generación.' };
   if (nowD > businessDay10(sello)) return { ok: false, mensaje: 'Transmisión fuera de los 10 días hábiles del mes siguiente al sello.' };
   return { ok: true, mensaje: 'Dentro del plazo de 10 días hábiles del mes siguiente.' };
 }

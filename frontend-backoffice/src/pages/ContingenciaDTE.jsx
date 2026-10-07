@@ -17,6 +17,7 @@ const CAT024 = [
   { c: 3, d: 'Otro' }
 ];
 const CAT022 = [ { c: '13', d: 'DUI' }, { c: '36', d: 'NIT' }, { c: '3', d: 'Pasaporte' } ];
+const TIPOS_DTE = { '01': 'FE', '03': 'CCFE', '04': 'NRE', '05': 'NCE', '06': 'NDE', '07': 'CRE', '08': 'CLE', '09': 'DCLE', '11': 'FEXE', '14': 'FSEE', '15': 'CDE' };
 
 const ContingenciaDTE = () => {
   const [pendientes, setPendientes] = useState([]);
@@ -84,6 +85,8 @@ const ContingenciaDTE = () => {
   const invalidar = async () => {
     if (!formInv.motivo) return toast.error('Indique el motivo de la invalidación');
     if (!formInv.responsable.nombre || !formInv.solicitante.nombre) return toast.error('Complete responsable y solicitante');
+    const requiereReemplazo = [1, 3].includes(Number(formInv.tipoAnulacion)) && !['05', '08'].includes(String(modalInvalidar?.dte_type));
+    if (requiereReemplazo && !formInv.codigoReemplazo) return toast.error('Seleccione el DTE aceptado que reemplaza al documento');
     setProcesando(true);
     try {
       const r = await api.post('/dte-eventos/invalidar/' + modalInvalidar.uuid_generation, formInv);
@@ -156,7 +159,7 @@ const ContingenciaDTE = () => {
             ) : pendientes.map((d) => (
               <tr key={d.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4"><code className="text-xs font-mono">{d.control_number}</code></td>
-                <td className="px-6 py-4 text-sm">{d.dte_type === '01' ? 'FE' : 'CCFE'}</td>
+                <td className="px-6 py-4 text-sm">{TIPOS_DTE[d.dte_type] || `DTE ${d.dte_type}`}</td>
                 <td className="px-6 py-4 font-mono text-sm text-primary-700">{d.pnr || '-'}</td>
                 <td className="px-6 py-4 text-sm font-semibold">${parseFloat(d.total_to_pay).toFixed(2)}</td>
                 <td className="px-6 py-4"><span className="px-3 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">Contingencia</span></td>
@@ -182,7 +185,7 @@ const ContingenciaDTE = () => {
             ) : aceptados.map((d) => (
               <tr key={d.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4"><code className="text-xs font-mono">{d.control_number}</code></td>
-                <td className="px-6 py-4 text-sm">{d.dte_type === '01' ? 'FE' : 'CCFE'}</td>
+                <td className="px-6 py-4 text-sm">{TIPOS_DTE[d.dte_type] || `DTE ${d.dte_type}`}</td>
                 <td className="px-6 py-4 text-sm">{d.receiver_name}</td>
                 <td className="px-6 py-4 text-xs text-gray-500">{d.reception_seal || '-'}</td>
                 <td className="px-6 py-4">
@@ -290,8 +293,18 @@ const ContingenciaDTE = () => {
                 <select className="input-field" value={formInv.tipoAnulacion} onChange={(e) => setFormInv(Object.assign({}, formInv, { tipoAnulacion: e.target.value }))}>
                   {CAT024.map((t) => <option key={t.c} value={t.c}>{t.c} - {t.d}</option>)}
                 </select></div>
-              <div className="col-span-2"><label className="block text-xs font-medium text-gray-700 mb-1">Descripción del error *</label><input className="input-field" value={formInv.motivo} onChange={(e) => setFormInv(Object.assign({}, formInv, { motivo: e.target.value }))} /></div>
-              <div className="col-span-2"><label className="block text-xs font-medium text-gray-700 mb-1">Código de generación que reemplaza (opcional)</label><input className="input-field" value={formInv.codigoReemplazo} onChange={(e) => setFormInv(Object.assign({}, formInv, { codigoReemplazo: e.target.value }))} /></div>
+              <div className="col-span-2"><label className="block text-xs font-medium text-gray-700 mb-1">Descripción del error *</label><input className="input-field" maxLength={200} value={formInv.motivo} onChange={(e) => setFormInv(Object.assign({}, formInv, { motivo: e.target.value }))} /></div>
+              {(() => {
+                const requiereReemplazo = [1, 3].includes(Number(formInv.tipoAnulacion)) && !['05', '08'].includes(String(modalInvalidar.dte_type));
+                const opcionesReemplazo = aceptados.filter((d) => String(d.dte_type) === String(modalInvalidar.dte_type) && d.uuid_generation !== modalInvalidar.uuid_generation);
+                return <div className="col-span-2"><label className="block text-xs font-medium text-gray-700 mb-1">DTE de reemplazo {requiereReemplazo ? '*' : '(no requerido)'}</label>
+                  {requiereReemplazo ? <select className="input-field" value={formInv.codigoReemplazo} onChange={(e) => setFormInv(Object.assign({}, formInv, { codigoReemplazo: e.target.value }))}>
+                    <option value="">-- Seleccione un DTE aceptado del mismo tipo --</option>
+                    {opcionesReemplazo.map((d) => <option key={d.uuid_generation} value={d.uuid_generation}>{d.control_number} · {d.uuid_generation}</option>)}
+                  </select> : <p className="text-sm text-gray-500">No se requiere reemplazo para este tipo de invalidación o documento.</p>}
+                  {requiereReemplazo && opcionesReemplazo.length === 0 && <p className="mt-1 text-xs text-amber-700">No hay DTEs aceptados de este tipo para reemplazarlo.</p>}
+                </div>;
+              })()}
               <div className="col-span-2"><label className="block text-xs font-medium text-gray-700 mb-1">Nombre de quien realiza *</label><input className="input-field" value={formInv.responsable.nombre} onChange={(e) => setFormInv(Object.assign({}, formInv, { responsable: Object.assign({}, formInv.responsable, { nombre: e.target.value }) }))} /></div>
               <div><label className="block text-xs font-medium text-gray-700 mb-1">Tipo doc *</label>
                 <select className="input-field" value={formInv.responsable.tipoDoc} onChange={(e) => setFormInv(Object.assign({}, formInv, { responsable: Object.assign({}, formInv.responsable, { tipoDoc: e.target.value }) }))}>

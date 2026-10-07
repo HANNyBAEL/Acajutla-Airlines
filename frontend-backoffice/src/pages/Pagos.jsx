@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../services/api';
 import { FiDollarSign, FiCheckCircle, FiRefreshCw, FiX, FiFileText, FiSearch, FiCreditCard, FiCalendar, FiHash } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { confirmarAccion } from '../utils/confirm';
 
 const Pagos = () => {
   const [pendientes, setPendientes] = useState([]);
@@ -64,7 +65,13 @@ const Pagos = () => {
   };
 
   const confirmar = async (p) => {
-    if (!window.confirm('¿Confirmar la transferencia del pago #' + p.id + ' (PNR ' + p.pnr + ')? Se emitirá y enviará el DTE.')) return;
+    const confirmado = await confirmarAccion({
+      title: '¿Confirmar transferencia?',
+      text: '¿Confirmar la transferencia del pago #' + p.id + ' (PNR ' + p.pnr + ')? Se emitirá y enviará el DTE.',
+      confirmText: 'Sí, confirmar',
+      isDanger: false
+    });
+    if (!confirmado) return;
     try {
       const r = await api.post('/pagos/' + p.id + '/confirmar', {});
       toast.success('Transferencia confirmada');
@@ -203,7 +210,7 @@ const Pagos = () => {
               <tr key={p.id} className="hover:bg-gray-50 cursor-pointer transition-colors" onClick={() => setDrawerPago(p)}>
                 <td className="px-6 py-4 text-sm text-gray-600">{p.id}</td>
                 <td className="px-6 py-4 font-mono text-sm text-primary-700">{p.pnr}</td>
-                <td className="px-6 py-4 text-sm text-gray-500">{p.created_at ? new Date(p.created_at).toLocaleString('es-SV') : '-'}</td>
+                <td className="px-6 py-4 text-sm text-gray-500">{p.payment_date ? new Date(p.payment_date).toLocaleString('es-SV') : '-'}</td>
                 <td className="px-6 py-4 text-sm">{metodoLabel(p.method)}{p.card_last_digits ? ' ····' + p.card_last_digits : ''}</td>
                 <td className="px-6 py-4 text-sm font-semibold">{p.type === 'refund' ? '-' : ''}${parseFloat(p.amount).toFixed(2)}</td>
                 <td className="px-6 py-4"><span className={'px-3 py-1 rounded-full text-xs font-medium ' + badge(p.status)[1]}>{badge(p.status)[0]}</span></td>
@@ -271,7 +278,7 @@ const Pagos = () => {
                 <InfoFila icon={FiDollarSign} label="Monto" value={(drawerPago.type === 'refund' ? '-' : '') + '$' + parseFloat(drawerPago.amount).toFixed(2) + ' USD'} />
                 <InfoFila icon={FiFileText} label="Tipo" value={drawerPago.type === 'refund' ? 'Reembolso' : 'Pago'} />
                 <InfoFila icon={FiFileText} label="DTE" value={drawerPago.tipo_dte ? (drawerPago.tipo_dte === '01' ? 'Factura Electrónica (FE)' : drawerPago.tipo_dte === '03' ? 'Crédito Fiscal (CCFE)' : drawerPago.tipo_dte) : '—'} />
-                <InfoFila icon={FiCalendar} label="Fecha" value={drawerPago.created_at ? new Date(drawerPago.created_at).toLocaleString('es-SV') : '—'} />
+                <InfoFila icon={FiCalendar} label="Fecha" value={drawerPago.payment_date ? new Date(drawerPago.payment_date).toLocaleString('es-SV') : '—'} />
                 {drawerPago.referencia && (
                   <InfoFila icon={FiHash} label="Referencia" value={drawerPago.referencia} />
                 )}
@@ -376,3 +383,4 @@ const Pagos = () => {
 };
 
 export default Pagos;
+

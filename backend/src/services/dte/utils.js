@@ -19,5 +19,7 @@ const generarNumeroControl = async (tipoDte, establecimiento = 'M001', puntoVent
 const formatearFecha = (fecha = new Date()) => fecha.toISOString().split('T')[0];
 const formatearHora = (fecha = new Date()) => fecha.toTimeString().split(' ')[0];
 const redondeoFiscal = (valor) => Math.round((valor + Number.EPSILON) * 100) / 100;
+const esUUIDValido = (valor) => typeof valor === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(valor);
+const validarNumeroControl = (valor) => typeof valor === 'string' && /^DTE-\d{2}-[MBSP]\d{3}P\d{3}-\d{15}$/.test(valor);
 
-module.exports = { generarUUIDv4, generarNumeroControl, formatearFecha, formatearHora, redondeoFiscal };
+module.exports = { generarUUIDv4, generarNumeroControl, formatearFecha, formatearHora, redondeoFiscal, esUUIDValido, validarNumeroControl };

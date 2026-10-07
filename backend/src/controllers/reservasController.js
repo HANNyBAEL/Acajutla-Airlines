@@ -33,8 +33,8 @@ const crearReserva = async (req, res) => {
       const disponibilidad = await FlightSegment.validarDisponibilidad(vuelo.flight_id, vuelo.fare_class || 'economy', connection);
       if (disponibilidad.available_seats < pasajeros.length) {
         await connection.rollback();
-        return res.status(409).json({ 
-          error: 'No hay suficientes asientos disponibles',
+        return res.status(409).json({
+          error: `No se puede completar la compra: el vuelo ${disponibilidad.flight_number} tiene ${disponibilidad.available_seats} asientos disponibles y se solicitaron ${pasajeros.length} boletos.`,
           vuelo: disponibilidad.flight_number,
           disponibles: disponibilidad.available_seats,
           requeridos: pasajeros.length

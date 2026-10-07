@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../services/api';
 import { FiPlus, FiSearch, FiX, FiUser, FiMail, FiPhone, FiFileText, FiCalendar, FiHash } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { confirmarAccion } from '../utils/confirm';
 
 const Clientes = () => {
   const [clientes, setClientes] = useState([]);
@@ -60,6 +61,22 @@ const Clientes = () => {
     } catch (e) {
       toast.error(e.response?.data?.error || 'Error al guardar');
     } finally { setGuardando(false); }
+  };
+
+  const eliminar = async (cliente) => {
+    const confirmado = await confirmarAccion({
+      title: '¿Estás seguro?',
+      text: `¿Eliminar definitivamente a ${cliente.first_names} ${cliente.last_names}? Solo se permite si no tiene reservas ni historial relacionado.`,
+      confirmText: 'Sí, eliminar',
+      isDanger: true
+    });
+    if (!confirmado) return;
+    try {
+      await api.delete('/clientes/' + cliente.id);
+      toast.success('Cliente eliminado');
+      setDrawerCliente(null);
+      cargar();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo eliminar el cliente'); }
   };
 
   const lista = clientes.filter((c) => JSON.stringify(c).toLowerCase().includes(filtro.toLowerCase()));
@@ -160,9 +177,10 @@ const Clientes = () => {
               <InfoFila icon={FiMail} label="Email" value={drawerCliente.email || '-'} />
               <InfoFila icon={FiPhone} label="Teléfono" value={drawerCliente.phone || '-'} />
             </div>
-            <div className="px-6 pt-5 pb-10 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
-              <button onClick={() => { setDrawerCliente(null); editar(drawerCliente); }} className="btn-primary mr-2">Editar cliente</button>
-              <button onClick={() => setDrawerCliente(null)} className="btn-secondary">Cerrar</button>
+            <div className="px-4 sm:px-6 py-4 border-t border-gray-200 bg-gray-50 grid grid-cols-2 gap-4">
+              <button onClick={() => { setDrawerCliente(null); editar(drawerCliente); }} className="btn-primary w-full">Editar cliente</button>
+              <button onClick={() => eliminar(drawerCliente)} disabled={Number(drawerCliente.reservation_count) > 0} title={Number(drawerCliente.reservation_count) ? 'Tiene historial de reservas' : 'Eliminar cliente'} className="btn-secondary w-full text-red-700 disabled:cursor-not-allowed disabled:opacity-50">Eliminar</button>
+              <button onClick={() => setDrawerCliente(null)} className="btn-secondary w-full col-span-2">Cerrar</button>
             </div>
           </div>
         </>
@@ -224,3 +242,4 @@ const Clientes = () => {
 };
 
 export default Clientes;
+

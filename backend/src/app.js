@@ -35,14 +35,8 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => res.json({ ok: true, service: 'skymanager-api' }));
 
 
-const { auditar } = require('./middleware/audit');
-const globalAuditor = auditar();
-app.use((req, res, next) => {
-  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
-    return globalAuditor(req, res, next);
-  }
-  next();
-});
+const { auditarCambios } = require('./middleware/audit');
+app.use(auditarCambios);
 
 // Rutas
 const authRoutes = require('./routes/authRoutes');
