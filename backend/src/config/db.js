@@ -5,6 +5,31 @@ const fs = require('node:fs');
 const path = require('node:path');
 const caPath = process.env.DB_SSL_CA_PATH || path.resolve(__dirname, '../../../Acajutla-Airlines-main-Pagina-web/Acajutla-Airlines-main/ca.pem');
 
+const getSslConfig = () => {
+  if (process.env.DB_SSL === 'false') {
+    return undefined;
+  }
+
+  let ca = process.env.DB_SSL_CA;
+  if (!ca && fs.existsSync(caPath)) {
+    try {
+      ca = fs.readFileSync(caPath, 'utf8');
+    } catch (e) {
+      console.warn('⚠️ [DB] No se pudo leer caPath:', e.message);
+    }
+  }
+
+  const rejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED !== undefined
+    ? process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true'
+    : Boolean(ca);
+
+  const ssl = { rejectUnauthorized };
+  if (ca) {
+    ssl.ca = ca;
+  }
+  return ssl;
+};
+
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   port: process.env.DB_PORT,
@@ -19,10 +44,7 @@ const pool = mysql.createPool({
   keepAliveInitialDelay: 0,
   timezone: '-06:00',
   dateStrings: true,
-  ssl: {
-    rejectUnauthorized: true,
-    ...(fs.existsSync(caPath) ? { ca: fs.readFileSync(caPath, 'utf8') } : {})
-  }
+  ssl: getSslConfig()
 });
 
 // Evita que un fallo de red en el pool tumbe todo el proceso Node.
