@@ -19,10 +19,11 @@
 5. Deploy y probar login.
 
 ## Post-despliegue
-1. Ejecutar migraciones una vez: migracion-bloque-b/c/e, migracion-checkin, migracion-comercial, migracion-correos, migracion-pagos-dte.
+1. Ejecutar migraciones una vez: migracion-bloque-b/c/e, migracion-checkin, migracion-comercial, migracion-correos, `npm run migrate:payments` y `npm run migrate:returns`.
 2. Seed de aeropuertos y usuario admin.
-3. `node pruebas/smoke-test.js` apuntando a la URL pública.
-4. Verificar /qa/checklist en verde.
+3. Antes del despliegue fiscal, confirmar que `payments.requiere_deduccion_fiscal`, `payments.receptor_dte` y `dte_return_events.returned_amount` existen. La migración de retornos marca como consumidos los eventos históricos sin monto para evitar reembolsos duplicados hasta conciliarlos.
+4. Ejecutar `npm test` para las regresiones locales aisladas. `node pruebas/smoke-test.js` puede activar MFA por correo.
+5. Verificar /qa/checklist en verde.
 
 ## Blueprint opcional
 Usar render.yaml de la raíz del repo (backend web + frontend static).

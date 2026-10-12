@@ -1,0 +1,63 @@
+FAIL | AUTH-01 | MFA generates a six-digit code without runtime error | crypto.randomInt is not a function
+FAIL | AUTH-02 | A new MFA challenge works after the previous challenge was consumed | New code remains used=true
+
+false !== true
+
+FAIL | AUTH-03 | A temporarily blocked account cannot log in | Missing expected rejection.
+FAIL | AUTH-04 | An inactive account cannot exchange an MFA code for tokens | Missing expected rejection.
+FAIL | AUTH-05 | API traffic does not consume the separate login rate limit | First login after API traffic returns 429
+
+false !== true
+
+PASS | ACL-00 | Unauthenticated reservation access returns 401
+FAIL | ACL-01 | Customer cannot read another customer reservation | Foreign reservation HTTP 200
+
+200 !== 403
+
+FAIL | ACL-02 | Customer cannot enumerate passengers of another reservation | Foreign passengers HTTP 200
+
+200 !== 403
+
+FAIL | ACL-03 | Customer cannot search the complete customer directory | Customer directory HTTP 200
+
+200 !== 403
+
+PASS | ACL-04 | Customer cannot list all reservations
+FAIL | PAY-01 | Empty card number is rejected by the active payment gateway | Empty card: APPROVED
+
+true !== false
+
+FAIL | PAY-02 | Card remains valid during the last day of its expiry month | Expected values to be strictly equal:
+
+false !== true
+
+FAIL | PAY-03 | Transfer without a bank reference is rejected before persistence | Created 1 pending payment(s) without a reference
+
+false !== true
+
+FAIL | PAY-04 | Confirmation rejects an expired reservation before the expiration job runs | Missing expected rejection.
+FAIL | OPS-01 | Pilot and copilot roles from the schema permit check-in | {"error":"OP-01: Operación bloqueada. El vuelo no tiene asignada la tripulación técnica mínima (Piloto y Copiloto)."}
+
+409 !== 200
+
+FAIL | OPS-02 | Partial payment does not authorize check-in with an outstanding balance | Check-in HTTP 200 with $99 still outstanding
+FAIL | OPS-03 | Seat assignment rejects seats beyond physical capacity | Seat 1F in a two-seat aircraft: HTTP 200
+FAIL | OPS-04 | Closing a cancelled flight is rejected | Cancelled flight changed to completed: HTTP 200
+FAIL | OPS-05 | Inactive crew cannot be assigned to a flight | Inactive crew assignment: HTTP 201
+FAIL | COM-01 | Adding a service checks reservation state and passenger/flight membership | Service accepted: HTTP 201; reservation validated=false
+FAIL | LOG-01 | Audit masking removes numeric CVV and document identifiers | Numeric PAN retained in audit details
+FAIL | DTE-01 | A generated FE passes the project complete DTE validator | Generator status=accepted; Versión inválida. Esperada: 2, recibida: 3; Item 1: cantidad debe ser > 0
+
+false !== true
+
+FAIL | DTE-02 | CCFE cannot be accepted without the receiver NRC | Missing expected rejection.
+FAIL | DTE-03 | Simultaneous invoices for different reservations receive distinct control numbers | Error al guardar DTE en base de datos: ER_DUP_ENTRY: uk_control_number
+
+1 !== 2
+
+FAIL | COM-02 | The service activation toggle preserves required name/code/price fields | UI active-only request sends undefined code/name/type into UPDATE
+FAIL | HTTP-01 | A database failure in fiscalidad returns an HTTP error without terminating Node | Node exit=1; synthetic DB failure was an unhandled rejection
+
+1 !== 0
+
+RESULTADO: 2 passed, 24 failed, 26 total

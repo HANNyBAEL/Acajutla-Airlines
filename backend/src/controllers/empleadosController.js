@@ -50,7 +50,7 @@ const crear = async (req, res) => {
 
     const [rEmp] = await connection.query(
       `INSERT INTO employees (first_names, last_names, document_type, document_number, position, email, phone, hire_date, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, CURDATE(), 'active')`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador')), 'active')`,
       [first_names, last_names, document_type || 'DUI', document_number, position || null, email || null, phone || null]
     );
 

@@ -46,13 +46,13 @@ const Login = () => {
         {!requiereMFA ? (
           <form onSubmit={enviar} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Usuario</label>
-              <input type="text" value={form.usuario} onChange={(e) => setForm({ ...form, usuario: e.target.value })} className="input-field" placeholder="admin" required />
+              <label htmlFor="login-usuario" className="block text-sm font-medium text-gray-700 mb-1">Usuario</label>
+              <input id="login-usuario" type="text" autoComplete="username" value={form.usuario} onChange={(e) => setForm({ ...form, usuario: e.target.value })} className="input-field" required />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+              <label htmlFor="login-password" className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
               <div className="relative">
-                <input type={mostrarPassword ? "text" : "password"} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="input-field pr-10" placeholder="••••••••" required />
+                <input id="login-password" type={mostrarPassword ? "text" : "password"} autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="input-field pr-10" required />
                 <button type="button" onClick={() => setMostrarPassword(!mostrarPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none" aria-label={mostrarPassword ? "Ocultar contraseña" : "Mostrar contraseña"}>
                   {mostrarPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
                 </button>
@@ -63,14 +63,12 @@ const Login = () => {
         ) : (
           <form onSubmit={enviarMFA} className="space-y-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4"><p className="text-sm text-blue-800">Ingresa el código de 6 dígitos enviado a tu correo</p></div>
-            <input type="text" value={mfa.codigo} onChange={(e) => setMfa({ ...mfa, codigo: e.target.value })} className="input-field text-center text-2xl tracking-widest" placeholder="000000" maxLength={6} required />
+            <label htmlFor="login-mfa" className="sr-only">Código MFA</label>
+            <input id="login-mfa" inputMode="numeric" autoComplete="one-time-code" type="text" value={mfa.codigo} onChange={(e) => setMfa({ ...mfa, codigo: e.target.value.replace(/\D/g, '').slice(0, 6) })} className="input-field text-center text-2xl tracking-widest" maxLength={6} required />
             <button type="submit" disabled={cargando} className="btn-primary w-full py-3">{cargando ? 'Verificando...' : 'Verificar Código'}</button>
           </form>
         )}
-        <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-          <p className="text-xs text-gray-600 font-semibold mb-2">Credenciales de prueba:</p>
-          <p className="text-xs text-gray-500">Usuario: <code className="bg-white px-1 rounded">admin</code> | Contraseña: <code className="bg-white px-1 rounded">Admin123</code></p>
-        </div>
+        <p className="mt-6 text-center text-xs text-gray-500">Usa las credenciales de la cuenta de práctica configurada para tu equipo.</p>
       </div>
     </div>
   );

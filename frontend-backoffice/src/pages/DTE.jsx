@@ -10,7 +10,7 @@ const DTE = () => {
   const [cargando, setCargando] = useState(true);
   const [modal, setModal] = useState(false);
   const [emitiendo, setEmitiendo] = useState(false);
-  const [form, setForm] = useState({ reservation_id: '', tipo_dte: '01', nit: '', nrc: '' });
+  const [form, setForm] = useState({ reservation_id: '', tipo_dte: '01', nit: '', nrc: '', requiere_deduccion_fiscal: false });
   const [visor, setVisor] = useState(null);
 
   const cargar = () => {
@@ -29,7 +29,7 @@ const DTE = () => {
     if (!form.reservation_id) return toast.error('Seleccione una reserva pagada');
     setEmitiendo(true);
     try {
-      const payload = { reservation_id: Number(form.reservation_id), tipo_dte: form.tipo_dte };
+      const payload = { reservation_id: Number(form.reservation_id), tipo_dte: form.tipo_dte, requiere_deduccion_fiscal: form.tipo_dte === '01' && form.requiere_deduccion_fiscal };
       if (form.tipo_dte === '03') payload.receptor = { nit: form.nit, nrc: form.nrc || null };
       const r = await dteAPI.emitir(payload);
       if (r.data.datos.estado === 'accepted') { toast.success('DTE emitido. Sello: ' + r.data.datos.sello); api.post('/correos/dte', { uuid: r.data.datos.uuid }).catch(() => {}); } else { toast.error('MH rechazó el DTE: ' + (r.data.datos.errores || []).join(', ')); }
@@ -170,6 +170,12 @@ const DTE = () => {
                       <input className="input-field" value={form.nrc} onChange={(e) => setForm(Object.assign({}, form, { nrc: e.target.value }))} placeholder="12345678" />
                     </div>
                   </div>
+                )}
+                {form.tipo_dte === '01' && (
+                  <label className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                    <input type="checkbox" className="mt-1" checked={form.requiere_deduccion_fiscal} onChange={(e) => setForm(Object.assign({}, form, { requiere_deduccion_fiscal: e.target.checked }))} />
+                    <span>El cliente solicita usar la FE para documentar un gasto deducible. Se validará que el cliente tenga sus datos de identificación registrados.</span>
+                  </label>
                 )}
               </div>
             )}

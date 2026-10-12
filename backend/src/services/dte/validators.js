@@ -1,4 +1,4 @@
-// Validadores de esquema DTE según Anexo IV
+// Validadores del contrato interno de la simulación escolar; sin certificación fiscal.
 const { esUUIDValido, validarNumeroControl } = require('./utils');
 const catalogs = require('./catalogs');
 
@@ -125,9 +125,14 @@ const validarEmisor = (emisor, tipoDte) => {
 /**
  * Valida receptor según tipo de DTE
  */
-const validarReceptor = (receptor, tipoDte, totalOperacion) => {
+const validarReceptor = (receptor, tipoDte, totalOperacion, opciones = {}) => {
   const errores = [];
-  const UMBRAL_FE = 100; // Umbral legal FE (ejemplo - confirmar con fiscal)
+  // Art. 114 b) 7) y 119-G b) VII del Código Tributario: para FE de
+  // personas naturales la identificación fiscal se exige cuando la operación
+  // supera $25,000 o cuando el comprador necesita documentar un costo/gasto
+  // deducible. Un extranjero que solicita la factura para documentar la
+  // operación también debe identificarse.
+  const UMBRAL_FE = 25000;
 
   // CCFE siempre requiere NIT + NRC
   if (tipoDte === '03') {
@@ -139,10 +144,21 @@ const validarReceptor = (receptor, tipoDte, totalOperacion) => {
     }
   }
 
-  // FE: si supera umbral, requiere documento
-  if (tipoDte === '01' && totalOperacion >= UMBRAL_FE) {
-    if (!receptor.tipoDocumento || !receptor.numDocumento) {
-      errores.push('Receptor requiere documento para FE >= $' + UMBRAL_FE);
+  // FE: la necesidad de documentación fiscal puede surgir también bajo el
+  // umbral. Esta señal es contexto de la aplicación y no se agrega al JSON DTE.
+  const requiereIdentificacionFE = Number(totalOperacion) > UMBRAL_FE
+    || opciones.requiereDeduccionFiscal === true
+    || opciones.receptorExtranjero === true;
+  if (tipoDte === '01') {
+    const tieneTipo = Boolean(receptor.tipoDocumento);
+    const tieneNumero = Boolean(typeof receptor.numDocumento === 'string' && receptor.numDocumento.trim());
+    if (requiereIdentificacionFE && (!tieneTipo || !tieneNumero)) {
+      errores.push('La FE requiere identificación del receptor por monto superior a $25,000 o por solicitud de documentación fiscal/deducción');
+    } else if (tieneTipo !== tieneNumero) {
+      errores.push('tipoDocumento y numDocumento del receptor deben proporcionarse juntos');
+    }
+    if (tieneTipo && !catalogs.CAT022[String(receptor.tipoDocumento)]) {
+      errores.push('tipoDocumento del receptor inválido para FE');
     }
   }
 
@@ -192,7 +208,7 @@ const validarCuerpo = (cuerpo, tipoDte) => {
       errores.push(`${prefix} cantidad debe ser > 0`);
     }
 
-    if (item.precioUni === undefined || item.precioUni < 0) {
+    if (!Number.isFinite(item.precioUni) || item.precioUni < 0) {
       errores.push(`${prefix} precioUni inválido`);
     }
 
@@ -202,7 +218,7 @@ const validarCuerpo = (cuerpo, tipoDte) => {
 
     // FE: precios incluyen IVA
     // CCFE/FEXE: precios sin IVA
-    if (item.ventaGravada === undefined) {
+    if (tipoDte === '14' ? !Number.isFinite(item.compra) : !Number.isFinite(item.ventaGravada)) {
       errores.push(`${prefix} ventaGravada requerida`);
     }
   });
@@ -216,13 +232,10 @@ const validarCuerpo = (cuerpo, tipoDte) => {
 const validarResumen = (resumen, tipoDte) => {
   const errores = [];
 
-  const camposRequeridos = [
-    'totalNoSuj', 'totalExenta', 'totalGravada',
-    'subTotalVentas', 'montoTotalOperacion', 'totalPagar'
-  ];
+  const camposRequeridos = tipoDte === '14' ? ['totalCompra', 'subTotal', 'totalPagar'] : tipoDte === '11' ? ['totalGravada', 'montoTotalOperacion', 'totalPagar'] : ['totalNoSuj', 'totalExenta', 'totalGravada', 'subTotalVentas', 'montoTotalOperacion', 'totalPagar'];
 
   camposRequeridos.forEach(campo => {
-    if (resumen[campo] === undefined || resumen[campo] < 0) {
+    if (!Number.isFinite(resumen[campo]) || resumen[campo] < 0) {
       errores.push(`resumen.${campo} inválido`);
     }
   });
@@ -245,12 +258,12 @@ const validarResumen = (resumen, tipoDte) => {
 /**
  * Validación completa de un DTE
  */
-const validarDTECompleto = (dte, tipoDte) => {
+const validarDTECompleto = (dte, tipoDte, opciones = {}) => {
   const errores = [];
 
   errores.push(...validarIdentificacion(dte.identificacion, tipoDte));
   errores.push(...validarEmisor(dte.emisor, tipoDte));
-  errores.push(...validarReceptor(dte.receptor, tipoDte, dte.resumen?.montoTotalOperacion));
+  errores.push(...validarReceptor(dte.receptor, tipoDte, dte.resumen?.montoTotalOperacion, opciones));
   errores.push(...validarCuerpo(dte.cuerpoDocumento, tipoDte));
   errores.push(...validarResumen(dte.resumen, tipoDte));
 

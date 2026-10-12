@@ -4,6 +4,7 @@ import Autocomplete from '../components/Autocomplete';
 import SearchableSelect from '../components/SearchableSelect';
 import { FiSearch, FiUserPlus, FiTrash2, FiCheckCircle, FiX } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { fechaActualSV } from '../utils/fechaServidor';
 const nacionalidades = ['SV', 'US', 'GT', 'HN', 'NI', 'CR', 'PA', 'MX'];
 const MAP_DOC = { DUI: '13', NIT: '36', Passport: '3', '13': '13', '36': '36', '3': '3' };
 const pasajeroVacio = () => ({
@@ -162,7 +163,9 @@ const NuevaReserva = () => {
 
   const vuelosSeleccionados = trayectos.map((t) => t.vuelos.find((v) => v.id === t.vueloId)).filter(Boolean);
   const vuelosSinCupo = vuelosSeleccionados.filter((vuelo) => pasajeros.length > Number(vuelo.available_seats || 0));
-  const totalEstimado = vuelosSeleccionados.reduce((total, vuelo) => total + Number(vuelo.total_price ?? 0), 0) * pasajeros.length;
+  const factorPasajero = (tipo) => tipo === 'child' ? 0.75 : tipo === 'infant' ? 0.10 : 1;
+  const totalFactorPasajeros = pasajeros.reduce((total, pasajero) => total + factorPasajero(pasajero.passenger_type), 0);
+  const totalEstimado = vuelosSeleccionados.reduce((total, vuelo) => total + Number(vuelo.total_price ?? 0), 0) * totalFactorPasajeros;
 
   const guardar = async () => {
     if (!clienteId) return toast.error('Selecciona un cliente o agrega uno nuevo');
@@ -378,7 +381,7 @@ const NuevaReserva = () => {
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Número de Documento *</label>
                 <input className="input-field" value={clienteForm.document_number} onChange={(e) => setCampoCliente('document_number', e.target.value)} placeholder="12345678-9" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha de nacimiento *</label>
-                <input type="date" className="input-field" value={clienteForm.birth_date} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setCampoCliente('birth_date', e.target.value)} /></div>
+                <input type="date" className="input-field" value={clienteForm.birth_date} max={fechaActualSV()} onChange={(e) => setCampoCliente('birth_date', e.target.value)} /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                 <input type="email" className="input-field" value={clienteForm.email} onChange={(e) => setCampoCliente('email', e.target.value)} placeholder="cliente@email.com" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>

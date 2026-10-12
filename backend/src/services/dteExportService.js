@@ -1,3 +1,5 @@
+const { serializarEmision, siguienteControl } = require('./dte/serializarEmision');
+const { validarDTECompleto } = require('./dte/validators');
 const pool = require('../config/db');
 const crypto = require('crypto');
 
@@ -36,34 +38,28 @@ function numeroALetras(num) {
   return (e === 0 ? 'CERO' : millon(e)) + ' DÓLARES CON ' + String(c).padStart(2, '0') + '/100';
 }
 
-async function siguienteControl(tipo) {
-  const anio = new Date().getFullYear();
-  const [r] = await pool.query('SELECT COUNT(*) AS n FROM dte_headers WHERE dte_type = ? AND YEAR(emission_date) = ?', [tipo, anio]);
-  return 'DTE-' + tipo + '-M001P001-' + String(r[0].n + 1).padStart(15, '0');
-}
-
-async function datosReserva(reservationId) {
-  const [r] = await pool.query('SELECT r.*, c.first_names, c.last_names, c.email, c.document_type, c.document_number FROM reservations r LEFT JOIN customers c ON c.id = r.customer_id WHERE r.id = ?', [reservationId]);
+async function datosReserva(reservationId, conn) {
+  const [r] = await conn.query('SELECT r.*, c.first_names, c.last_names, c.email, c.document_type, c.document_number FROM reservations r LEFT JOIN customers c ON c.id = r.customer_id WHERE r.id = ?', [reservationId]);
   if (!r.length) throw new Error('Reserva no encontrada');
   if (r[0].status !== 'paid') throw new Error('La reserva debe estar PAGADA para facturar');
-  const [vuelos] = await pool.query('SELECT f.flight_number, ao.iata_code AS origen, ad.iata_code AS destino FROM flight_segments fs JOIN flights f ON f.id = fs.flight_id JOIN routes rt ON rt.id = f.route_id JOIN airports ao ON ao.id = rt.origin_id JOIN airports ad ON ad.id = rt.destination_id WHERE fs.reservation_id = ?', [reservationId]);
+  const [vuelos] = await conn.query('SELECT f.flight_number, ao.iata_code AS origen, ad.iata_code AS destino FROM flight_segments fs JOIN flights f ON f.id = fs.flight_id JOIN routes rt ON rt.id = f.route_id JOIN airports ao ON ao.id = rt.origin_id JOIN airports ad ON ad.id = rt.destination_id WHERE fs.reservation_id = ?', [reservationId]);
   return { reserva: r[0], vuelos: vuelos };
 }
 
-async function guardar(tipo, json, reservationId, totalPagar) {
-  const fh = fechaHora();
-  const uuid = crypto.randomUUID().toUpperCase();
-  const numeroControl = await siguienteControl(tipo);
-  const sello = 'SELLO-' + crypto.randomBytes(12).toString('hex').toUpperCase();
-  const [h] = await pool.query(
-    'INSERT INTO dte_headers (dte_type, control_number, uuid_generation, reception_seal, full_json, emission_date, total_to_pay, reservation_id, transmission_status) VALUES (?,?,?,?,?,?,?,?,?)',
-    [tipo, numeroControl, uuid, sello, JSON.stringify(json), fh.fec, totalPagar, reservationId, 'accepted']
-  );
-  return { id: h.insertId, uuid: uuid, numeroControl: numeroControl, sello: sello };
+async function guardar(tipo, json, reservationId, totalPagar, conn) {
+  const { codigoGeneracion: uuid, numeroControl, fecEmi, horEmi } = json.identificacion;
+  json.simulacion = require('../config/simulation').SIMULATION;
+  const validacion = validarDTECompleto(json, tipo);
+  if (!validacion.valido) throw new Error(validacion.errores.join('; '));
+  const sello = 'SELLO-SIMULADO-' + crypto.randomBytes(12).toString('hex').toUpperCase();
+  const [h] = await conn.query(
+    'INSERT INTO dte_headers (dte_type, control_number, annual_correlative, uuid_generation, reception_seal, full_json, emission_date, emission_time, environment, total_to_pay, reservation_id, transmission_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+    [tipo, numeroControl, Number(numeroControl.split('-').pop()), uuid, sello, JSON.stringify(json), fecEmi, horEmi, '00', totalPagar, reservationId, 'accepted']);
+  return { id: h.insertId, uuid, numeroControl, sello };
 }
 
-async function emitirFEXE(datos) {
-  const { reserva, vuelos } = await datosReserva(datos.reservation_id);
+async function emitirFEXEInterno(datos, conn) {
+  const { reserva, vuelos } = await datosReserva(datos.reservation_id, conn);
   const codPais = String(datos.codPais || '').toUpperCase();
   if (!codPais || codPais === 'SV') throw new Error('RN-FIS-05: el código de país del receptor es obligatorio y debe ser diferente a SV');
   const tipoItemExpor = Number(datos.tipoItemExpor || 1);
@@ -95,7 +91,7 @@ async function emitirFEXE(datos) {
   };
 
   const cuerpo = [{
-    numItem: 1,
+    numItem: 1, cantidad: 1,
     tipoItem: tipoItemExpor,
     numeroDocumento: null,
     codigo: null,
@@ -113,7 +109,7 @@ async function emitirFEXE(datos) {
   const totalPagar = redondeo(montoTotalOperacion);
 
   const json = {
-    identificacion: { version: 3, ambiente: process.env.DTE_AMBIENTE || '00', tipoDte: '11', numeroControl: await siguienteControl('11'), codigoGeneracion: crypto.randomUUID().toUpperCase(), tipoModelo: 1, tipoOperacion: 1, tipoContingencia: null, motivoContin: null, fecEmi: fh.fec, horEmi: fh.hor, tipoMoneda: 'USD' },
+    identificacion: { version: 3, ambiente: require('../config/simulation').SIMULATION.ambiente, tipoDte: '11', numeroControl: (await siguienteControl('11', conn)).numero, codigoGeneracion: crypto.randomUUID().toUpperCase(), tipoModelo: 1, tipoOperacion: 1, tipoContingencia: null, motivoContin: null, fecEmi: fh.fec, horEmi: fh.hor, tipoMoneda: 'USD' },
     documentoRelacionado: null,
     emisor: emisor,
     receptor: receptor,
@@ -143,11 +139,11 @@ async function emitirFEXE(datos) {
     },
     apendice: [{ campo: 'PNR', etiqueta: 'Código de reserva', valor: reserva.pnr }]
   };
-  return guardar('11', json, datos.reservation_id, totalPagar);
+  return guardar('11', json, datos.reservation_id, totalPagar, conn);
 }
 
-async function emitirFSEE(datos) {
-  const { reserva } = await datosReserva(datos.reservation_id);
+async function emitirFSEEInterno(datos, conn) {
+  const { reserva } = await datosReserva(datos.reservation_id, conn);
   const monto = redondeo(Number(datos.monto || reserva.estimated_total));
   const reteRenta = redondeo(Number(datos.reteRenta || 0));
   const fh = fechaHora();
@@ -164,7 +160,7 @@ async function emitirFSEE(datos) {
   };
 
   const cuerpo = [{
-    numItem: 1,
+    numItem: 1, cantidad: 1,
     tipoItem: 2,
     numeroDocumento: null,
     codigo: null,
@@ -179,7 +175,7 @@ async function emitirFSEE(datos) {
   const totalPagar = redondeo(Math.max(0, subTotal - reteRenta));
 
   const json = {
-    identificacion: { version: 2, ambiente: process.env.DTE_AMBIENTE || '00', tipoDte: '14', numeroControl: await siguienteControl('14'), codigoGeneracion: crypto.randomUUID().toUpperCase(), tipoModelo: 1, tipoOperacion: 1, tipoContingencia: null, motivoContin: null, fecEmi: fh.fec, horEmi: fh.hor, tipoMoneda: 'USD' },
+    identificacion: { version: 2, ambiente: require('../config/simulation').SIMULATION.ambiente, tipoDte: '14', numeroControl: (await siguienteControl('14', conn)).numero, codigoGeneracion: crypto.randomUUID().toUpperCase(), tipoModelo: 1, tipoOperacion: 1, tipoContingencia: null, motivoContin: null, fecEmi: fh.fec, horEmi: fh.hor, tipoMoneda: 'USD' },
     documentoRelacionado: null,
     emisor: Object.assign({}, EMISOR_BASE),
     receptor: receptor,
@@ -200,7 +196,7 @@ async function emitirFSEE(datos) {
     },
     apendice: [{ campo: 'PNR', etiqueta: 'Código de reserva', valor: reserva.pnr }]
   };
-  return guardar('14', json, datos.reservation_id, totalPagar);
+  return guardar('14', json, datos.reservation_id, totalPagar, conn);
 }
 
 async function listar(tipo) {
@@ -208,4 +204,6 @@ async function listar(tipo) {
   return rows;
 }
 
+const emitirFEXE = datos => serializarEmision(conn => emitirFEXEInterno(datos, conn));
+const emitirFSEE = datos => serializarEmision(conn => emitirFSEEInterno(datos, conn));
 module.exports = { emitirFEXE: emitirFEXE, emitirFSEE: emitirFSEE, listar: listar };

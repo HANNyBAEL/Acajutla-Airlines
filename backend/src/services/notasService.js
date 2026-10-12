@@ -1,5 +1,8 @@
+const { serializarEmision, siguienteControl } = require('./dte/serializarEmision');
+const { validarDTECompleto } = require('./dte/validators');
 const pool = require('../config/db');
 const crypto = require('crypto');
+const { fechaElSalvador, horaElSalvador } = require('../utils/fechaElSalvador');
 
 const redondeo = (v) => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
 
@@ -36,15 +39,10 @@ function numeroALetras(num) {
   return (enteros === 0 ? 'CERO' : millon(enteros)) + ' DÓLARES CON ' + String(centavos).padStart(2, '0') + '/100';
 }
 
-async function siguienteControl(tipo) {
-  const [r] = await pool.query("SELECT COUNT(*) AS n FROM dte_headers WHERE dte_type = ?", [tipo]);
-  return 'DTE-' + tipo + '-M001P001-' + String(r[0].n + 1).padStart(15, '0');
-}
-
-async function generarNota(datos) {
+async function generarNotaInterna(datos, conn) {
   const { origenUuid, tipoDte, motivo, monto, noGravado } = datos;
   if (!['05', '06'].includes(tipoDte)) throw new Error('Tipo de nota inválido (05 NCE / 06 NDE)');
-  const [orig] = await pool.query("SELECT * FROM dte_headers WHERE uuid_generation = ? AND dte_type IN ('01','03','11')", [origenUuid]);
+  const [orig] = await conn.query("SELECT * FROM dte_headers WHERE uuid_generation = ? AND dte_type IN ('01','03','11')", [origenUuid]);
   if (!orig.length) throw new Error('DTE origen no encontrado o no válido (Solo FE, CCFE o FEXE)');
   const row = orig[0];
   if (!row.reception_seal) throw new Error('El DTE origen debe tener Sello de Recepción');
@@ -91,15 +89,16 @@ async function generarNota(datos) {
   }
 
   const ahora = new Date();
-  const fec = ahora.toISOString().slice(0, 10);
-  const hor = ahora.toTimeString().slice(0, 8);
-  const numeroControl = await siguienteControl(tipoDte);
+  const fec = fechaElSalvador(ahora);
+  const hor = horaElSalvador(ahora);
+  const numeroControl = (await siguienteControl(tipoDte, conn)).numero;
   const uuid = crypto.randomUUID().toUpperCase();
   const sello = 'SELLO-' + crypto.randomBytes(12).toString('hex').toUpperCase();
 
   const dte = {
+    simulacion: require('../config/simulation').SIMULATION,
     identificacion: {
-      version: 3, ambiente: process.env.DTE_AMBIENTE || '00', tipoDte: tipoDte,
+      version: 4, ambiente: require('../config/simulation').SIMULATION.ambiente, tipoDte: tipoDte,
       numeroControl: numeroControl, codigoGeneracion: uuid, tipoModelo: 1, tipoOperacion: 1,
       tipoContingencia: null, motivoContin: null, fecEmi: fec, horEmi: hor, tipoMoneda: 'USD', fusion: null
     },
@@ -127,6 +126,7 @@ async function generarNota(datos) {
       ivaRete: 0,
       reteRenta: 0,
       montoTotalOperacion: montoTotalOperacion,
+      totalPagar, condicionOperacion: 3,
       totalLetras: numeroALetras(montoTotalOperacion)
     },
     extension: {
@@ -139,15 +139,17 @@ async function generarNota(datos) {
     apendice: [{ campo: 'motivo', etiqueta: 'Motivo del ajuste', valor: motivo || null }]
   };
 
+  const validation = validarDTECompleto(dte, tipoDte);
+  if (!validation.valido) throw new Error(validation.errores.join('; '));
   const r_corr = parseInt(numeroControl.split('-').pop(), 10) || 1;
-  await pool.query(
+  await conn.query(
     `INSERT INTO dte_headers (uuid_generation, dte_type, control_number, annual_correlative, emission_date, emission_time,
         environment, billing_model, operation_type, transmission_status, reception_seal, reservation_id, full_json,
         issuer_nit, issuer_name, receiver_name, receiver_doc_type, receiver_doc_number,
         total_non_taxable, total_exempt, total_taxable, total_vat, total_to_pay)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [uuid, tipoDte, numeroControl, r_corr, fec, hor,
-     process.env.DTE_AMBIENTE || '00', 1, 1, 'accepted', sello, row.reservation_id, JSON.stringify(dte),
+     require('../config/simulation').SIMULATION.ambiente, 1, 1, 'accepted', sello, row.reservation_id, JSON.stringify(dte),
      dte.emisor.nit, dte.emisor.nombre, dte.receptor.nombre, dte.receptor.tipoDocumento || null, dte.receptor.numDocumento || null,
      0, 0, ventaGravada, totalivaItem, totalPagar]
   );
@@ -168,4 +170,5 @@ async function origenes() {
   return rows;
 }
 
+const generarNota = datos => serializarEmision(conn => generarNotaInterna(datos, conn));
 module.exports = { generarNota: generarNota, listarNotas: listarNotas, origenes: origenes };

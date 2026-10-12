@@ -37,7 +37,7 @@ const checklist = async (req, res) => {
   } catch (e) { /* sin triggers */ }
   const data = [
     { id: 'masking', nombre: 'Enmascaramiento de datos sensibles (PII)', estado: 'ok', detalle: 'utils/masking.js disponible para visor DTE y auditoría' },
-    { id: 'ratelimit', nombre: 'Rate limiting por IP en /api/auth', estado: process.env.RATE_LIMIT_DISABLED === 'true' ? 'pendiente' : 'ok', detalle: 'middleware rateLimit.js (15 req/min)' },
+    { id: 'ratelimit', nombre: 'Rate limiting por IP en /api/auth', estado: process.env.RATE_LIMIT_DISABLED === 'true' ? 'pendiente' : 'ok', detalle: 'middleware rateLimiter.js (100 intentos de login y 1000 peticiones API por cada 15 min)' },
     { id: 'signing', nombre: 'Firmado HMAC de payloads críticos', estado: process.env.SIGNATURE_REQUIRED === 'true' ? 'ok' : 'pendiente', detalle: 'activar SIGNATURE_REQUIRED=true en .env para exigir firma' },
     { id: 'immutability', nombre: 'Bitácora inmutable (RNF-006)', estado: imm ? 'ok' : 'pendiente', detalle: 'triggers BEFORE UPDATE/DELETE en audit_logs' },
     { id: 'backups', nombre: 'Respaldo diario cifrado (RNF-003)', estado: process.env.BACKUP_ENABLED === 'true' ? 'ok' : 'pendiente', detalle: 'configurar tarea programada en Render/Aiven' },

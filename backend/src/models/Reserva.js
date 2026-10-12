@@ -3,7 +3,8 @@ const pool = require('../config/db');
 const Reserva = {
   buscarPorPNR: async (pnr) => {
     const [rows] = await pool.query(
-      `SELECT r.*, c.first_names AS customer_first_names, c.last_names AS customer_last_names,
+      `SELECT r.*, (r.status = 'pending' AND r.time_limit IS NOT NULL AND r.time_limit < NOW()) AS time_limit_expired,
+              c.first_names AS customer_first_names, c.last_names AS customer_last_names,
               c.document_type AS customer_document_type, c.document_number AS customer_document_number,
               c.email AS customer_email
        FROM reservations r LEFT JOIN customers c ON r.customer_id = c.id WHERE r.pnr = ?`,
@@ -14,7 +15,8 @@ const Reserva = {
 
   obtenerDetalleCompleto: async (pnr) => {
     const [reserva] = await pool.query(
-      `SELECT r.*, c.first_names AS customer_first_names, c.last_names AS customer_last_names,
+      `SELECT r.*, (r.status = 'pending' AND r.time_limit IS NOT NULL AND r.time_limit < NOW()) AS time_limit_expired,
+              c.first_names AS customer_first_names, c.last_names AS customer_last_names,
               c.document_type AS customer_document_type, c.document_number AS customer_document_number,
               c.email AS customer_email, c.phone AS customer_phone
        FROM reservations r LEFT JOIN customers c ON r.customer_id = c.id WHERE r.pnr = ?`,
@@ -27,7 +29,7 @@ const Reserva = {
               f.flight_number, f.departure_datetime, f.arrival_datetime,
               ao.iata_code AS origin, ad.iata_code AS destination
        FROM passengers p
-       JOIN flight_segments fs ON fs.reservation_id = p.reservation_id
+       JOIN flight_segments fs ON fs.passenger_id = p.id
        JOIN flights f ON f.id = fs.flight_id
        JOIN routes rt ON f.route_id = rt.id
        JOIN airports ao ON rt.origin_id = ao.id

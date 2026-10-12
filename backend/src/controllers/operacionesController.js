@@ -7,7 +7,11 @@ const getParam = async (key, def) => {
 
 const listarTripulacion = async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM crew_members ORDER BY full_name');
+    const [rows] = await pool.query(
+      `SELECT cm.*,
+              (SELECT COUNT(*) FROM flight_crew fc WHERE fc.crew_member_id = cm.id) AS history_count
+       FROM crew_members cm ORDER BY cm.full_name`
+    );
     res.json({ exito: true, datos: rows });
   } catch (e) { res.status(500).json({ error: 'Error interno' }); }
 };
@@ -41,35 +45,68 @@ const actualizarTripulante = async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Error interno' }); }
 };
 
-const asignarCrew = async (req, res) => {
+const eliminarTripulante = async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id inválido' });
   try {
-    const { flight_id, crew_member_id, role, duty_start, duty_end } = req.body;
-    const [cm] = await pool.query('SELECT * FROM crew_members WHERE id = ?', [crew_member_id]);
-    if (!cm.length) return res.status(404).json({ error: 'Tripulante no encontrado' });
+    const [existe] = await pool.query(
+      `SELECT cm.id,
+              (SELECT COUNT(*) FROM flight_crew fc WHERE fc.crew_member_id = cm.id) AS history_count
+       FROM crew_members cm WHERE cm.id = ?`, [id]
+    );
+    if (!existe.length) return res.status(404).json({ error: 'Tripulante no encontrado' });
+    const historial = Number(existe[0].history_count);
+    if (historial > 0) {
+      return res.status(409).json({
+        error: 'No se puede eliminar: el tripulante tiene historial de asignaciones a vuelos',
+        historial: { asignaciones: historial }
+      });
+    }
+    const [resultado] = await pool.query('DELETE FROM crew_members WHERE id = ?', [id]);
+    if (!resultado.affectedRows) return res.status(404).json({ error: 'Tripulante no encontrado' });
+    res.json({ exito: true, mensaje: 'Tripulante eliminado' });
+  } catch (e) {
+    console.error('Error eliminar tripulante:', e);
+    res.status(500).json({ error: 'Error interno' });
+  }
+};
+
+const asignarCrew = async (req, res) => {
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    const { flight_id, crew_member_id, role } = req.body;
+    const [cm] = await conn.query('SELECT * FROM crew_members WHERE id = ? FOR UPDATE', [crew_member_id]);
     const c = cm[0];
-    if (['pilot', 'copilot'].includes(c.role_operativo) && c.license_expiry && new Date(c.license_expiry) < new Date(duty_start || Date.now())) {
-      return res.status(400).json({ error: 'Licencia vencida para la fecha del deber' });
-    }
-    if (duty_start && duty_end) {
-      const [sol] = await pool.query(
-        'SELECT id FROM flight_crew WHERE crew_member_id = ? AND duty_start IS NOT NULL AND duty_end IS NOT NULL AND ? < duty_end AND ? > duty_start',
-        [crew_member_id, duty_start, duty_end]
-      );
-      if (sol.length) return res.status(409).json({ error: 'El tripulante ya tiene un deber solapado en ese horario' });
-      const rest = parseFloat(await getParam('crew_rest_hours', '10'));
-      const [prev] = await pool.query(
-        'SELECT duty_end FROM flight_crew WHERE crew_member_id = ? AND duty_end IS NOT NULL AND duty_end <= ? ORDER BY duty_end DESC LIMIT 1',
-        [crew_member_id, duty_start]
-      );
-      if (prev.length) {
-        const gap = (new Date(duty_start) - new Date(prev[0].duty_end)) / 3600000;
-        if (gap < rest) return res.status(409).json({ error: 'Descanso insuficiente: ' + gap.toFixed(1) + 'h < ' + rest + 'h requeridas' });
-      }
-    }
-    await pool.query('INSERT INTO flight_crew (flight_id, crew_member_id, role, duty_start, duty_end) VALUES (?,?,?,?,?)',
-      [flight_id, crew_member_id, role || c.role_operativo, duty_start || null, duty_end || null]);
+    if (!c || !Number(c.active)) throw new Error('Tripulante inexistente o inactivo');
+    if (role && role !== c.role_operativo) throw new Error('El rol asignado debe coincidir con la habilitación del tripulante');
+    const [flights] = await conn.query('SELECT departure_datetime, arrival_datetime, status FROM flights WHERE id = ? FOR UPDATE', [flight_id]);
+    const f = flights[0];
+    if (!f || !['scheduled', 'confirmed'].includes(f.status)) throw new Error('El vuelo no admite asignaciones');
+    const duty_start = req.body.duty_start || f.departure_datetime;
+    const duty_end = req.body.duty_end || f.arrival_datetime;
+    const start = new Date(duty_start), end = new Date(duty_end);
+    if (!Number.isFinite(+start) || !Number.isFinite(+end) || end <= start || start > new Date(f.departure_datetime) || end < new Date(f.arrival_datetime)) throw new Error('El deber debe cubrir el horario completo del vuelo');
+    if (['pilot', 'copilot'].includes(c.role_operativo) && (!c.license_expiry || String(c.license_expiry).slice(0, 10) < String(duty_end).slice(0, 10))) throw new Error('Licencia ausente o vencida para la fecha del deber');
+    const [cfg] = await conn.query("SELECT param_value FROM config_params WHERE param_key = 'crew_rest_hours'");
+    const rest = Number(cfg[0]?.param_value ?? 10);
+    if (!Number.isFinite(rest) || rest < 0) throw new Error('Configuración de descanso inválida');
+    // El bloqueo de tripulante serializa asignaciones. Revisa también el deber posterior.
+    const [conflictos] = await conn.query(
+      `SELECT fc.id FROM flight_crew fc JOIN flights f ON f.id = fc.flight_id
+       WHERE fc.crew_member_id = ? AND f.status <> 'cancelled'
+       AND DATE_SUB(COALESCE(fc.duty_start, f.departure_datetime), INTERVAL ? HOUR) < ?
+       AND DATE_ADD(COALESCE(fc.duty_end, f.arrival_datetime), INTERVAL ? HOUR) > ?`,
+      [crew_member_id, rest, duty_end, rest, duty_start]);
+    if (conflictos.length) throw new Error('Horario solapado o descanso insuficiente entre deberes');
+    await conn.query('INSERT INTO flight_crew (flight_id, crew_member_id, role, duty_start, duty_end) VALUES (?,?,?,?,?)', [flight_id, crew_member_id, c.role_operativo, duty_start, duty_end]);
+    await conn.commit();
     res.status(201).json({ exito: true });
-  } catch (e) { res.status(500).json({ error: 'Error interno' }); }
+  } catch (e) {
+    if (conn) await conn.rollback();
+    res.status(409).json({ error: e.message });
+  } finally { if (conn) conn.release(); }
 };
 
 const crewDeVuelo = async (req, res) => {
@@ -84,7 +121,11 @@ const crewDeVuelo = async (req, res) => {
 
 const listarClases = async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM fare_classes ORDER BY code');
+    const [rows] = await pool.query(
+      `SELECT fc.*,
+              (SELECT COUNT(*) FROM flight_fares ff WHERE ff.fare_class_id = fc.id) AS history_count
+       FROM fare_classes fc ORDER BY fc.code`
+    );
     res.json({ exito: true, datos: rows });
   } catch (e) { res.status(500).json({ error: 'Error interno' }); }
 };
@@ -98,6 +139,33 @@ const crearClase = async (req, res) => {
     res.status(201).json({ exito: true, datos: { id: r.insertId } });
   } catch (e) {
     if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'El código de clase ya existe' });
+    res.status(500).json({ error: 'Error interno' });
+  }
+};
+
+const eliminarClase = async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id inválido' });
+  try {
+    const [existe] = await pool.query(
+      `SELECT fc.id,
+              (SELECT COUNT(*) FROM flight_fares ff WHERE ff.fare_class_id = fc.id) AS history_count
+       FROM fare_classes fc WHERE fc.id = ?`, [id]
+    );
+    if (!existe.length) return res.status(404).json({ error: 'Clase tarifaria no encontrada' });
+    const historial = Number(existe[0].history_count);
+    if (historial > 0) {
+      return res.status(409).json({
+        error: 'No se puede eliminar: la clase tarifaria conserva historial de tarifas',
+        historial: { tarifas: historial }
+      });
+    }
+    const [resultado] = await pool.query('DELETE FROM fare_classes WHERE id = ?', [id]);
+    if (!resultado.affectedRows) return res.status(404).json({ error: 'Clase tarifaria no encontrada' });
+    res.json({ exito: true, mensaje: 'Clase tarifaria eliminada' });
+  } catch (e) {
+    if (e.code === 'ER_ROW_IS_REFERENCED_2') return res.status(409).json({ error: 'No se puede eliminar: existen tarifas relacionadas' });
+    console.error('Error eliminar clase tarifaria:', e);
     res.status(500).json({ error: 'Error interno' });
   }
 };
@@ -158,7 +226,12 @@ const listarFacilities = async (req, res) => {
   try {
     const { airport_id } = req.query;
     const [rows] = await pool.query(
-      'SELECT f.*, a.iata_code FROM airport_facilities f JOIN airports a ON a.id = f.airport_id WHERE ? IS NULL OR f.airport_id = ? ORDER BY a.iata_code, f.code',
+      `SELECT af.*, a.iata_code,
+              (SELECT COUNT(*) FROM flights fl
+               WHERE (af.type = 'gate' AND BINARY LOWER(fl.gate) = BINARY LOWER(af.code))
+                  OR (af.type = 'terminal' AND BINARY LOWER(fl.terminal) = BINARY LOWER(af.code))) AS history_count
+       FROM airport_facilities af JOIN airports a ON a.id = af.airport_id
+       WHERE ? IS NULL OR af.airport_id = ? ORDER BY a.iata_code, af.code`,
       [airport_id || null, airport_id || null]
     );
     res.json({ exito: true, datos: rows });
@@ -172,6 +245,53 @@ const crearFacility = async (req, res) => {
     const [r] = await pool.query('INSERT INTO airport_facilities (airport_id, type, code) VALUES (?,?,?)', [airport_id, type, code.toUpperCase()]);
     res.status(201).json({ exito: true, datos: { id: r.insertId } });
   } catch (e) { res.status(500).json({ error: 'Error interno' }); }
+};
+
+const actualizarFacility = async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id inválido' });
+  const { active } = req.body || {};
+  if (active === undefined || active === null) return res.status(400).json({ error: 'Debe indicar el estado de la instalación' });
+  try {
+    const [resultado] = await pool.query('UPDATE airport_facilities SET active = ? WHERE id = ?', [active ? 1 : 0, id]);
+    if (!resultado.affectedRows) {
+      const [existe] = await pool.query('SELECT id FROM airport_facilities WHERE id = ?', [id]);
+      if (!existe.length) return res.status(404).json({ error: 'Instalación no encontrada' });
+    }
+    res.json({ exito: true, datos: { id, active: active ? 1 : 0 } });
+  } catch (e) {
+    console.error('Error actualizar infraestructura:', e);
+    res.status(500).json({ error: 'Error interno' });
+  }
+};
+
+const eliminarFacility = async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id inválido' });
+  try {
+    const [existe] = await pool.query(
+      `SELECT af.id, af.type, af.code,
+              (SELECT COUNT(*) FROM flights fl
+               WHERE (af.type = 'gate' AND BINARY LOWER(fl.gate) = BINARY LOWER(af.code))
+                  OR (af.type = 'terminal' AND BINARY LOWER(fl.terminal) = BINARY LOWER(af.code))) AS history_count
+       FROM airport_facilities af WHERE af.id = ?`, [id]
+    );
+    if (!existe.length) return res.status(404).json({ error: 'Instalación no encontrada' });
+    const historial = Number(existe[0].history_count);
+    if (historial > 0) {
+      return res.status(409).json({
+        error: 'No se puede eliminar: la instalación aparece en el historial de vuelos',
+        historial: { vuelos: historial }
+      });
+    }
+    const [resultado] = await pool.query('DELETE FROM airport_facilities WHERE id = ?', [id]);
+    if (!resultado.affectedRows) return res.status(404).json({ error: 'Instalación no encontrada' });
+    res.json({ exito: true, mensaje: 'Instalación eliminada' });
+  } catch (e) {
+    if (e.code === 'ER_ROW_IS_REFERENCED_2') return res.status(409).json({ error: 'No se puede eliminar: existen registros relacionados' });
+    console.error('Error eliminar infraestructura:', e);
+    res.status(500).json({ error: 'Error interno' });
+  }
 };
 
 const getConfig = async (req, res) => {
@@ -210,7 +330,7 @@ const trazabilidad = async (req, res) => {
 };
 
 module.exports = {
-  listarTripulacion, crearTripulante, actualizarTripulante, asignarCrew, crewDeVuelo,
-  listarClases, crearClase, asignarFare, faresDeVuelo,
-  listarFacilities, crearFacility, getConfig, updateConfig, trazabilidad
+  listarTripulacion, crearTripulante, actualizarTripulante, eliminarTripulante, asignarCrew, crewDeVuelo,
+  listarClases, crearClase, eliminarClase, asignarFare, faresDeVuelo,
+  listarFacilities, crearFacility, actualizarFacility, eliminarFacility, getConfig, updateConfig, trazabilidad
 };

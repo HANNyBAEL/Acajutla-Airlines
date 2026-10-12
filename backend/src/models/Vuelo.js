@@ -24,6 +24,7 @@ const Vuelo = {
       JOIN fare_classes fc ON fc.id = ff.fare_class_id AND fc.code = ? AND fc.active = 1
       WHERE ao.iata_code = ? AND ad.iata_code = ?
         AND DATE(f.departure_datetime) = ?
+        AND f.departure_datetime > CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador')
         AND f.status IN ('scheduled', 'confirmed')
         AND ao.active = 1 AND ad.active = 1
       ORDER BY f.departure_datetime ASC
@@ -49,7 +50,7 @@ const Vuelo = {
     const [rows] = await pool.query(`
       SELECT f.*, ao.iata_code AS origin, ad.iata_code AS destination, at.model AS aircraft,
              CASE
-               WHEN f.departure_datetime <= CONVERT_TZ(NOW(), 'UTC', 'America/El_Salvador') AND f.status IN ('scheduled', 'confirmed', 'delayed') THEN 'deployed'
+               WHEN f.departure_datetime <= CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador') AND f.status IN ('scheduled', 'confirmed', 'delayed') THEN 'deployed'
                ELSE f.status
              END AS display_status
       FROM flights f

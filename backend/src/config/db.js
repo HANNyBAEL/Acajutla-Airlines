@@ -1,5 +1,9 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
+require('./simulation').protegerRed();
+const fs = require('node:fs');
+const path = require('node:path');
+const caPath = process.env.DB_SSL_CA_PATH || path.resolve(__dirname, '../../../Acajutla-Airlines-main-Pagina-web/Acajutla-Airlines-main/ca.pem');
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -16,7 +20,8 @@ const pool = mysql.createPool({
   timezone: '-06:00',
   dateStrings: true,
   ssl: {
-    rejectUnauthorized: false
+    rejectUnauthorized: true,
+    ...(fs.existsSync(caPath) ? { ca: fs.readFileSync(caPath, 'utf8') } : {})
   }
 });
 
@@ -26,17 +31,5 @@ pool.on('connection', (connection) => {
     console.error('❌ [DB] Error en conexión del pool:', err.message);
   });
 });
-
-(async () => {
-  try {
-    const connection = await pool.getConnection();
-    console.log('✅ [DB] Conectado a MySQL Aiven correctamente');
-    connection.release();
-  } catch (error) {
-    console.error('❌ [DB] Error al conectar a MySQL:', error.message);
-    console.error('   Revisa en Aiven Console que el servicio MySQL esté Powered ON');
-    console.error('   Host:', process.env.DB_HOST, 'Port:', process.env.DB_PORT);
-  }
-})();
 
 module.exports = pool;

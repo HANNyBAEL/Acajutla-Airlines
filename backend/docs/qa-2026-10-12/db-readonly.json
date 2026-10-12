@@ -1,0 +1,331 @@
+{
+  "configuration": {
+    "NODE_ENV": "development",
+    "DTE_AMBIENTE": "00",
+    "RATE_LIMIT_DISABLED": "(unset)",
+    "JWT_EXPIRES_IN": "8h",
+    "webCheckoutSecretConfigured": true,
+    "mailProviderConfigured": true
+  },
+  "checks": [
+    {
+      "name": "clock",
+      "ok": true,
+      "rows": [
+        {
+          "session_timezone": "SYSTEM",
+          "database_now": "2026-10-12 15:46:27",
+          "utc_now": "2026-10-12 15:46:27",
+          "salvador_now": "2026-10-12 09:46:27"
+        }
+      ]
+    },
+    {
+      "name": "schema",
+      "ok": true,
+      "rows": [
+        {
+          "TABLE_NAME": "crew_members",
+          "COLUMN_NAME": "role_operativo",
+          "COLUMN_TYPE": "enum('pilot','copilot','cabin','maintenance')"
+        },
+        {
+          "TABLE_NAME": "flight_segments",
+          "COLUMN_NAME": "seat",
+          "COLUMN_TYPE": "varchar(5)"
+        },
+        {
+          "TABLE_NAME": "flight_segments",
+          "COLUMN_NAME": "status",
+          "COLUMN_TYPE": "enum('confirmed','checked_in','boarded','no_show','cancelled')"
+        },
+        {
+          "TABLE_NAME": "flight_segments",
+          "COLUMN_NAME": "checkin_status",
+          "COLUMN_TYPE": "enum('pending','checked_in','boarded','no_show')"
+        },
+        {
+          "TABLE_NAME": "flight_segments",
+          "COLUMN_NAME": "fare_id",
+          "COLUMN_TYPE": "int"
+        },
+        {
+          "TABLE_NAME": "mfa_codes",
+          "COLUMN_NAME": "id",
+          "COLUMN_TYPE": "int unsigned"
+        },
+        {
+          "TABLE_NAME": "mfa_codes",
+          "COLUMN_NAME": "user_id",
+          "COLUMN_TYPE": "int unsigned"
+        },
+        {
+          "TABLE_NAME": "mfa_codes",
+          "COLUMN_NAME": "code",
+          "COLUMN_TYPE": "char(6)"
+        },
+        {
+          "TABLE_NAME": "mfa_codes",
+          "COLUMN_NAME": "expires_at",
+          "COLUMN_TYPE": "datetime"
+        },
+        {
+          "TABLE_NAME": "mfa_codes",
+          "COLUMN_NAME": "used",
+          "COLUMN_TYPE": "tinyint(1)"
+        },
+        {
+          "TABLE_NAME": "mfa_codes",
+          "COLUMN_NAME": "created_at",
+          "COLUMN_TYPE": "timestamp"
+        },
+        {
+          "TABLE_NAME": "reservations",
+          "COLUMN_NAME": "status",
+          "COLUMN_TYPE": "enum('pending','confirmed','paid','cancelled','completed','waiting','expired')"
+        },
+        {
+          "TABLE_NAME": "reservations",
+          "COLUMN_NAME": "sales_channel",
+          "COLUMN_TYPE": "enum('web','counter','agency','corporate')"
+        },
+        {
+          "TABLE_NAME": "reservations",
+          "COLUMN_NAME": "channel",
+          "COLUMN_TYPE": "varchar(20)"
+        }
+      ]
+    },
+    {
+      "name": "mfa_indexes",
+      "ok": true,
+      "rows": [
+        {
+          "Table": "mfa_codes",
+          "Non_unique": 0,
+          "Key_name": "PRIMARY",
+          "Seq_in_index": 1,
+          "Column_name": "id",
+          "Collation": "A",
+          "Cardinality": 0,
+          "Sub_part": null,
+          "Packed": null,
+          "Null": "",
+          "Index_type": "BTREE",
+          "Comment": "",
+          "Index_comment": "",
+          "Visible": "YES",
+          "Expression": null
+        },
+        {
+          "Table": "mfa_codes",
+          "Non_unique": 0,
+          "Key_name": "uk_user",
+          "Seq_in_index": 1,
+          "Column_name": "user_id",
+          "Collation": "A",
+          "Cardinality": 0,
+          "Sub_part": null,
+          "Packed": null,
+          "Null": "",
+          "Index_type": "BTREE",
+          "Comment": "",
+          "Index_comment": "",
+          "Visible": "YES",
+          "Expression": null
+        },
+        {
+          "Table": "mfa_codes",
+          "Non_unique": 1,
+          "Key_name": "idx_expires",
+          "Seq_in_index": 1,
+          "Column_name": "expires_at",
+          "Collation": "A",
+          "Cardinality": 0,
+          "Sub_part": null,
+          "Packed": null,
+          "Null": "",
+          "Index_type": "BTREE",
+          "Comment": "",
+          "Index_comment": "",
+          "Visible": "YES",
+          "Expression": null
+        }
+      ]
+    },
+    {
+      "name": "audit_triggers",
+      "ok": true,
+      "rows": [
+        {
+          "TRIGGER_NAME": "trg_audit_no_update",
+          "EVENT_MANIPULATION": "UPDATE",
+          "ACTION_TIMING": "BEFORE"
+        },
+        {
+          "TRIGGER_NAME": "trg_audit_no_delete",
+          "EVENT_MANIPULATION": "DELETE",
+          "ACTION_TIMING": "BEFORE"
+        }
+      ]
+    },
+    {
+      "name": "ambiguous_seat_query",
+      "ok": false,
+      "code": "ER_NON_UNIQ_ERROR",
+      "message": "Column 'id' in field list is ambiguous"
+    },
+    {
+      "name": "passenger_join_synthetic",
+      "ok": true,
+      "rows": [
+        {
+          "passenger_id": 1,
+          "seat_owner": 1,
+          "seat": "1A"
+        },
+        {
+          "passenger_id": 1,
+          "seat_owner": 2,
+          "seat": "1B"
+        },
+        {
+          "passenger_id": 2,
+          "seat_owner": 1,
+          "seat": "1A"
+        },
+        {
+          "passenger_id": 2,
+          "seat_owner": 2,
+          "seat": "1B"
+        }
+      ]
+    },
+    {
+      "name": "seat_configuration",
+      "ok": true,
+      "rows": [
+        {
+          "total_capacity": 180,
+          "seat_configuration": null
+        },
+        {
+          "total_capacity": 160,
+          "seat_configuration": null
+        },
+        {
+          "total_capacity": 100,
+          "seat_configuration": null
+        },
+        {
+          "total_capacity": 220,
+          "seat_configuration": null
+        },
+        {
+          "total_capacity": 74,
+          "seat_configuration": null
+        },
+        {
+          "total_capacity": 400,
+          "seat_configuration": null
+        },
+        {
+          "total_capacity": 2,
+          "seat_configuration": null
+        }
+      ]
+    },
+    {
+      "name": "negative_and_balance_counts",
+      "ok": true,
+      "rows": [
+        {
+          "total_reservations": 67,
+          "paid_with_balance": "0",
+          "confirmed_with_balance": "0"
+        }
+      ]
+    },
+    {
+      "name": "partial_payment_checkin_counts",
+      "ok": true,
+      "rows": [
+        {
+          "segments_with_balance_checked_in": 0
+        }
+      ]
+    },
+    {
+      "name": "mfa_expiry_with_actual_driver_timezone",
+      "ok": true,
+      "rows": [
+        {
+          "serialized_expiry": "2026-10-12 09:51:27",
+          "database_now": "2026-10-12 15:46:28",
+          "still_valid": 0
+        }
+      ]
+    },
+    {
+      "name": "dte_indexes",
+      "ok": true,
+      "rows": [
+        {
+          "key": "uk_uuid",
+          "column": "uuid_generation",
+          "unique": true
+        },
+        {
+          "key": "uk_control_number",
+          "column": "control_number",
+          "unique": true
+        },
+        {
+          "key": "uk_annual_correlative",
+          "column": "dte_type",
+          "unique": true
+        },
+        {
+          "key": "uk_annual_correlative",
+          "column": "emission_date",
+          "unique": true
+        },
+        {
+          "key": "uk_annual_correlative",
+          "column": "annual_correlative",
+          "unique": true
+        },
+        {
+          "key": "idx_dte_type",
+          "column": "dte_type",
+          "unique": false
+        },
+        {
+          "key": "idx_status",
+          "column": "transmission_status",
+          "unique": false
+        },
+        {
+          "key": "idx_date",
+          "column": "emission_date",
+          "unique": false
+        },
+        {
+          "key": "idx_reservation",
+          "column": "reservation_id",
+          "unique": false
+        },
+        {
+          "key": "idx_receiver_nit",
+          "column": "receiver_nit",
+          "unique": false
+        },
+        {
+          "key": "fk_dte_issued_by",
+          "column": "issued_by",
+          "unique": false
+        }
+      ]
+    }
+  ]
+}

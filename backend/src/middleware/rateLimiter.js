@@ -1,6 +1,8 @@
-const rateLimitStore = new Map();
+const stores = new Set();
 
 const rateLimiter = (options = {}) => {
+  const rateLimitStore = new Map();
+  stores.add(rateLimitStore);
   const {
     ventanaMs = 15 * 60 * 1000,
     maxPeticiones = 1000,
@@ -9,6 +11,9 @@ const rateLimiter = (options = {}) => {
   } = options;
 
   return (req, res, next) => {
+    // El bypass solo existe en pruebas automatizadas; nunca se acepta en
+    // desarrollo o producción aunque alguien agregue esa variable al .env.
+    if (process.env.NODE_ENV === 'test' && process.env.RATE_LIMIT_DISABLED === 'true') return next();
     const key = keyGenerator(req);
     const ahora = Date.now();
 
@@ -35,12 +40,13 @@ const rateLimiter = (options = {}) => {
   };
 };
 
-setInterval(() => {
+const cleanupTimer = setInterval(() => {
   const ahora = Date.now();
-  for (const [key, data] of rateLimitStore) {
-    if (ahora > data.resetAt) rateLimitStore.delete(key);
+  for (const store of stores) {
+    for (const [key, data] of store) if (ahora > data.resetAt) store.delete(key);
   }
 }, 5 * 60 * 1000);
+if (typeof cleanupTimer.unref === 'function') cleanupTimer.unref();
 
 const limiters = {
   login: rateLimiter({ ventanaMs: 15 * 60 * 1000, maxPeticiones: 100, mensaje: 'Demasiados intentos de login. Espera unos minutos.' }),

@@ -30,7 +30,7 @@ Versión 1.0 · Fecha: 2026-09-09 · Responsable: QA (M. Canales / D. Ramírez)
 | PF-19 | Contingencia | Emitir en contingencia | tipoOperacion 2, sin sello | RF-003 |
 | PF-20 | Contingencia | Transmitir evento | Sello al evento y a los DTE | RF-003 |
 | PF-21 | Invalidación | Fuera de plazo FE (>3 meses) | Bloqueado con mensaje | CU-003 |
-| PF-22 | Retorno | Retorno sobre FE sellada | Evento sellado, suma ≤ valor DTE | Manual X |
+| PF-22 | Retorno | Retorno sobre FE sellada | Evento sellado; varios retornos parciales acumulados ≤ valor DTE | Manual X |
 | PF-23 | Check-in | Asiento fila emergencia a menor | 400 RN-OP-03 | RN-OP-03 |
 | PF-24 | Check-in | Cerrar vuelo con checked-in | 409 RN-OP-01 | RN-OP-01 |
 | PF-25 | Comercial | Waitlist en vuelo lleno | Posición asignada | Q15 |
@@ -62,4 +62,4 @@ FE 90 · CCFE 75 · NRE 50 · NCE 50 · NDE 25 · CRE 50 · CLE 75 · DCLE 50 ·
 - Búsqueda de vuelos < 2 s con carga normal (RNF-002). Simulación 3x con script.
 
 ## 7. Ejecución automatizada
-`node pruebas/smoke-test.js` (requiere backend corriendo y usuario admin).
+`npm test` ejecuta regresiones locales aisladas (no requiere backend, Aiven ni conexión MH). `node pruebas/smoke-test.js` requiere backend corriendo y usuario admin; puede iniciar el flujo MFA por correo.

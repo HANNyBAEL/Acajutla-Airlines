@@ -37,4 +37,6 @@ const cambiarRegla = async (req, res) => {
   await pool.query('UPDATE tax_rules SET active = ?, updated_by = ? WHERE id = ?', [active ? 1 : 0, req.usuario?.id || null, req.params.id]);
   res.json({ exito: true });
 };
-module.exports = { listarPaises, crearPais, listarReglas, crearRegla, cambiarRegla };
+// Express 4 no propaga automáticamente promesas rechazadas.
+const seguro = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+module.exports = Object.fromEntries(Object.entries({ listarPaises, crearPais, listarReglas, crearRegla, cambiarRegla }).map(([name, handler]) => [name, seguro(handler)]));

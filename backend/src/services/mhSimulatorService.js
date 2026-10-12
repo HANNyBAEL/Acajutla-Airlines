@@ -22,7 +22,7 @@ async function cambiarEstado(operativo) {
   const value = operativo ? 'true' : 'false';
   await pool.query(
     `INSERT INTO config_params (param_key, param_value, description)
-     VALUES (?, ?, 'Disponibilidad del Ministerio de Hacienda simulado para DTE')
+     VALUES (?, ?, 'Disponibilidad del servicio fiscal simulado para DTE')
      ON DUPLICATE KEY UPDATE param_value = VALUES(param_value), description = VALUES(description)`,
     [KEY, value]
   );

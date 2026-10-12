@@ -3,13 +3,14 @@ import api from '../services/api';
 import { FiDollarSign, FiCheckCircle, FiRefreshCw, FiX, FiFileText, FiSearch, FiCreditCard, FiCalendar, FiHash } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { confirmarAccion } from '../utils/confirm';
+import { formatearFechaHoraDb } from '../utils/fechaServidor';
 
 const Pagos = () => {
   const [pendientes, setPendientes] = useState([]);
   const [pagos, setPagos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({ method: 'card', amount: '', numero: '', expiracion: '', cvv: '', referencia: '', tipo_dte: '01', receptor_nit: '', receptor_nrc: '' });
+  const [form, setForm] = useState({ method: 'card', amount: '', numero: '', expiracion: '', cvv: '', referencia: '', tipo_dte: '01', receptor_nit: '', receptor_nrc: '', requiere_deduccion_fiscal: false });
   const [procesando, setProcesando] = useState(false);
   const [buscarPendientes, setBuscarPendientes] = useState('');
   const [buscarPagos, setBuscarPagos] = useState('');
@@ -29,7 +30,7 @@ const Pagos = () => {
 
   const abrirCobro = (r) => {
     setModal(r);
-    setForm({ method: 'card', amount: r.balance, numero: '', expiracion: '', cvv: '', referencia: '', tipo_dte: '01', receptor_nit: '', receptor_nrc: '' });
+    setForm({ method: 'card', amount: r.balance, numero: '', expiracion: '', cvv: '', referencia: '', tipo_dte: '01', receptor_nit: '', receptor_nrc: '', requiere_deduccion_fiscal: false });
   };
 
   const procesar = async () => {
@@ -37,14 +38,23 @@ const Pagos = () => {
     if (form.tipo_dte === '03' && !form.receptor_nit) return toast.error('Para CCFE el NIT del receptor es obligatorio (RN-FIS-02)');
     setProcesando(true);
     try {
-      const payload = { reservation_id: modal.id, method: form.method, amount: parseFloat(form.amount), tipo_dte: form.tipo_dte };
+      const payload = {
+        reservation_id: modal.id, method: form.method, amount: parseFloat(form.amount),
+        tipo_dte: form.tipo_dte,
+        receptor: form.tipo_dte === '03' ? { nit: form.receptor_nit, nrc: form.receptor_nrc || null } : undefined,
+        requiere_deduccion_fiscal: form.tipo_dte === '01' && form.requiere_deduccion_fiscal
+      };
       if (form.method === 'card') payload.card = { numero: form.numero, expiracion: form.expiracion, cvv: form.cvv };
       if (form.method === 'transfer') payload.referencia = form.referencia;
       if (form.tipo_dte === '03') payload.receptor = { nit: form.receptor_nit, nrc: form.receptor_nrc || null };
       const r = await api.post('/pagos/procesar', payload);
       const st = r.data.datos.status;
       if (st === 'approved') {
-        toast.success('Pago aprobado y reserva pagada');
+        if (r.data.datos.reservation_status === 'paid') {
+          toast.success('Pago aprobado y reserva pagada');
+        } else {
+          toast.success('Pago aprobado. Saldo pendiente: $' + Number(r.data.datos.reservation_balance || 0).toFixed(2));
+        }
         if (r.data.dte && r.data.dte.envio && r.data.dte.envio.enviado) {
           toast.success('DTE ' + r.data.dte.numeroControl + ' emitido. Correo enviado con PDF y ZIP que contiene el JSON' + (r.data.dte.envio.simulado ? ' (simulado, ver storage/correos)' : ''));
         } else if (r.data.dte && r.data.dte.error) {
@@ -53,7 +63,7 @@ const Pagos = () => {
           toast.error('DTE emitido pero el correo no se envió: ' + (r.data.dte.envio ? r.data.dte.envio.motivo : 'sin correo'));
         }
       } else if (st === 'pending_confirmation') {
-        toast.success('Pago registrado. Al confirmar la transferencia se emitirá y enviará el DTE.');
+        toast.success('Transferencia registrada. El DTE se emitirá cuando la reserva quede totalmente pagada.');
       } else {
         toast.error('Pago rechazado por la pasarela');
       }
@@ -67,14 +77,18 @@ const Pagos = () => {
   const confirmar = async (p) => {
     const confirmado = await confirmarAccion({
       title: '¿Confirmar transferencia?',
-      text: '¿Confirmar la transferencia del pago #' + p.id + ' (PNR ' + p.pnr + ')? Se emitirá y enviará el DTE.',
+      text: '¿Confirmar la transferencia del pago #' + p.id + ' (PNR ' + p.pnr + ')? El DTE se emitirá cuando la reserva quede totalmente pagada.',
       confirmText: 'Sí, confirmar',
       isDanger: false
     });
     if (!confirmado) return;
     try {
       const r = await api.post('/pagos/' + p.id + '/confirmar', {});
-      toast.success('Transferencia confirmada');
+      if (r.data.datos.reservation_status === 'paid') {
+        toast.success('Transferencia confirmada. Reserva pagada.');
+      } else {
+        toast.success('Transferencia confirmada. Saldo pendiente: $' + Number(r.data.datos.reservation_balance || 0).toFixed(2));
+      }
       if (r.data.dte && r.data.dte.envio && r.data.dte.envio.enviado) {
         toast.success('DTE ' + r.data.dte.numeroControl + ' emitido y enviado con PDF y ZIP que contiene el JSON');
       } else if (r.data.dte && r.data.dte.error) {
@@ -86,10 +100,20 @@ const Pagos = () => {
   };
 
   const reembolsar = async (p) => {
+    const saldoReembolsable = Number(p.refundable_balance ?? p.amount);
+    if (!Number.isFinite(saldoReembolsable) || saldoReembolsable <= 0.009) {
+      return toast.error('Este pago ya no tiene saldo reembolsable');
+    }
+    const montoIngresado = window.prompt('Monto a reembolsar (máximo $' + saldoReembolsable.toFixed(2) + ' USD):', saldoReembolsable.toFixed(2));
+    if (montoIngresado === null) return;
+    const amount = Number(montoIngresado);
+    if (!Number.isFinite(amount) || amount <= 0 || amount - saldoReembolsable > 0.009) {
+      return toast.error('Indique un monto entre $0.01 y $' + saldoReembolsable.toFixed(2));
+    }
     const reason = window.prompt('Motivo del reembolso del pago #' + p.id + ' (PNR ' + p.pnr + '):');
     if (!reason) return;
     try {
-      await api.post('/pagos/' + p.id + '/reembolsar', { amount: p.amount, reason: reason });
+      await api.post('/pagos/' + p.id + '/reembolsar', { amount, reason: reason });
       toast.success('Reembolso procesado');
       setDrawerPago(null);
       cargar();
@@ -127,7 +151,7 @@ const Pagos = () => {
     <div className="flex items-center py-2.5 text-sm border-b border-gray-100 last:border-b-0">
       <Icon className="text-primary-600 mr-3 shrink-0" size={16} />
       <span className="font-medium text-gray-600 w-36 shrink-0">{label}:</span>
-      <span className="text-gray-800 font-medium truncate">{value || '—'}</span>
+      <span className="text-gray-800 font-medium truncate">{value ?? '—'}</span>
     </div>
   );
 
@@ -210,18 +234,18 @@ const Pagos = () => {
               <tr key={p.id} className="hover:bg-gray-50 cursor-pointer transition-colors" onClick={() => setDrawerPago(p)}>
                 <td className="px-6 py-4 text-sm text-gray-600">{p.id}</td>
                 <td className="px-6 py-4 font-mono text-sm text-primary-700">{p.pnr}</td>
-                <td className="px-6 py-4 text-sm text-gray-500">{p.payment_date ? new Date(p.payment_date).toLocaleString('es-SV') : '-'}</td>
+                <td className="px-6 py-4 text-sm text-gray-500">{formatearFechaHoraDb(p.payment_date)}</td>
                 <td className="px-6 py-4 text-sm">{metodoLabel(p.method)}{p.card_last_digits ? ' ····' + p.card_last_digits : ''}</td>
                 <td className="px-6 py-4 text-sm font-semibold">{p.type === 'refund' ? '-' : ''}${parseFloat(p.amount).toFixed(2)}</td>
                 <td className="px-6 py-4"><span className={'px-3 py-1 rounded-full text-xs font-medium ' + badge(p.status)[1]}>{badge(p.status)[0]}</span></td>
                 <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center space-x-3">
-                    {p.status === 'pending_confirmation' && (
+                    {p.status === 'pending_confirmation' && p.type === 'payment' && p.method === 'transfer' && p.external_reference && (
                       <button onClick={() => confirmar(p)} className="text-green-600 hover:text-green-800 flex items-center space-x-1">
                         <FiCheckCircle size={16} /><span className="text-sm">Confirmar</span>
                       </button>
                     )}
-                    {p.status === 'approved' && p.type === 'payment' && (
+                    {p.status === 'approved' && p.type === 'payment' && Number(p.refundable_balance ?? p.amount) > 0.009 && (
                       <button onClick={() => reembolsar(p)} className="text-red-600 hover:text-red-800 flex items-center space-x-1">
                         <FiRefreshCw size={16} /><span className="text-sm">Reembolsar</span>
                       </button>
@@ -276,9 +300,12 @@ const Pagos = () => {
                 <InfoFila icon={FiFileText} label="PNR" value={drawerPago.pnr} />
                 <InfoFila icon={FiCreditCard} label="Método" value={metodoLabel(drawerPago.method) + (drawerPago.card_last_digits ? ' ····' + drawerPago.card_last_digits : '')} />
                 <InfoFila icon={FiDollarSign} label="Monto" value={(drawerPago.type === 'refund' ? '-' : '') + '$' + parseFloat(drawerPago.amount).toFixed(2) + ' USD'} />
+                {drawerPago.type === 'payment' && drawerPago.status === 'approved' && (
+                  <InfoFila icon={FiDollarSign} label="Reembolsable" value={'$' + Number(drawerPago.refundable_balance ?? drawerPago.amount).toFixed(2) + ' USD'} />
+                )}
                 <InfoFila icon={FiFileText} label="Tipo" value={drawerPago.type === 'refund' ? 'Reembolso' : 'Pago'} />
                 <InfoFila icon={FiFileText} label="DTE" value={drawerPago.tipo_dte ? (drawerPago.tipo_dte === '01' ? 'Factura Electrónica (FE)' : drawerPago.tipo_dte === '03' ? 'Crédito Fiscal (CCFE)' : drawerPago.tipo_dte) : '—'} />
-                <InfoFila icon={FiCalendar} label="Fecha" value={drawerPago.payment_date ? new Date(drawerPago.payment_date).toLocaleString('es-SV') : '—'} />
+                <InfoFila icon={FiCalendar} label="Fecha" value={formatearFechaHoraDb(drawerPago.payment_date)} />
                 {drawerPago.referencia && (
                   <InfoFila icon={FiHash} label="Referencia" value={drawerPago.referencia} />
                 )}
@@ -287,12 +314,12 @@ const Pagos = () => {
 
             <div className="px-6 pt-5 pb-10 border-t border-gray-200 bg-gray-50 flex items-center justify-between space-x-3">
               <div className="flex items-center space-x-2">
-                {drawerPago.status === 'pending_confirmation' && (
+                {drawerPago.status === 'pending_confirmation' && drawerPago.type === 'payment' && drawerPago.method === 'transfer' && drawerPago.external_reference && (
                   <button onClick={() => confirmar(drawerPago)} className="btn-primary flex items-center space-x-1.5 text-sm py-2 px-3">
                     <FiCheckCircle size={16} /><span>Confirmar</span>
                   </button>
                 )}
-                {drawerPago.status === 'approved' && drawerPago.type === 'payment' && (
+                {drawerPago.status === 'approved' && drawerPago.type === 'payment' && Number(drawerPago.refundable_balance ?? drawerPago.amount) > 0.009 && (
                   <button onClick={() => reembolsar(drawerPago)} className="btn-danger flex items-center space-x-1.5 text-sm py-2 px-3">
                     <FiRefreshCw size={16} /><span>Reembolsar</span>
                   </button>
@@ -344,6 +371,12 @@ const Pagos = () => {
                   </div>
                 </div>
               )}
+              {form.tipo_dte === '01' && (
+                <label className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                  <input type="checkbox" className="mt-1" checked={form.requiere_deduccion_fiscal} onChange={(e) => setForm(Object.assign({}, form, { requiere_deduccion_fiscal: e.target.checked }))} />
+                  <span>El cliente solicita que la factura documente un costo o gasto deducible. Se requiere que sus datos de identificación estén registrados en el cliente.</span>
+                </label>
+              )}
               {form.method === 'card' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
@@ -367,7 +400,7 @@ const Pagos = () => {
                 </div>
               )}
               <div className="bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-lg p-3">
-                Al aprobarse el pago se emitirá el DTE seleccionado y se enviará correo al cliente con el PDF y un ZIP que contiene el JSON adjuntos.
+                Al quedar la reserva totalmente pagada se emitirá el DTE seleccionado y se enviará correo al cliente con el PDF y un ZIP que contiene el JSON adjuntos.
                 Tarjeta de prueba aprobada: 4111111111111111.
               </div>
             </div>

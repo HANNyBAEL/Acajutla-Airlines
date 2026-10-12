@@ -31,6 +31,15 @@ const crearReserva = async (req, res) => {
     // Validar disponibilidad de cada vuelo
     for (const vuelo of vuelos) {
       const disponibilidad = await FlightSegment.validarDisponibilidad(vuelo.flight_id, vuelo.fare_class || 'economy', connection);
+      if (!disponibilidad.disponible) {
+        await connection.rollback();
+        return res.status(409).json({
+          error: disponibilidad.motivo || `El vuelo ${disponibilidad.flight_number} no está disponible para la venta.`,
+          vuelo: disponibilidad.flight_number,
+          disponibles: disponibilidad.available_seats,
+          requeridos: pasajeros.length
+        });
+      }
       if (disponibilidad.available_seats < pasajeros.length) {
         await connection.rollback();
         return res.status(409).json({
@@ -183,7 +192,7 @@ const consultarReserva = async (req, res) => {
   try {
     const reserva = await Reserva.obtenerDetalleCompleto(req.params.pnr);
     if (!reserva) return res.status(404).json({ error: 'Reserva no encontrada' });
-    const expirada = new Date(reserva.time_limit) < new Date() && reserva.status === 'pending';
+    const expirada = Number(reserva.time_limit_expired) === 1;
     res.json({ exito: true, datos: { ...reserva, expirada } });
   } catch (error) {
     console.error('Error al consultar reserva:', error);
@@ -202,19 +211,45 @@ const listarReservas = async (req, res) => {
 };
 
 const cancelarReserva = async (req, res) => {
+  let connection;
   try {
     const { pnr } = req.params;
-    const { motivo } = req.body;
-    const reserva = await Reserva.buscarPorPNR(pnr);
-    if (!reserva) return res.status(404).json({ error: 'Reserva no encontrada' });
-    if (reserva.status === 'cancelled') return res.status(400).json({ error: 'La reserva ya está cancelada' });
-    if (reserva.status === 'completed') return res.status(400).json({ error: 'No se puede cancelar una reserva finalizada' });
-    await Reserva.cancelar(reserva.id, motivo || 'Cancelación solicitada', req.usuario ? req.usuario.id : null);
-    await FlightSegment.liberarPorReserva(reserva.id);
+    const { motivo } = req.body || {};
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [reservas] = await connection.query('SELECT id, status FROM reservations WHERE pnr = ? FOR UPDATE', [pnr.toUpperCase()]);
+    const reserva = reservas[0];
+    if (!reserva) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Reserva no encontrada' });
+    }
+    if (reserva.status === 'cancelled') {
+      await connection.rollback();
+      return res.status(400).json({ error: 'La reserva ya está cancelada' });
+    }
+    if (reserva.status === 'completed') {
+      await connection.rollback();
+      return res.status(400).json({ error: 'No se puede cancelar una reserva finalizada' });
+    }
+    await connection.query(
+      "UPDATE reservations SET status = 'cancelled', cancellation_date = NOW(), cancellation_reason = ?, cancelled_by = ? WHERE id = ?",
+      [motivo || 'Cancelación solicitada', req.usuario ? req.usuario.id : null, reserva.id]
+    );
+    await connection.query(
+      "UPDATE payments SET status = 'cancelled' WHERE reservation_id = ? AND type = 'payment' AND status = 'pending_confirmation'",
+      [reserva.id]
+    );
+    await FlightSegment.liberarPorReserva(reserva.id, connection);
+    await connection.commit();
     res.json({ exito: true, mensaje: 'Reserva cancelada', datos: { pnr, status: 'cancelled' } });
   } catch (error) {
+    if (connection) {
+      try { await connection.rollback(); } catch (_) { /* ignore */ }
+    }
     console.error('Error al cancelar reserva:', error);
     res.status(500).json({ error: 'Error interno' });
+  } finally {
+    if (connection) connection.release();
   }
 };
 

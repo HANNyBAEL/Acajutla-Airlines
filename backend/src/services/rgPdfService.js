@@ -8,6 +8,17 @@ const UNIDADES = { '1': 'metro', '23': 'Litro', '34': 'Kilogramo', '59': 'Unidad
 const fmt = (v) => '$' + Number(v || 0).toFixed(2);
 const dsh = (v) => (v === null || v === undefined || v === '' ? '-' : v);
 
+function crearPayloadQrSimulado(id = {}) {
+  return [
+    'DOCUMENTO TRIBUTARIO SIMULADO',
+    'SIN VALIDEZ FISCAL',
+    'No redirige ni consulta el portal del Ministerio de Hacienda.',
+    'Código de generación: ' + (id.codigoGeneracion || 'No disponible'),
+    'Número de control: ' + (id.numeroControl || 'No disponible'),
+    'Fecha de emisión: ' + (id.fecEmi || 'No disponible')
+  ].join('\n');
+}
+
 function numeroALetras(num) {
   const UN = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE', 'DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISÉIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE', 'VEINTE', 'VEINTIUNO', 'VEINTIDÓS', 'VEINTITRÉS', 'VEINTICUATRO', 'VEINTICINCO', 'VEINTISÉIS', 'VEINTISIETE', 'VEINTIOCHO', 'VEINTINUEVE'];
   const DEC = ['', '', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
@@ -53,7 +64,7 @@ async function generarPDF(header) {
   const ver = 'Ver. ' + (id.version || (esFE ? 2 : 4));
   const sello = header.reception_seal || dte.selloRecibido || null;
 
-  const qrPayload = 'https://dte.mh.gob.sv/consultapublicaconsumidor/?codigoGeneracion=' + (id.codigoGeneracion || '') + '&fechaEmision=' + (id.fecEmi || '');
+  const qrPayload = crearPayloadQrSimulado(id);
   const qrBuffer = await QRCode.toBuffer(qrPayload, { errorCorrectionLevel: 'M', margin: 1, width: 400 });
 
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
@@ -84,6 +95,13 @@ async function generarPDF(header) {
   doc.font('Helvetica-Bold').fontSize(11).text(nombreTipo, M, y, { width: CW, align: 'center', lineBreak: false });
   y += 20;
 
+  { // Todos los documentos son simulaciones, incluso registros antiguos.
+    doc.font('Helvetica-Bold').fontSize(8).fillColor('#b91c1c')
+      .text('AMBIENTE DE PRUEBAS · EMISIÓN SIMULADA · SIN VALIDEZ FISCAL', M, y - 4, { width: CW, align: 'center', lineBreak: false });
+    doc.fillColor('#000');
+    y += 12;
+  }
+
   box(y, 70);
   const colW = CW / 2 - 40;
   
@@ -94,7 +112,10 @@ async function generarPDF(header) {
   doc.font('Helvetica-Bold').fontSize(7).text('Número de Control:', M + 6, y + 32);
   doc.font('Helvetica').fontSize(7).text(id.numeroControl || '-', M + 6, y + 41, { width: colW });
   
-  doc.image(qrBuffer, M + CW / 2 - 25, y + 10, { width: 50, height: 50 });
+  doc.image(qrBuffer, M + CW / 2 - 22, y + 7, { width: 44, height: 44 });
+  doc.font('Helvetica-Bold').fontSize(5.5).fillColor('#b91c1c')
+    .text('QR SIMULADO · NO CONSULTA MH', M + CW / 2 - 48, y + 53, { width: 96, align: 'center', lineBreak: false });
+  doc.fillColor('#000');
   
   // Columna Derecha (Valores cortos)
   let y2 = y + 8;
@@ -232,4 +253,4 @@ async function generarPDF(header) {
   return doc;
 }
 
-module.exports = { generarPDF: generarPDF, numeroALetras: numeroALetras };
+module.exports = { generarPDF: generarPDF, numeroALetras: numeroALetras, crearPayloadQrSimulado: crearPayloadQrSimulado };

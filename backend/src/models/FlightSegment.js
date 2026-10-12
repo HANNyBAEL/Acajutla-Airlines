@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { crearMapaAsientos } = require('../utils/asientos');
 
 // Estados de reserva que mantienen asientos ocupados. Las canceladas y
 // expiradas liberan sus segmentos, pero el filtro protege contra residuos.
@@ -14,6 +15,8 @@ const FlightSegment = {
       throw new Error(disponible.motivo || `No hay asientos disponibles en el vuelo ${disponible.flight_number}. Disponibles: ${disponible.available_seats}`);
     }
     if (seat) {
+      const mapa = crearMapaAsientos(disponible.total_capacity);
+      if (!mapa.asientos.includes(seat)) throw new Error('El asiento no existe en esta aeronave');
       const ocupado = await FlightSegment.validarAsiento(flight_id, seat, connection);
       if (ocupado) throw new Error(`El asiento ${seat} ya está ocupado en este vuelo`);
     }
@@ -30,6 +33,7 @@ const FlightSegment = {
   validarDisponibilidad: async (flight_id, fare_class, connection = pool) => {
     const [rows] = await connection.query(
       `SELECT f.flight_number, f.status, f.departure_datetime, f.base_price, at.total_capacity,
+              (f.departure_datetime <= CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador')) AS ya_salio,
               (SELECT COUNT(*) FROM flight_segments fs JOIN reservations rx ON rx.id = fs.reservation_id
                 WHERE fs.flight_id = f.id AND rx.status IN ${ESTADOS_ACTIVOS}) AS occupied_seats
        FROM flights f JOIN aircraft ac ON f.aircraft_id = ac.id JOIN aircraft_types at ON at.id = ac.type_id
@@ -37,9 +41,9 @@ const FlightSegment = {
       [flight_id]
     );
     if (!rows[0]) throw new Error('Vuelo no encontrado');
-    const { flight_number, status, departure_datetime, total_capacity, occupied_seats } = rows[0];
+    const { flight_number, status, total_capacity, occupied_seats } = rows[0];
     const available_seats = total_capacity - occupied_seats;
-    const yaSalio = new Date(departure_datetime) <= new Date();
+    const yaSalio = Number(rows[0].ya_salio) === 1;
     const vigente = !yaSalio && ['scheduled', 'confirmed'].includes(status);
     let motivo = null;
     if (!vigente) {
@@ -47,12 +51,12 @@ const FlightSegment = {
         ? 'El vuelo ' + flight_number + ' ya despegó; no se pueden vender más asientos'
         : 'El vuelo ' + flight_number + ' no admite ventas (estado: ' + status + ')';
     }
-    return { disponible: vigente && available_seats > 0, available_seats, flight_number, motivo };
+    return { disponible: vigente && available_seats > 0, available_seats, total_capacity, flight_number, motivo };
   },
 
   validarAsiento: async (flight_id, seat, connection = pool) => {
     const [rows] = await connection.query(
-      `SELECT id FROM flight_segments fs JOIN reservations rx ON rx.id = fs.reservation_id
+      `SELECT fs.id FROM flight_segments fs JOIN reservations rx ON rx.id = fs.reservation_id
        WHERE fs.flight_id = ? AND fs.seat = ? AND rx.status IN ${ESTADOS_ACTIVOS} LIMIT 1`,
       [flight_id, seat]
     );

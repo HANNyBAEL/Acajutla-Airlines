@@ -7,6 +7,8 @@ const api = axios.create({
   baseURL,
 });
 
+let refreshPromise = null;
+
 api.interceptors.request.use((config) => {
   const token = sessionStorage.getItem('bo_token');
   if (token) config.headers.Authorization = 'Bearer ' + token;
@@ -17,8 +19,26 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const url = (error.config && error.config.url) || '';
-    if (error.response && error.response.status === 401 && url.indexOf('/auth/') === -1) {
+    if (error.response?.status === 401 && !url.includes('/auth/')) {
+      const refreshToken = sessionStorage.getItem('bo_refresh');
+      if (refreshToken && !error.config?._retry) {
+        error.config._retry = true;
+        refreshPromise ||= api.post('/auth/refresh', { refreshToken }).finally(() => { refreshPromise = null; });
+        return refreshPromise.then((response) => {
+          const datos = response.data.datos;
+          sessionStorage.setItem('bo_token', datos.accessToken);
+          sessionStorage.setItem('bo_refresh', datos.refreshToken);
+          error.config.headers.Authorization = 'Bearer ' + datos.accessToken;
+          return api.request(error.config);
+        }).catch(() => {
+          sessionStorage.removeItem('bo_token');
+          sessionStorage.removeItem('bo_refresh');
+          window.location.href = '/login';
+          return Promise.reject(error);
+        });
+      }
       sessionStorage.removeItem('bo_token');
+      sessionStorage.removeItem('bo_refresh');
       window.location.href = '/login';
     }
     return Promise.reject(error);
@@ -55,7 +75,7 @@ export const authAPI = {
   me: () => api.get('/auth/perfil'),
   getUser: () => api.get('/auth/perfil'),
   logout: () => api.post('/auth/logout'),
-  refreshToken: () => api.post('/auth/refresh'),
+  refreshToken: (refreshToken) => api.post('/auth/refresh', { refreshToken }),
   changePassword: (data) => api.post('/auth/cambio-password', data),
 };
 

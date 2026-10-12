@@ -9,7 +9,7 @@ function firmar(json) {
   const limpio = Object.assign({}, json);
   delete limpio.firmaElectronica; delete limpio.selloRecibido;
   const canonical = JSON.stringify(limpio);
-  const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'SIMULACION-ESCOLAR' }));
   const payload = b64url(canonical);
   const sig = b64url(crypto.createHmac('sha256', 'CLAVE-SIMULADA-NEXORA').update(canonical).digest('hex'));
   json.firmaElectronica = header + '.' + payload + '.' + sig;
@@ -135,7 +135,8 @@ function validarPlazoInvalidacion(jsonDTE, fechaEvento, now, selloFecha) {
 function validarRetorno(dtes, montoTotal, now) {
   if (!dtes.length || dtes.length > 50) return { ok: false, mensaje: 'Debe relacionar entre 1 y 50 DTE.' };
   const tipos = new Set(dtes.map((d) => String(d.identificacion.tipoDte)));
-  if (tipos.size !== 1 || !['01','11','14'].has ? false : !['01','11','14'].includes([...tipos][0])) return { ok: false, mensaje: 'Solo FE (01), FEXE (11) o FSEE (14), y todos del mismo tipo.' };
+  if (tipos.size !== 1 || !['01','11','14'].includes([...tipos][0])) return { ok: false, mensaje: 'Solo FE (01), FEXE (11) o FSEE (14), y todos del mismo tipo.' };
+  if (!Number.isFinite(Number(montoTotal)) || Number(montoTotal) <= 0) return { ok: false, mensaje: 'El monto de retorno debe ser mayor a cero.' };
   for (const d of dtes) {
     if (!d.selloRecibido && !d._sello) return { ok: false, mensaje: 'Todos los DTE relacionados deben tener Sello de Recepción.' };
     const sello = new Date(d._selloFecha || d.identificacion.fecEmi);
@@ -143,6 +144,10 @@ function validarRetorno(dtes, montoTotal, now) {
   }
   const emisor = dtes[0].emisor.nit; const rec = JSON.stringify(dtes[0].receptor);
   for (const d of dtes) { if (d.emisor.nit !== emisor || JSON.stringify(d.receptor) !== rec) return { ok: false, mensaje: 'Todos los DTE deben compartir emisor y receptor.' }; }
+  const totales = dtes.map((d) => Number(d.resumen?.totalPagar || 0));
+  if (totales.some((total) => !Number.isFinite(total) || total <= 0) || Number(montoTotal) - totales.reduce((sum, total) => sum + total, 0) > 0.009) {
+    return { ok: false, mensaje: 'El monto acumulado del retorno supera el total de los DTE relacionados.' };
+  }
   return { ok: true, mensaje: 'Validaciones de Evento de Retorno OK.' };
 }
 

@@ -10,18 +10,29 @@ const expirarReservas = async () => {
     const [vencidas] = await connection.query(
       "SELECT id, pnr FROM reservations WHERE status = 'pending' AND time_limit < NOW() FOR UPDATE"
     );
-    if (!vencidas.length) { await connection.commit(); return { expiradas: 0 }; }
     const ids = vencidas.map((r) => r.id);
+    if (ids.length) {
+      await connection.query(
+        `UPDATE reservations SET status = 'expired',
+          cancellation_date = NOW(), cancellation_reason = 'Expirada automáticamente (time limit vencido)'
+         WHERE id IN (${ids.map(() => '?').join(',')})`,
+        ids
+      );
+    }
     await connection.query(
-      `UPDATE reservations SET status = 'expired',
-        cancellation_date = NOW(), cancellation_reason = 'Expirada automáticamente (time limit vencido)'
-       WHERE id IN (${ids.map(() => '?').join(',')})`,
-      ids
+      `UPDATE payments p
+       JOIN reservations r ON r.id = p.reservation_id
+       SET p.status = 'cancelled'
+       WHERE p.type = 'payment' AND p.status = 'pending_confirmation'
+         AND (r.status IN ('cancelled', 'expired', 'completed')
+              OR (r.status = 'pending' AND r.time_limit < NOW()))`
     );
-    await connection.query(
-      `DELETE FROM flight_segments WHERE reservation_id IN (${ids.map(() => '?').join(',')})`,
-      ids
-    );
+    if (ids.length) {
+      await connection.query(
+        `DELETE FROM flight_segments WHERE reservation_id IN (${ids.map(() => '?').join(',')})`,
+        ids
+      );
+    }
     await connection.commit();
     vencidas.forEach((r) => console.log(`⏰ Reserva ${r.pnr} expirada automáticamente; asientos liberados`));
     return { expiradas: vencidas.length, reservas: vencidas.map((r) => r.pnr) };

@@ -1,30 +1,12 @@
 const PaymentService = require('../services/paymentService');
 const pagoDteService = require('../services/pagoDteService');
+const paymentWorkflowService = require('../services/paymentWorkflowService');
 const pool = require('../config/db');
 
 const procesarPago = async (req, res) => {
   try {
-    const body = Object.assign({}, req.body);
-    // Toda venta aprobada genera DTE. FE es el valor por defecto; CCFE se
-    // conserva cuando caja lo solicitó explícitamente con los datos fiscales.
-    const tipo_dte = body.tipo_dte || '01';
-    const receptor = body.receptor || null;
-    delete body.tipo_dte;
-    delete body.receptor;
-    const resultado = await PaymentService.procesarPago(body, req.usuario);
-    const [pago] = await pool.query('SELECT * FROM payments WHERE reservation_id = ? ORDER BY id DESC LIMIT 1', [body.reservation_id]);
-    let dteInfo = null;
-    if (pago.length) {
-      if (tipo_dte) await pool.query('UPDATE payments SET tipo_dte = ? WHERE id = ?', [tipo_dte, pago[0].id]);
-      if (pago[0].status === 'approved') {
-        try {
-          dteInfo = await pagoDteService.emitirYEnviar(pago[0].reservation_id, tipo_dte, receptor);
-        } catch (e) {
-          dteInfo = { error: e.message };
-        }
-      }
-    }
-    res.status(201).json({ exito: true, datos: resultado, dte: dteInfo });
+    const resultado = await paymentWorkflowService.procesarPagoCompleto(req.body, req.usuario);
+    res.status(201).json(resultado);
   } catch (e) {
     console.error('Error procesar pago:', e);
     res.status(400).json({ error: e.message });
@@ -36,9 +18,10 @@ const confirmarTransferencia = async (req, res) => {
     const resultado = await PaymentService.confirmarTransferencia(parseInt(req.params.id, 10), req.usuario);
     const [pago] = await pool.query('SELECT * FROM payments WHERE id = ?', [req.params.id]);
     let dteInfo = null;
-    if (pago.length && pago[0].tipo_dte && pago[0].status === 'approved') {
+    if (pago.length && pago[0].tipo_dte && pago[0].status === 'approved' && resultado.reservation_status === 'paid') {
       try {
-        dteInfo = await pagoDteService.emitirYEnviar(pago[0].reservation_id, pago[0].tipo_dte, null);
+        const receptor = typeof pago[0].receptor_dte === 'string' ? JSON.parse(pago[0].receptor_dte) : pago[0].receptor_dte;
+        dteInfo = await pagoDteService.emitirYEnviar(pago[0].reservation_id, pago[0].tipo_dte, receptor || null, { requiereDeduccionFiscal: Boolean(pago[0].requiere_deduccion_fiscal) });
       } catch (e) {
         dteInfo = { error: e.message };
       }
@@ -64,7 +47,13 @@ const reembolsar = async (req, res) => {
 const listar = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT p.*, r.pnr, u.username AS procesado_por
+      `SELECT p.*, r.pnr, u.username AS procesado_por,
+              CASE WHEN p.type = 'payment' AND p.status = 'approved'
+                THEN GREATEST(0, p.amount - COALESCE((
+                  SELECT SUM(rf.amount) FROM payments rf
+                  WHERE rf.original_payment_id = p.id AND rf.type = 'refund' AND rf.status = 'refunded'
+                ), 0))
+                ELSE 0 END AS refundable_balance
        FROM payments p
        JOIN reservations r ON r.id = p.reservation_id
        LEFT JOIN users u ON u.id = p.processed_by
@@ -99,8 +88,8 @@ const kpis = async (req, res) => {
       `SELECT COUNT(*) AS total_pagos,
               SUM(CASE WHEN status = 'approved' AND type = 'payment' THEN amount ELSE 0 END) AS ingresos,
               SUM(CASE WHEN type = 'refund' THEN amount ELSE 0 END) AS reembolsos,
-              SUM(CASE WHEN status = 'pending_confirmation' THEN 1 ELSE 0 END) AS pendientes
-       FROM payments WHERE DATE(payment_date) = CURDATE()`
+              SUM(CASE WHEN status = 'pending_confirmation' AND method = 'transfer' AND external_reference IS NOT NULL THEN 1 ELSE 0 END) AS pendientes
+       FROM payments WHERE DATE(CONVERT_TZ(payment_date, 'UTC', 'America/El_Salvador')) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador'))`
     );
     res.json({ exito: true, datos: rows[0] });
   } catch (e) {

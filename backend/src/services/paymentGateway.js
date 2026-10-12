@@ -16,9 +16,7 @@ class PaymentGateway {
 
     const tarjetaInfo = TARJETAS_PRUEBA[datos.numero_tarjeta.replace(/\s/g, '')];
     if (!tarjetaInfo) {
-      const exitoAleatorio = Math.random() > 0.1;
-      if (exitoAleatorio) return this.generarRespuestaAprobada(datos, 'VISA/MASTERCARD');
-      return { exito: false, codigo: 'DECLINED', mensaje: 'Transacción declinada' };
+      return { exito: false, codigo: 'TEST_CARD_REQUIRED', mensaje: 'Simulación escolar: utiliza una tarjeta de prueba del catálogo' };
     }
 
     if (tarjetaInfo.estado === 'aprobada') return this.generarRespuestaAprobada(datos, tarjetaInfo.marca);
@@ -26,6 +24,7 @@ class PaymentGateway {
   }
 
   static async procesarTransferencia(datos) {
+    if (typeof datos.referencia !== 'string' || !datos.referencia.trim() || datos.referencia.trim().length > 100) throw new Error('Referencia de transferencia obligatoria (máximo 100 caracteres)');
     await this.simularLatencia(300, 800);
     return { exito: true, codigo: 'PENDING_CONFIRMATION', mensaje: 'Transferencia registrada, pendiente de confirmación', referencia: datos.referencia };
   }
@@ -37,14 +36,17 @@ class PaymentGateway {
 
   static async procesarPayPal(datos) {
     await this.simularLatencia(800, 2000);
-    const exito = Math.random() > 0.05;
-    if (exito) return { exito: true, codigo: 'APPROVED', paypal_transaction_id: 'PP-' + Date.now() };
+    const exito = true; // Simulación determinista, sin proveedor externo.
+    if (exito) {
+      const transactionId = 'PP-' + crypto.randomUUID().toUpperCase();
+      return { exito: true, codigo: 'APPROVED', transaction_id: transactionId, paypal_transaction_id: transactionId };
+    }
     return { exito: false, codigo: 'PAYPAL_DECLINED', mensaje: 'PayPal declinó' };
   }
 
   static async reembolsar(paymentId, monto, motivo) {
     await this.simularLatencia(500, 1500);
-    const exito = Math.random() > 0.05;
+    const exito = true; // Reembolso exclusivamente simulado.
     if (exito) return { exito: true, codigo: 'REFUND_APPROVED', refund_id: 'RF-' + Date.now(), monto_reembolsado: monto };
     return { exito: false, codigo: 'REFUND_FAILED', mensaje: 'No se pudo procesar el reembolso' };
   }
@@ -69,6 +71,7 @@ class PaymentGateway {
   }
 
   static validarLuhn(numero) {
+    if (typeof numero !== 'string' || !/^\d{13,19}$/.test(numero.replace(/\s/g, ''))) return false;
     const digits = numero.replace(/\s/g, '').split('').reverse().map(Number);
     let sum = 0;
     for (let i = 0; i < digits.length; i++) {
@@ -80,14 +83,15 @@ class PaymentGateway {
   }
 
   static validarExpiracion(expiracion) {
+    if (typeof expiracion !== 'string') return false;
     const match = expiracion.match(/^(\d{2})\/(\d{2})$/);
     if (!match) return false;
     const mes = parseInt(match[1]);
     const anio = parseInt('20' + match[2]);
     if (mes < 1 || mes > 12) return false;
     const ahora = new Date();
-    const expira = new Date(anio, mes, 0);
-    return expira >= ahora;
+    const expira = new Date(anio, mes, 1);
+    return ahora < expira;
   }
 }
 

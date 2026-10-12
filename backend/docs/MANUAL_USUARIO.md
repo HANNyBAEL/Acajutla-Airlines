@@ -23,6 +23,7 @@ Crear, cancelar (con confirmación si hay reservas) y reprogramar (valida turnar
 
 ### Pagos
 - Cobros pendientes: cobrar con tarjeta/transferencia/efectivo eligiendo tipo de DTE (FE/CCFE).
+- Para FE, marque “gasto deducible” solo si el cliente solicita documentar así la compra; el sistema verifica que el cliente tenga identificación guardada. Sin esa solicitud, para personas naturales se exige identificación cuando el monto supera $25,000.
 - Al aprobarse se emite el DTE y se envía correo con PDF y JSON.
 - Confirmar transferencias y reembolsar con motivo.
 

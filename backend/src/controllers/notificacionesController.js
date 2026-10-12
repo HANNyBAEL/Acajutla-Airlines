@@ -14,7 +14,7 @@ const listar = async (req, res) => {
     const [cont] = await pool.query("SELECT id, control_number FROM dte_headers WHERE transmission_status = 'contingency' ORDER BY id DESC LIMIT 10");
     cont.forEach((d) => notas.push({ id: 'cont-' + d.id, tipo: 'contingencia', titulo: 'DTE en contingencia ' + d.control_number, detalle: 'Pendiente de transmitir evento (plazo 24 h)', fecha: null, leida: false }));
 
-    const [pag] = await pool.query("SELECT p.id, p.amount, r.pnr FROM payments p JOIN reservations r ON r.id = p.reservation_id WHERE p.status = 'pending_confirmation' ORDER BY p.id DESC LIMIT 10");
+    const [pag] = await pool.query("SELECT p.id, p.amount, r.pnr FROM payments p JOIN reservations r ON r.id = p.reservation_id WHERE p.status = 'pending_confirmation' AND p.method = 'transfer' AND p.external_reference IS NOT NULL ORDER BY p.id DESC LIMIT 10");
     pag.forEach((p) => notas.push({ id: 'pago-' + p.id, tipo: 'pago', titulo: 'Transferencia por confirmar ' + p.pnr, detalle: '$' + Number(p.amount).toFixed(2), fecha: null, leida: false }));
 
     res.json({ exito: true, total: notas.length, datos: notas });

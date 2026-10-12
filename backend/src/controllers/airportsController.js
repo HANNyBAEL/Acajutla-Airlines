@@ -88,7 +88,8 @@ const cambiarEstado = async (req, res) => {
     if (nuevo === 0) {
       const [vuelos] = await pool.query(
         `SELECT COUNT(*) AS total FROM flights f JOIN routes r ON f.route_id = r.id
-         WHERE f.status IN ('scheduled','confirmed') AND f.departure_datetime > NOW()
+         WHERE f.status IN ('scheduled','confirmed')
+           AND f.departure_datetime > CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador')
            AND (r.origin_id = ? OR r.destination_id = ?)`,
         [id, id]
       );

@@ -2,6 +2,7 @@ process.env.TZ = 'America/El_Salvador';
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+require('./config/simulation').protegerRed();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,15 +10,24 @@ const allowedOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+const originsPermitidos = allowedOrigins.length
+  ? allowedOrigins
+  : process.env.NODE_ENV === 'production'
+    ? []
+    : ['http://localhost:5174', 'http://127.0.0.1:5174'];
+
+if (process.env.NODE_ENV === 'production' && originsPermitidos.length === 0) {
+  throw new Error('Configura CORS_ORIGIN con los orígenes permitidos antes de iniciar en producción.');
+}
 
 // Middlewares globales
 app.use(cors({
   origin(origin, callback) {
     // Las solicitudes sin Origin incluyen comprobaciones del propio hosting.
-    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+    if (!origin || originsPermitidos.includes(origin)) {
       return callback(null, true);
     }
-    return callback(new Error('Origen no permitido por CORS'));
+    return callback(null, false);
   }
 }));
 app.use(express.json());
@@ -53,6 +63,7 @@ app.use('/api/reservas', reservasRoutes);
 app.use('/api/clientes', require('./routes/clientesRoutes'));
 app.use('/api/pasajeros', pasajerosRoutes);
 app.use('/api/pagos', paymentRoutes);
+app.use('/internal/web-checkout', require('./routes/webCheckoutRoutes'));
 app.use('/api/dte', dteRoutes);
 app.use('/api/notas', require('./routes/notasRoutes'));
 app.use('/api/auditoria', require('./routes/auditRoutes'));

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../services/api';
 import { FiMail, FiRefreshCw, FiSend } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { formatearFechaHoraDb } from '../utils/fechaServidor';
 
 const Correos = () => {
   const [correos, setCorreos] = useState([]);
@@ -70,7 +71,7 @@ const Correos = () => {
               <tr><td colSpan="7" className="text-center py-8 text-gray-500">Sin correos en bandeja</td></tr>
             ) : lista.map((c) => (
               <tr key={c.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 text-sm text-gray-600">{new Date(c.created_at).toLocaleString('es-SV')}</td>
+                <td className="px-6 py-4 text-sm text-gray-600">{formatearFechaHoraDb(c.created_at)}</td>
                 <td className="px-6 py-4 text-sm">{c.template}</td>
                 <td className="px-6 py-4 text-sm">{c.to_email}</td>
                 <td className="px-6 py-4 text-sm">{c.subject}</td>

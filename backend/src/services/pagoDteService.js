@@ -67,6 +67,11 @@ function zipArchivo(nombre, contenido) {
   return Buffer.concat([local, nombreBuffer, comprimido, directorio, cierre]);
 }
 
+function asuntoDte(header, nombreBase) {
+  const etiquetaPruebas = String(header.environment || '').trim() === '00' ? ' [PRUEBA SIMULADA]' : '';
+  return nombreBase + etiquetaPruebas + ' - Documento Tributario Electrónico';
+}
+
 async function obtenerCorreo(header) {
   try {
     const json = typeof header.full_json === 'string' ? JSON.parse(header.full_json) : (header.full_json || {});
@@ -93,17 +98,17 @@ async function enviarAdjuntos(header) {
   if (!to) return { enviado: false, motivo: 'El receptor no tiene correo registrado' };
   if (BREVO_KEY) {
     try {
+      const asunto = '[SIMULACIÓN ESCOLAR] ' + asuntoDte(header, nombreBase);
+      const detalleEnvio = 'Documento de práctica sin validez fiscal. Generado y procesado por el simulador local; no se ha enviado ni consultado al Ministerio de Hacienda.';
       const r = await axios.post(BREVO_URL, {
         sender: SENDER,
         to: [{ email: to }],
-        subject: nombreBase + ' - Documento Tributario Electrónico',
+        subject: asunto,
         htmlContent: '<p>Estimado cliente: adjuntamos su Documento Tributario Electrónico.</p>' +
           '<p><strong>N° de Control:</strong> ' + header.control_number + '<br>' +
           '<strong>Código de Generación:</strong> ' + header.uuid_generation + '<br>' +
           '<strong>Sello de Recepción:</strong> ' + (header.reception_seal || 'Pendiente') + '</p>' +
-          '<p>' + (header.transmission_status === 'contingency'
-            ? 'El DTE fue emitido en contingencia y se transmitirá al Ministerio de Hacienda al restablecerse el servicio. El PDF no lleva sello aún.'
-            : 'Adjuntos: representación gráfica (PDF) y archivo ZIP que contiene el JSON transmitido al Ministerio de Hacienda.') + '</p>',
+          '<p>' + detalleEnvio + '</p>',
         attachment: adjuntos
       }, { headers: { 'api-key': BREVO_KEY, 'Content-Type': 'application/json' }, timeout: 20000 });
       return { enviado: true, messageId: r.data && r.data.messageId };
@@ -133,8 +138,12 @@ async function reenviarAdjuntos(uuid) {
   return enviarAdjuntos(h[0]);
 }
 
-async function emitirYEnviar(reservationId, tipoDte, receptorOverride) {
-  const resultado = await dteService.emitirDTE({ reservation_id: reservationId, tipo_dte: tipoDte, receptor: receptorOverride || undefined }, null);
+async function emitirYEnviar(reservationId, tipoDte, receptorOverride, opciones = {}) {
+  const resultado = await dteService.emitirDTE({
+    reservation_id: reservationId, tipo_dte: tipoDte,
+    receptor: receptorOverride || undefined,
+    requiereDeduccionFiscal: opciones.requiereDeduccionFiscal === true
+  }, null);
   const uuid = resultado.uuid || resultado.uuid_generation || (resultado.dte && resultado.dte.identificacion ? resultado.dte.identificacion.codigoGeneracion : null);
   if (!uuid) throw new Error('No se obtuvo el código de generación del DTE');
   const [h] = await pool.query('SELECT * FROM dte_headers WHERE uuid_generation = ?', [uuid]);
@@ -144,10 +153,11 @@ async function emitirYEnviar(reservationId, tipoDte, receptorOverride) {
   const nombreBase = 'DTE_' + header.control_number;
   const envio = await enviarAdjuntos(header);
   const to = await obtenerCorreo(header);
+  const asunto = asuntoDte(header, nombreBase);
 
   await pool.query(
     "INSERT INTO email_outbox (template, to_email, subject, html, ref_type, ref_id, status, brevo_message_id, created_at) VALUES (?,?,?,?,?,?,?,?,NOW())",
-    ['dte_entrega_adjuntos', to, nombreBase, 'DTE enviado con PDF y ZIP que contiene el JSON', 'dte', header.uuid_generation, envio.enviado ? (envio.simulado ? 'simulado' : 'sent') : 'failed', envio.messageId || null]
+    ['dte_entrega_adjuntos', to, asunto, 'DTE enviado con PDF y ZIP que contiene el JSON', 'dte', header.uuid_generation, envio.enviado ? (envio.simulado ? 'simulado' : 'sent') : 'failed', envio.messageId || null]
   );
   return { uuid: uuid, numeroControl: header.control_number, sello: header.reception_seal, envio: envio };
 }

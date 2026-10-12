@@ -6,7 +6,7 @@ const AUDITADOS_MANUALMENTE = new Set([
   'POST /api/auth/verificar-mfa',
   'POST /api/auth/logout'
 ]);
-const CLAVES_SECRETAS = /password|contrasena|token|authorization|secret|secreto|cvv|cvc|codigo|otp|numero_tarjeta|card_number/i;
+const CLAVES_SECRETAS = /password|contrasena|token|authorization|secret|secreto|cvv|cvc|codigo|otp|numero_tarjeta|card_number|referencia|cuenta|^card$|^tarjeta$/i;
 const CLAVES_DOCUMENTO = /doc|documento|dui|nit|passport|pasaporte/i;
 const CLAVES_CORREO = /email|correo/i;
 const CLAVES_TELEFONO = /telefono|phone|celular|movil/i;
@@ -25,8 +25,10 @@ const enmascararCorreo = (valor) => {
 };
 
 const sanear = (valor, clave = '', profundidad = 0) => {
-  if (valor == null || typeof valor === 'number' || typeof valor === 'boolean') return valor;
+  if (valor == null) return valor;
   if (CLAVES_SECRETAS.test(clave)) return '[REDACTADO]';
+  if (CLAVES_DOCUMENTO.test(clave) || CLAVES_TELEFONO.test(clave)) return ocultar(valor);
+  if (typeof valor === 'number' || typeof valor === 'boolean') return valor;
   if (typeof valor === 'string') {
     if (CLAVES_CORREO.test(clave)) return enmascararCorreo(valor);
     if (CLAVES_DOCUMENTO.test(clave) || CLAVES_TELEFONO.test(clave)) return ocultar(valor);

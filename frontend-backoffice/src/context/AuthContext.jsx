@@ -32,6 +32,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Error al cargar perfil:', error);
       sessionStorage.removeItem('bo_token');
+      sessionStorage.removeItem('bo_refresh');
     } finally {
       setCargando(false);
     }
@@ -45,6 +46,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     sessionStorage.setItem('bo_token', response.data.datos.accessToken);
+    sessionStorage.setItem('bo_refresh', response.data.datos.refreshToken);
     setUsuario(response.data.datos.usuario);
     return response.data;
   };
@@ -52,6 +54,7 @@ export const AuthProvider = ({ children }) => {
   const verificarMFA = async (usuarioId, codigo) => {
     const response = await authAPI.verificarMFA({ usuarioId, codigo });
     sessionStorage.setItem('bo_token', response.data.datos.accessToken);
+    sessionStorage.setItem('bo_refresh', response.data.datos.refreshToken);
     setUsuario(response.data.datos.usuario);
     return response.data;
   };
@@ -63,6 +66,7 @@ export const AuthProvider = ({ children }) => {
       console.error('Error al cerrar sesión:', error);
     } finally {
       sessionStorage.removeItem('bo_token');
+      sessionStorage.removeItem('bo_refresh');
       setUsuario(null);
     }
   };

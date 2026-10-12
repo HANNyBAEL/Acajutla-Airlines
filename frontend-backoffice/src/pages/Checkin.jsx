@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { checkinAPI } from '../services/api';
 import SearchableSelect from '../components/SearchableSelect';
 import { FiSearch, FiUserCheck, FiLogIn, FiX, FiPrinter } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { confirmarAccion } from '../utils/confirm';
+import { fechaActualSV } from '../utils/fechaServidor';
 
 const ESTADO_PAX = {
   pending: ['Pendiente', 'bg-gray-100 text-gray-700'],
@@ -16,7 +17,7 @@ const Checkin = () => {
   const [tab, setTab] = useState('pnr');
   const [pnr, setPnr] = useState('');
   const [datos, setDatos] = useState(null);
-  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(fechaActualSV());
   const [vuelos, setVuelos] = useState([]);
   const [vueloSel, setVueloSel] = useState('');
   const [manifiesto, setManifiesto] = useState([]);
@@ -25,6 +26,10 @@ const Checkin = () => {
   const [segmentoMapa, setSegmentoMapa] = useState(null);
   const [seatSel, setSeatSel] = useState(null);
   const [pase, setPase] = useState(null);
+
+  const cargarVuelos = () => {
+    checkinAPI.vuelos({ fecha }).then((r) => setVuelos(r.data.datos || [])).catch(() => toast.error('Error al cargar vuelos'));
+  };
 
   const cargarPasajerosPorFecha = () => {
     checkinAPI.pasajeros({ fecha: fecha }).then((r) => setPasajerosFecha(r.data.datos || [])).catch(() => toast.error('Error al cargar pasajeros'));

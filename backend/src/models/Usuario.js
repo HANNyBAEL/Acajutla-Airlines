@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
+const crypto = require('node:crypto');
 
 const ROLES_VALIDOS = ['admin', 'operations', 'cashier', 'airport_staff', 'customer', 'corporate_agent', 'auditor'];
 
@@ -17,7 +18,7 @@ const Usuario = {
 
   buscarPorId: async (id) => {
     const [rows] = await pool.query(
-      `SELECT u.id, u.username, u.email, u.role, u.status, u.mfa_enabled, u.created_at, u.last_login,
+      `SELECT u.id, u.username, u.email, u.role, u.status, u.employee_id, u.mfa_enabled, u.mfa_required, u.created_at, u.last_login,
               e.first_names AS empleado_nombres, e.last_names AS empleado_apellidos, e.position AS empleado_cargo
        FROM users u
        LEFT JOIN employees e ON u.employee_id = e.id
@@ -73,14 +74,13 @@ const Usuario = {
   },
 
   estaBloqueado: async (id) => {
-    const [rows] = await pool.query('SELECT blocked_until FROM users WHERE id = ?', [id]);
-    if (!rows[0] || !rows[0].blocked_until) return false;
-    return new Date(rows[0].blocked_until) > new Date();
+    const [rows] = await pool.query('SELECT blocked_until > NOW() AS blocked FROM users WHERE id = ?', [id]);
+    return Number(rows[0]?.blocked) === 1;
   },
 
-  guardarRefreshToken: async (userId, tokenHash, expiraEn) => {
+  guardarRefreshToken: async (userId, tokenHash) => {
     await pool.query('DELETE FROM refresh_tokens WHERE user_id = ?', [userId]);
-    await pool.query(`INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, NOW())`, [userId, tokenHash, expiraEn]);
+    await pool.query(`INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY), NOW())`, [userId, tokenHash]);
   },
 
   validarRefreshToken: async (userId, tokenHash) => {
@@ -93,21 +93,19 @@ const Usuario = {
   },
 
   generarCodigoMFA: async (userId) => {
-    const codigo = crypto.randomInt(100000, 999999).toString();
-    const expiraEn = new Date(Date.now() + 5 * 60 * 1000);
+    const codigo = crypto.randomInt(100000, 1000000).toString();
     await pool.query(
-      `INSERT INTO mfa_codes (user_id, code, expires_at, created_at) VALUES (?, ?, ?, NOW())
-       ON DUPLICATE KEY UPDATE code = VALUES(code), expires_at = VALUES(expires_at)`,
-      [userId, codigo, expiraEn]
+      `INSERT INTO mfa_codes (user_id, code, expires_at, created_at, used) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE), NOW(), FALSE)
+       ON DUPLICATE KEY UPDATE code = VALUES(code), expires_at = VALUES(expires_at), created_at = NOW(), used = FALSE`,
+      [userId, codigo]
     );
     return codigo;
   },
 
   verificarCodigoMFA: async (userId, codigo) => {
-    const [rows] = await pool.query(`SELECT * FROM mfa_codes WHERE user_id = ? AND code = ? AND expires_at > NOW() AND used = FALSE`, [userId, codigo]);
-    if (rows.length === 0) return false;
-    await pool.query('UPDATE mfa_codes SET used = TRUE WHERE id = ?', [rows[0].id]);
-    return true;
+    if (!/^\d{6}$/.test(String(codigo))) return false;
+    const [result] = await pool.query(`UPDATE mfa_codes SET used = TRUE WHERE user_id = ? AND code = ? AND expires_at > NOW() AND used = FALSE`, [userId, codigo]);
+    return result.affectedRows === 1;
   },
 
   listar: async (filtros = {}) => {

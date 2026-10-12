@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const crypto = require('crypto');
 const { CONFIG, fmtFecha, fmtHora, uuidV4 } = require('./dteService');
+const fiscalCompliance = require('./fiscalCompliance');
 
 const FECHAS_EVENTO_DTE = new Set(['03', '04', '05', '06', '07', '08', '09', '15']);
 const TIPOS_INVALIDACION = new Set([1, 2, 3]);
@@ -314,30 +315,239 @@ const invalidarDTE = async (uuidDte, datos) => {
   }
 };
 
-const retornarDTE = async (uuidDte, datos) => {
-  const [h] = await pool.query('SELECT * FROM dte_headers WHERE uuid_generation = ?', [uuidDte]);
-  if (!h.length) throw new Error('DTE no encontrado');
-  const doc = h[0];
-  if (doc.transmission_status !== 'accepted') throw new Error('Solo se puede retornar de DTEs con Sello de Recepcin (aceptados)');
-  if (!['01', '11', '14'].includes(doc.dte_type)) throw new Error('El evento de retorno solo aplica a FE, FEXE o FSEE');
-  const fechaTransmisionDTE = parseFechaHoraLocal(doc.reception_date || doc.created_at);
-  if (!fechaTransmisionDTE) throw new Error('El DTE tiene una fecha de recepción inválida');
-  const ahora = new Date();
-  const limite = sumarMesesFinDeMes(fechaTransmisionDTE, 3);
-  if (ahora > limite) throw new Error('El plazo legal de 3 meses para emitir un evento de retorno ha expirado');
-  const uuid = uuidV4();
-  const evento = {
-    identificacion: { version: 1, ambiente: CONFIG.ambiente, codigoGeneracion: uuid, fechaEvento: fmtFecha(ahora), horaEvento: fmtHora(ahora) },
-    emisor: { nit: CONFIG.nit, nombre: CONFIG.nombre, tipoEstablecimiento: '2', telefono: CONFIG.telefono, correo: CONFIG.correo },
-    documentosRelacionados: [{ tipoDocumento: doc.dte_type, codigoGeneracion: doc.uuid_generation, fechaGeneracion: fechaSql(doc.emission_date) }],
-    motivo: { descripcion: datos.motivo, responsable: { nombre: datos.responsable?.nombre, tipoDocumento: datos.responsable?.tipoDoc, numDocumento: datos.responsable?.numDoc } }
-  };
-  const [ev] = await pool.query('INSERT INTO dte_return_events (uuid, dte_id, motivo, responsable_nombre, responsable_tipo_doc, responsable_num_doc, full_json) VALUES (?, ?, ?, ?, ?, ?, ?)', [uuid, doc.id, datos.motivo, datos.responsable?.nombre, datos.responsable?.tipoDoc, datos.responsable?.numDoc, JSON.stringify(evento)]);
-  const sello = 'SELLO-' + crypto.randomBytes(12).toString('hex').toUpperCase();
-  await pool.query('UPDATE dte_return_events SET sello = ? WHERE id = ?', [sello, ev.insertId]);
-  await pool.query('UPDATE dte_headers SET transmission_status = ? WHERE id = ?', ['returned', doc.id]);
-  return { event_id: ev.insertId, uuid: uuid, sello: sello, evento: evento };
+const parseJsonDb = (value) => {
+  if (!value) return {};
+  return typeof value === 'string' ? JSON.parse(value) : value;
 };
+
+const money = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
+const identidadRetorno = (doc) => {
+  const j = parseJsonDb(doc.full_json);
+  return {
+    emisor: j.emisor?.nit || doc.issuer_nit || '',
+    receptor: JSON.stringify(j.receptor || { nombre: doc.receiver_name, tipoDocumento: doc.receiver_doc_type, numDocumento: doc.receiver_doc_number }),
+    tercero: JSON.stringify(j.ventaTercero || null),
+    pais: j.receptor?.codPais || null,
+    regimen: j.emisor?.regimen || j.emisor?.tipoRegimen || null,
+    recinto: j.emisor?.recintoFiscal || null,
+    tipoExportacion: j.emisor?.tipoItemExpor || null
+  };
+};
+
+const totalDocumento = (doc) => {
+  const j = parseJsonDb(doc.full_json);
+  const total = Number(j.resumen?.totalPagar ?? doc.total_to_pay);
+  if (!Number.isFinite(total) || total <= 0) throw new Error(`El DTE ${doc.uuid_generation} no tiene un total válido para retornos`);
+  return money(total);
+};
+
+const retornadoAntes = async (conn, doc, total) => {
+  const [filas] = await conn.query(
+    'SELECT returned_amount FROM dte_return_events WHERE dte_id = ? FOR UPDATE',
+    [doc.id]
+  );
+  let amount = 0;
+  for (const row of filas) {
+    const previo = Number(row.returned_amount || 0);
+    // Una fila antigua no guardaba el importe. Se considera consumido el total
+    // del DTE por seguridad, hasta que un operador concilie ese historial.
+    amount += previo > 0 ? previo : total;
+  }
+
+  // Compatibilidad con eventos antiguos creados por /fiscal/evento-retorno,
+  // que se guardaban en fiscal_events y repartían el monto equitativamente.
+  let legacy = [];
+  try {
+    [legacy] = await conn.query(
+      `SELECT dte_uuids, full_json FROM fiscal_events
+       WHERE tipo_evento = 'retorno' AND JSON_CONTAINS(dte_uuids, JSON_QUOTE(?))`,
+      [doc.uuid_generation]
+    );
+  } catch (error) {
+    if (!['ER_NO_SUCH_TABLE', 'ER_BAD_FIELD_ERROR'].includes(error.code)) throw error;
+  }
+  for (const event of legacy) {
+    const uuids = parseJsonDb(event.dte_uuids);
+    const full = parseJsonDb(event.full_json);
+    const cantidad = Array.isArray(uuids) ? uuids.length : 0;
+    if (!cantidad) continue;
+    const montoEvento = Number(full.resumen?.totalPagar || 0);
+    amount += montoEvento > 0 ? money(montoEvento / cantidad) : total;
+  }
+  return money(amount);
+};
+
+const repartirMonto = (montoCents, capacidades) => {
+  const totalCapacidad = capacidades.reduce((sum, x) => sum + x.cents, 0);
+  if (montoCents > totalCapacidad) throw new Error('El monto del retorno supera el saldo retornable de los DTE seleccionados');
+  const preliminar = capacidades.map((x) => {
+    const exacto = totalCapacidad ? (montoCents * x.cents) / totalCapacidad : 0;
+    const cents = Math.floor(exacto);
+    return { id: x.id, cents, resto: exacto - cents };
+  });
+  let sobra = montoCents - preliminar.reduce((sum, x) => sum + x.cents, 0);
+  preliminar.slice().sort((a, b) => b.resto - a.resto).forEach((x) => {
+    if (sobra > 0 && x.cents < capacidades.find((c) => c.id === x.id).cents) { x.cents += 1; sobra -= 1; }
+  });
+  return preliminar.filter((x) => x.cents > 0).map((x) => ({ id: x.id, amount: x.cents / 100 }));
+};
+
+const buildRetorno = (docs, allocaciones, motivo, ahora, uuid) => {
+  const porId = new Map(allocaciones.map((x) => [Number(x.id), x.amount]));
+  let gravada = 0, compra = 0, impuesto = 0;
+  let numeroItem = 0;
+  const cuerpo = docs.map((doc) => {
+    const dte = parseJsonDb(doc.full_json);
+    const amount = porId.get(Number(doc.id));
+    if (amount == null) return null;
+    const esFSEE = String(doc.dte_type) === '14';
+    const resumenOriginal = dte.resumen || {};
+    const brutoOriginal = totalDocumento(doc);
+    const tributosOriginales = Array.isArray(resumenOriginal.tributos) ? resumenOriginal.tributos : [];
+    const ivaOriginal = Number(resumenOriginal.totalIva || resumenOriginal.totaliva || 0);
+    const otrosOriginales = tributosOriginales.reduce((sum, t) => sum + (String(t.codigo) === '20' ? 0 : Number(t.valor || 0)), 0);
+    const noGravadoOriginal = Number(resumenOriginal.totalNoGravado || 0);
+    const factor = brutoOriginal > 0 ? amount / brutoOriginal : 0;
+    const retenidoOriginal = Number(resumenOriginal.reteRenta || 0);
+    const compraOriginal = Number(resumenOriginal.totalCompra || resumenOriginal.totalCompraExcluidos || resumenOriginal.subTotal || brutoOriginal);
+    const tasaRetencion = esFSEE && compraOriginal > 0 ? Math.min(0.99, retenidoOriginal / compraOriginal) : 0;
+    const compraItem = esFSEE && tasaRetencion > 0 ? money(amount / (1 - tasaRetencion)) : amount;
+    const retencionItem = esFSEE ? money(compraItem * tasaRetencion) : 0;
+    const impuestoItem = esFSEE ? 0 : money((ivaOriginal + otrosOriginales) * factor);
+    const noGravado = esFSEE ? 0 : money(noGravadoOriginal * factor);
+    const base = esFSEE ? 0 : money(Math.max(0, amount - impuestoItem - noGravado));
+    gravada = money(gravada + base);
+    compra = money(compra + (esFSEE ? compraItem : 0));
+    impuesto = money(impuesto + impuestoItem);
+    return {
+      numItem: ++numeroItem,
+      numeroDocumento: doc.uuid_generation, tipoItem: 1,
+      cantidad: 1, codigo: null, uniMedida: 59,
+      descripcion: String(motivo || 'Retorno / reembolso').slice(0, 1000),
+      precioUni: esFSEE ? compraItem : base, montoDescu: 0,
+      ventaNoSuj: 0, ventaExenta: 0, ventaGravada: base,
+      compra: esFSEE ? compraItem : 0,
+      tributos: impuestoItem > 0 ? ['20'] : null,
+      ivaRete: 0, reteRenta: retencionItem, seguro: 0, flete: 0, noGravado: noGravado
+    };
+  }).filter(Boolean);
+  const noGravado = money(cuerpo.reduce((sum, item) => sum + Number(item.noGravado || 0), 0));
+  const retencion = money(cuerpo.reduce((sum, item) => sum + Number(item.reteRenta || 0), 0));
+  const subtotal = money(gravada + compra);
+  const total = money(subtotal + impuesto + noGravado);
+  const primerDte = parseJsonDb(docs[0].full_json);
+  const evento = {
+    identificacion: {
+      version: 1, ambiente: CONFIG.ambiente, tipoModelo: 1, tipoOperacion: 1,
+      tipoContingencia: null, motivoContin: null, codigoGeneracion: uuid,
+      tipoEvento: '18', fecCEmi: fmtFecha(ahora), horEmi: fmtHora(ahora),
+      fusion: null, tipoMoneda: 'USD'
+    },
+    documentosRelacionados: docs.filter((d) => porId.has(Number(d.id))).map((d) => ({
+      tipoDocumento: String(d.dte_type), tipoGeneracion: 2,
+      numeroDocumento: d.uuid_generation, fechaGeneracion: fechaSql(d.emission_date)
+    })),
+    emisor: primerDte.emisor,
+    receptor: primerDte.receptor,
+    ventaTercero: primerDte.ventaTercero || null,
+    compraTercero: primerDte.compraTercero || null,
+    cuerpoDocumento: cuerpo,
+    resumen: {
+      totalNoSuj: 0, totalExenta: 0, totalGravada: gravada,
+      totalCompraExcluidos: compra, subTotalVentas: subtotal,
+      totalNoGravado: noGravado, totalSeguro: 0, totalFlete: 0,
+      montoTotalOperacion: money(subtotal + impuesto), ivaRetenido: 0,
+      reteRenta: retencion,
+      tributos: impuesto > 0 ? [{ codigo: '20', descripcion: 'Impuesto al Valor Agregado', valor: impuesto }] : null,
+      totalPagar: money(total - retencion), totalLetras: null, totalNoOnerosas: 0,
+      totaliva: impuesto, saldoFavor: 0
+    },
+    apendice: null
+  };
+  fiscalCompliance.firmar(evento);
+  return evento;
+};
+
+const retornarDTEs = async (uuids, datos = {}) => {
+  if (!Array.isArray(uuids) || uuids.length < 1 || uuids.length > 50) throw new Error('Seleccione entre 1 y 50 DTE para el retorno');
+  if (new Set(uuids).size !== uuids.length || uuids.some((u) => typeof u !== 'string' || !u.trim())) throw new Error('La selección contiene códigos de generación inválidos o repetidos');
+  const monto = Number(datos.monto);
+  if (!Number.isFinite(monto) || monto <= 0 || Math.abs(monto * 100 - Math.round(monto * 100)) > 0.000001) throw new Error('Ingrese un monto de retorno válido con máximo dos decimales');
+  const motivo = String(datos.motivo || datos.descripcion || '').trim();
+  if (!motivo || motivo.length > 255) throw new Error('Indique una descripción del retorno (máximo 255 caracteres)');
+
+  const conn = await pool.getConnection();
+  await conn.beginTransaction();
+  try {
+    const [rows] = await conn.query(
+      'SELECT * FROM dte_headers WHERE uuid_generation IN (?) ORDER BY id FOR UPDATE',
+      [uuids]
+    );
+    if (rows.length !== uuids.length) throw new Error('Algún DTE seleccionado no existe');
+    const byUuid = new Map(rows.map((d) => [d.uuid_generation, d]));
+    const docs = uuids.map((u) => byUuid.get(u));
+    if (docs.some((doc) => doc.transmission_status !== 'accepted' || !doc.reception_seal)) throw new Error('Todos los DTE deben estar aceptados y tener sello de recepción');
+    if (docs.some((doc) => !['01', '11', '14'].includes(String(doc.dte_type)))) throw new Error('El retorno solo aplica a FE (01), FEXE (11) o FSEE (14)');
+    if (new Set(docs.map((d) => String(d.dte_type))).size !== 1) throw new Error('Todos los DTE deben ser del mismo tipo');
+    const identidad = identidadRetorno(docs[0]);
+    if (docs.some((d) => {
+      const actual = identidadRetorno(d);
+      return actual.emisor !== identidad.emisor || actual.receptor !== identidad.receptor || actual.tercero !== identidad.tercero
+        || actual.pais !== identidad.pais || actual.regimen !== identidad.regimen
+        || actual.recinto !== identidad.recinto || actual.tipoExportacion !== identidad.tipoExportacion;
+    })) throw new Error('Los DTE relacionados deben compartir emisor, receptor, tercero y datos de exportación');
+
+    const ahora = new Date();
+    const capacidades = [];
+    for (const doc of docs) {
+      const sello = parseFechaHoraLocal(doc.reception_date || doc.created_at);
+      const generacion = parseFechaHoraLocal(doc.emission_date);
+      if (!sello || !generacion) throw new Error(`El DTE ${doc.uuid_generation} tiene fechas inválidas`);
+      const limiteSello = sumarMesesFinDeMes(sello, 3);
+      // El manual admite hasta 2 años para FE/FEXE de determinadas
+      // actividades; los demás tipos y actividades conservan el plazo de 3 meses.
+      const emisor = parseJsonDb(doc.full_json).emisor || {};
+      const actividad = String(emisor.codActividad || '');
+      const plazoMeses = ['01', '11'].includes(String(doc.dte_type))
+        && ['01282', '21001', '46484', '47721'].includes(actividad) ? 24 : 3;
+      const limiteGeneracion = sumarMesesFinDeMes(generacion, plazoMeses);
+      if (generacion > ahora) throw new Error(`El DTE ${doc.uuid_generation} tiene fecha de generación futura`);
+      if (ahora > limiteSello || ahora > limiteGeneracion) throw new Error(`El DTE ${doc.uuid_generation} está fuera del plazo permitido para retorno`);
+      const total = totalDocumento(doc);
+      const usado = await retornadoAntes(conn, doc, total);
+      const disponible = money(total - usado);
+      if (disponible < 0) throw new Error(`El historial de retornos del DTE ${doc.uuid_generation} excede su total; requiere conciliación`);
+      capacidades.push({ id: Number(doc.id), cents: Math.round(disponible * 100) });
+    }
+    const allocaciones = repartirMonto(Math.round(monto * 100), capacidades);
+    const uuid = uuidV4();
+    const evento = buildRetorno(docs, allocaciones, motivo, ahora, uuid);
+    const sello = 'SELLO-' + crypto.randomBytes(12).toString('hex').toUpperCase();
+    fiscalCompliance.sellar(evento, sello);
+    let eventId = null;
+    for (const asignacion of allocaciones) {
+      const doc = docs.find((d) => Number(d.id) === asignacion.id);
+      const [ev] = await conn.query(
+        `INSERT INTO dte_return_events
+          (uuid, dte_id, motivo, responsable_nombre, responsable_tipo_doc, responsable_num_doc, estado, sello, returned_amount, full_json)
+         VALUES (?, ?, ?, ?, ?, ?, 'aceptado', ?, ?, ?)`,
+        [uuid, doc.id, motivo, datos.responsable?.nombre || null, datos.responsable?.tipoDoc || null,
+          datos.responsable?.numDoc || null, sello, asignacion.amount, JSON.stringify(evento)]
+      );
+      if (eventId == null) eventId = ev.insertId;
+    }
+    await conn.commit();
+    return { event_id: eventId, uuid, sello, monto: evento.resumen.totalPagar, documentos: allocaciones.length, asignaciones: allocaciones, evento };
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+};
+
+const retornarDTE = async (uuidDte, datos) => retornarDTEs([uuidDte], datos);
 
 const operacionesEspeciales = async (datos) => {
   const uuid = uuidV4();
@@ -383,4 +593,4 @@ const listarEventos = async () => {
   return { contingencia: cont, invalidacion: inv };
 };
 
-module.exports = { listarPendientes, transmitirEventoContingencia, invalidarDTE, retornarDTE, operacionesEspeciales, listarEventos };
+module.exports = { listarPendientes, transmitirEventoContingencia, invalidarDTE, retornarDTE, retornarDTEs, operacionesEspeciales, listarEventos };

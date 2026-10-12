@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { fechaElSalvador } = require('../utils/fechaElSalvador');
 
 // ---------- WAITLIST ----------
 const listarWaitlist = async (req, res) => {
@@ -85,11 +86,16 @@ const crearAncillary = async (req, res) => {
 
 const actualizarAncillary = async (req, res) => {
   try {
-    const { code, name, type, description, base_price, active } = req.body;
-    await pool.query(
-      'UPDATE ancillaries SET code = ?, name = ?, type = ?, description = ?, base_price = ?, active = COALESCE(?, active) WHERE id = ?',
-      [code, name, type, description || null, base_price, active, req.params.id]
-    );
+    const allowed = ['code', 'name', 'type', 'description', 'base_price', 'active'];
+    const entries = Object.entries(req.body).filter(([key]) => allowed.includes(key));
+    if (!entries.length) return res.status(400).json({ error: 'No hay campos para actualizar' });
+    for (const [key, value] of entries) {
+      if (['code', 'name', 'type'].includes(key) && (typeof value !== 'string' || !value.trim())) return res.status(400).json({ error: 'Texto obligatorio: ' + key });
+      if (key === 'base_price' && (!Number.isFinite(Number(value)) || Number(value) < 0)) return res.status(400).json({ error: 'Precio inválido' });
+      if (key === 'active' && ![true, false, 0, 1].includes(value)) return res.status(400).json({ error: 'active debe ser booleano' });
+    }
+    const [result] = await pool.query('UPDATE ancillaries SET ' + entries.map(([key]) => key + ' = ?').join(', ') + ' WHERE id = ?', [...entries.map(([, value]) => value), req.params.id]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Servicio no encontrado' });
     res.json({ exito: true });
   } catch (e) {
     if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'El código ya existe' });
@@ -123,17 +129,27 @@ const agregarAncillaryReserva = async (req, res) => {
   try {
     await conn.beginTransaction();
     const { reservation_id, passenger_id, flight_id, ancillary_id, quantity } = req.body;
-    const qty = Math.max(1, parseInt(quantity || 1, 10));
+    const qty = Number(quantity ?? 1);
+    if (!Number.isInteger(qty) || qty < 1 || qty > 100) throw new Error("Cantidad inválida");
     if (!reservation_id || !flight_id || !ancillary_id) { await conn.rollback(); return res.status(400).json({ error: 'Faltan datos obligatorios' }); }
+    const [reservas] = await conn.query('SELECT * FROM reservations WHERE id = ? FOR UPDATE', [reservation_id]);
+    const reserva = reservas[0];
+    if (!reserva || reserva.status !== 'pending' || Number(reserva.paid_total) > 0) throw new Error('Solo se pueden agregar servicios antes del primer pago');
+    const [rel] = await conn.query('SELECT id FROM flight_segments WHERE reservation_id = ? AND flight_id = ? AND (? IS NULL OR passenger_id = ?)', [reservation_id, flight_id, passenger_id || null, passenger_id || null]);
+    if (!rel.length) throw new Error('Pasajero o vuelo ajeno a la reserva');
+    const [docs] = await conn.query("SELECT id FROM dte_headers WHERE reservation_id = ? AND transmission_status IN ('accepted','transmitted','contingency')", [reservation_id]);
+    if (docs.length) throw new Error('No se puede modificar una reserva facturada');
     const [fa] = await conn.query('SELECT * FROM flight_ancillaries WHERE flight_id = ? AND ancillary_id = ? AND active = 1 FOR UPDATE', [flight_id, ancillary_id]);
     if (!fa.length) { await conn.rollback(); return res.status(404).json({ error: 'Ancillary no disponible para este vuelo' }); }
     if (fa[0].stock < qty) { await conn.rollback(); return res.status(409).json({ error: 'Stock insuficiente' }); }
-    const [a] = await conn.query('SELECT base_price FROM ancillaries WHERE id = ?', [ancillary_id]);
-    const precio = fa[0].price_override || a[0].base_price;
+    const [a] = await conn.query('SELECT base_price FROM ancillaries WHERE id = ? AND active = 1', [ancillary_id]);
+    if (!a.length) throw new Error('Servicio inactivo');
+    const precio = fa[0].price_override ?? a[0].base_price;
     const total = precio * qty;
-    const [r] = await conn.query(
-      'INSERT INTO reservation_ancillaries (reservation_id, passenger_id, flight_id, ancillary_id, price, status) VALUES (?,?,?,?,?,\'active\')',
-      [reservation_id, passenger_id || null, flight_id, ancillary_id, total]);
+    let r;
+    for (let unit = 0; unit < qty; unit++) {
+      [r] = await conn.query("INSERT INTO reservation_ancillaries (reservation_id, passenger_id, flight_id, ancillary_id, price, status) VALUES (?,?,?,?,?,'active')", [reservation_id, passenger_id || null, flight_id, ancillary_id, precio]);
+    }
     await conn.query('UPDATE flight_ancillaries SET stock = stock - ? WHERE id = ?', [qty, fa[0].id]);
     await conn.query('UPDATE reservations SET estimated_total = estimated_total + ? WHERE id = ?', [total, reservation_id]);
     await conn.commit();
@@ -156,7 +172,7 @@ const ancillariesDeReserva = async (req, res) => {
 // ---------- REPORTES ----------
 const kpi = async (req, res) => {
   try {
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = fechaElSalvador();
     const [vh] = await pool.query('SELECT status, COUNT(*) AS c FROM flights WHERE DATE(departure_datetime) = ? GROUP BY status', [hoy]);
     const map = {}; vh.forEach((x) => { map[x.status] = x.c; });
     const [pax] = await pool.query('SELECT COUNT(DISTINCT p.id) AS t FROM passengers p JOIN reservations r ON r.id = p.reservation_id WHERE r.created_at >= (NOW() - INTERVAL 24 HOUR)');
@@ -171,7 +187,7 @@ const kpi = async (req, res) => {
          GROUP BY fs.flight_id
        ) oc ON oc.flight_id = f.id
        WHERE DATE(f.departure_datetime) = ?`, [hoy]);
-    const [ventas] = await pool.query("SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE status='approved' AND type='payment' AND DATE(payment_date) = ?", [hoy]);
+    const [ventas] = await pool.query("SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE status='approved' AND type='payment' AND DATE(CONVERT_TZ(payment_date, 'UTC', 'America/El_Salvador')) = ?", [hoy]);
     const [dte] = await pool.query("SELECT COALESCE(SUM(transmission_status='accepted'),0) AS ok, COALESCE(SUM(transmission_status='rejected'),0) AS bad, COALESCE(SUM(transmission_status='contingency'),0) AS cont FROM dte_headers WHERE DATE(emission_date) = ?", [hoy]);
     const [wl] = await pool.query("SELECT COUNT(*) AS t FROM waitlist WHERE status='waiting'");
     res.json({ exito: true, datos: {
@@ -229,7 +245,7 @@ const reporteCanales = async (req, res) => {
 const reporteConciliacion = async (req, res) => {
   try {
     const { desde, hasta } = req.query;
-    const [pagos] = await pool.query("SELECT DATE(payment_date) AS fecha, COALESCE(SUM(amount),0) AS pagos FROM payments WHERE status='approved' AND type='payment' AND (? IS NULL OR DATE(payment_date) >= ?) AND (? IS NULL OR DATE(payment_date) <= ?) GROUP BY DATE(payment_date)", [desde || null, desde || null, hasta || null, hasta || null]);
+    const [pagos] = await pool.query("SELECT DATE(CONVERT_TZ(payment_date, 'UTC', 'America/El_Salvador')) AS fecha, COALESCE(SUM(amount),0) AS pagos FROM payments WHERE status='approved' AND type='payment' AND (? IS NULL OR DATE(CONVERT_TZ(payment_date, 'UTC', 'America/El_Salvador')) >= ?) AND (? IS NULL OR DATE(CONVERT_TZ(payment_date, 'UTC', 'America/El_Salvador')) <= ?) GROUP BY DATE(CONVERT_TZ(payment_date, 'UTC', 'America/El_Salvador'))", [desde || null, desde || null, hasta || null, hasta || null]);
     const [dtes] = await pool.query("SELECT DATE(emission_date) AS fecha, COALESCE(SUM(total_to_pay),0) AS facturado FROM dte_headers WHERE transmission_status='accepted' AND (? IS NULL OR DATE(emission_date) >= ?) AND (? IS NULL OR DATE(emission_date) <= ?) GROUP BY DATE(emission_date)", [desde || null, desde || null, hasta || null, hasta || null]);
     const mapa = {};
     pagos.forEach((p) => { mapa[p.fecha] = { fecha: p.fecha, pagos: Number(p.pagos), facturado: 0 }; });

@@ -1,0 +1,139 @@
+{
+  "date": "2026-10-12",
+  "mode": "isolated application acceptance checks; no real DB/email/payment I/O",
+  "total": 26,
+  "passed": 26,
+  "failed": 0,
+  "results": [
+    {
+      "id": "AUTH-01",
+      "name": "MFA generates a six-digit code without runtime error",
+      "passed": true
+    },
+    {
+      "id": "AUTH-02",
+      "name": "A new MFA challenge works after the previous challenge was consumed",
+      "passed": true
+    },
+    {
+      "id": "AUTH-03",
+      "name": "A temporarily blocked account cannot log in",
+      "passed": true
+    },
+    {
+      "id": "AUTH-04",
+      "name": "An inactive account cannot exchange an MFA code for tokens",
+      "passed": true
+    },
+    {
+      "id": "AUTH-05",
+      "name": "API traffic does not consume the separate login rate limit",
+      "passed": true
+    },
+    {
+      "id": "ACL-00",
+      "name": "Unauthenticated reservation access returns 401",
+      "passed": true
+    },
+    {
+      "id": "ACL-01",
+      "name": "Customer cannot read another customer reservation",
+      "passed": true
+    },
+    {
+      "id": "ACL-02",
+      "name": "Customer cannot enumerate passengers of another reservation",
+      "passed": true
+    },
+    {
+      "id": "ACL-03",
+      "name": "Customer cannot search the complete customer directory",
+      "passed": true
+    },
+    {
+      "id": "ACL-04",
+      "name": "Customer cannot list all reservations",
+      "passed": true
+    },
+    {
+      "id": "PAY-01",
+      "name": "Empty card number is rejected by the active payment gateway",
+      "passed": true
+    },
+    {
+      "id": "PAY-02",
+      "name": "Card remains valid during the last day of its expiry month",
+      "passed": true
+    },
+    {
+      "id": "PAY-03",
+      "name": "Transfer without a bank reference is rejected before persistence",
+      "passed": true
+    },
+    {
+      "id": "PAY-04",
+      "name": "Confirmation rejects an expired reservation before the expiration job runs",
+      "passed": true
+    },
+    {
+      "id": "OPS-01",
+      "name": "Pilot and copilot roles from the schema permit check-in",
+      "passed": true
+    },
+    {
+      "id": "OPS-02",
+      "name": "Partial payment does not authorize check-in with an outstanding balance",
+      "passed": true
+    },
+    {
+      "id": "OPS-03",
+      "name": "Seat assignment rejects seats beyond physical capacity",
+      "passed": true
+    },
+    {
+      "id": "OPS-04",
+      "name": "Closing a cancelled flight is rejected",
+      "passed": true
+    },
+    {
+      "id": "OPS-05",
+      "name": "Inactive crew cannot be assigned to a flight",
+      "passed": true
+    },
+    {
+      "id": "COM-01",
+      "name": "Adding a service checks reservation state and passenger/flight membership",
+      "passed": true
+    },
+    {
+      "id": "LOG-01",
+      "name": "Audit masking removes numeric CVV and document identifiers",
+      "passed": true
+    },
+    {
+      "id": "DTE-01",
+      "name": "A generated FE passes the project complete DTE validator",
+      "passed": true
+    },
+    {
+      "id": "DTE-02",
+      "name": "CCFE cannot be accepted without the receiver NRC",
+      "passed": true
+    },
+    {
+      "id": "DTE-03",
+      "name": "Simultaneous invoices for different reservations receive distinct control numbers",
+      "passed": true
+    },
+    {
+      "id": "COM-02",
+      "name": "The service activation toggle preserves required name/code/price fields",
+      "passed": true
+    },
+    {
+      "id": "HTTP-01",
+      "name": "A database failure in fiscalidad returns an HTTP error without terminating Node",
+      "passed": true
+    }
+  ]
+}

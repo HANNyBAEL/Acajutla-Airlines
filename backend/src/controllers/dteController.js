@@ -3,9 +3,9 @@ const DTEService = require('../services/dteService');
 
 const emitir = async (req, res) => {
   try {
-    const { reservation_id, tipo_dte, receptor } = req.body;
+    const { reservation_id, tipo_dte, receptor, requiere_deduccion_fiscal } = req.body;
     if (!reservation_id || !tipo_dte) return res.status(400).json({ error: 'reservation_id y tipo_dte son obligatorios' });
-    const r = await DTEService.emitirDTE({ reservation_id: reservation_id, tipo_dte: tipo_dte, receptor: receptor });
+    const r = await DTEService.emitirDTE({ reservation_id, tipo_dte, receptor, requiereDeduccionFiscal: requiere_deduccion_fiscal === true });
     const esRechazado = r.estado === 'rejected';
     const statusHttp = esRechazado ? 422 : 201;
     res.status(statusHttp).json({
@@ -51,7 +51,7 @@ const kpis = async (req, res) => {
               SUM(transmission_status = 'accepted') AS aceptados,
               SUM(transmission_status = 'rejected') AS rechazados,
               SUM(transmission_status IN ('transmitted','contingency')) AS pendientes,
-              SUM(CASE WHEN DATE(emission_date) = CURDATE() THEN total_to_pay ELSE 0 END) AS facturado_hoy
+              SUM(CASE WHEN emission_date = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador')) THEN total_to_pay ELSE 0 END) AS facturado_hoy
        FROM dte_headers`
     );
     res.json({ exito: true, datos: rows[0] });

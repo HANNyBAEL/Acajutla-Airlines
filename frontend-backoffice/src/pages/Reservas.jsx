@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import api from '../services/api';
 import { FiSearch, FiX, FiXCircle, FiUser, FiCalendar, FiDollarSign, FiFileText, FiSend } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { finDiaSV, formatearFechaDb, formatearFechaHoraDb, inicioDiaSV, parsearFechaUtcDb } from '../utils/fechaServidor';
 
 const ESTADOS = {
   pending: ['Pendiente', 'bg-yellow-100 text-yellow-700'],
@@ -41,8 +42,9 @@ const Reservas = () => {
     const q = texto.trim().toLowerCase();
     return reservas.filter((r) => {
       if (estado && r.status !== estado) return false;
-      if (desde && new Date(r.created_at) < new Date(desde + 'T00:00:00')) return false;
-      if (hasta && new Date(r.created_at) > new Date(hasta + 'T23:59:59')) return false;
+      const fechaCreacion = parsearFechaUtcDb(r.created_at);
+      if (desde && fechaCreacion && fechaCreacion < inicioDiaSV(desde)) return false;
+      if (hasta && fechaCreacion && fechaCreacion > finDiaSV(hasta)) return false;
       if (!q) return true;
       return JSON.stringify(r).toLowerCase().includes(q);
     });
@@ -164,7 +166,7 @@ const Reservas = () => {
                 <td className="px-6 py-4 font-mono font-bold text-primary-700">{r.pnr}</td>
                 <td className="px-6 py-4 text-sm font-medium text-gray-800">{nombreDe(r) || '—'}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{docDe(r) || '—'}</td>
-                <td className="px-6 py-4 text-sm text-gray-600">{r.created_at ? new Date(r.created_at).toLocaleDateString('es-SV') : '—'}</td>
+                <td className="px-6 py-4 text-sm text-gray-600">{formatearFechaDb(r.created_at)}</td>
                 <td className="px-6 py-4 text-sm font-semibold text-gray-800">${Number(r.estimated_total || 0).toFixed(2)}</td>
                 <td className="px-6 py-4">
                   <span className={'px-3 py-1 rounded-full text-xs font-medium ' + badge(r.status)[1]}>{badge(r.status)[0]}</span>
@@ -226,7 +228,7 @@ const Reservas = () => {
                     <InfoFila
                       icon={FiCalendar}
                       label="Fecha de creación"
-                      value={reservaDetalle?.created_at ? new Date(reservaDetalle.created_at).toLocaleString('es-SV') : '—'}
+                      value={formatearFechaHoraDb(reservaDetalle?.created_at)}
                     />
                   </div>
 

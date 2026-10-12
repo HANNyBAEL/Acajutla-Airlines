@@ -128,7 +128,7 @@ const ContingenciaDTE = () => {
 
       <div className={'rounded-lg border p-4 flex flex-wrap items-center justify-between gap-3 ' + (mh?.operativo ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200')}>
         <div>
-          <p className="font-semibold text-gray-800">Ministerio de Hacienda (simulado): {mh?.operativo ? 'OPERATIVO' : 'CAÍDO'}</p>
+          <p className="font-semibold text-gray-800">Servicio fiscal local (simulado): {mh?.operativo ? 'OPERATIVO' : 'CAÍDO'}</p>
           <p className="text-sm text-gray-600">El pago nunca se bloquea. Si MH falla tras {mh?.reintentosConfigurados || 3} intentos, el DTE y el correo se generan automáticamente en contingencia, sin sello.</p>
         </div>
         <button className={mh?.operativo ? 'btn-secondary' : 'btn-primary'} disabled={procesando || !mh} onClick={() => cambiarEstadoMH(!mh.operativo)}>

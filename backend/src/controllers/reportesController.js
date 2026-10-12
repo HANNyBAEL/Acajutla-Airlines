@@ -1,8 +1,9 @@
 const pool = require('../config/db');
+const { fechaElSalvador } = require('../utils/fechaElSalvador');
 
 const fmtFecha = (d) => {
-  const dt = d instanceof Date ? d : new Date(d);
-  return dt.toISOString().slice(0, 10);
+  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+  return fechaElSalvador(d);
 };
 
 const rango = (query) => {
@@ -14,25 +15,25 @@ const rango = (query) => {
 const dashboard = async (req, res) => {
   try {
     const [vuelosHoy] = await pool.query(
-      "SELECT status, COUNT(*) AS total FROM flights WHERE DATE(departure_datetime) = CURDATE() GROUP BY status"
+      "SELECT status, COUNT(*) AS total FROM flights WHERE DATE(departure_datetime) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador')) GROUP BY status"
     );
     const [pax24] = await pool.query(
       "SELECT COUNT(*) AS total FROM passengers p JOIN reservations r ON r.id = p.reservation_id WHERE r.status IN ('paid', 'confirmed') AND r.created_at >= (NOW() - INTERVAL 24 HOUR)"
     );
     const [ocup] = await pool.query(
-      "SELECT ROUND(AVG(t.ocupacion), 2) AS promedio FROM (SELECT (SELECT COUNT(*) FROM flight_segments fs JOIN reservations r ON r.id = fs.reservation_id WHERE fs.flight_id = f.id AND r.status IN ('paid','confirmed')) / at.total_capacity * 100 AS ocupacion FROM flights f JOIN aircraft ac ON ac.id = f.aircraft_id JOIN aircraft_types at ON at.id = ac.type_id WHERE DATE(f.departure_datetime) = CURDATE()) t"
+      "SELECT ROUND(AVG(t.ocupacion), 2) AS promedio FROM (SELECT (SELECT COUNT(*) FROM flight_segments fs JOIN reservations r ON r.id = fs.reservation_id WHERE fs.flight_id = f.id AND r.status IN ('paid','confirmed')) / at.total_capacity * 100 AS ocupacion FROM flights f JOIN aircraft ac ON ac.id = f.aircraft_id JOIN aircraft_types at ON at.id = ac.type_id WHERE DATE(f.departure_datetime) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador'))) t"
     );
     const [mant] = await pool.query(
       "SELECT COUNT(*) AS total FROM aircraft WHERE status IN ('maintenance','out_of_service')"
     );
     const [ventasPorCanal] = await pool.query(
-      "SELECT r.sales_channel AS canal, COALESCE(SUM(p.amount),0) AS monto FROM payments p JOIN reservations r ON r.id = p.reservation_id WHERE p.status = 'approved' AND p.type = 'payment' AND DATE(p.payment_date) = CURDATE() GROUP BY r.sales_channel ORDER BY monto DESC"
+      "SELECT r.sales_channel AS canal, COALESCE(SUM(p.amount),0) AS monto FROM payments p JOIN reservations r ON r.id = p.reservation_id WHERE p.status = 'approved' AND p.type = 'payment' AND DATE(CONVERT_TZ(p.payment_date, 'UTC', 'America/El_Salvador')) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador')) GROUP BY r.sales_channel ORDER BY monto DESC"
     );
     const [ventasTotal] = await pool.query(
-      "SELECT COALESCE(SUM(amount),0) AS total FROM payments WHERE status = 'approved' AND type = 'payment' AND DATE(payment_date) = CURDATE()"
+      "SELECT COALESCE(SUM(amount),0) AS total FROM payments WHERE status = 'approved' AND type = 'payment' AND DATE(CONVERT_TZ(payment_date, 'UTC', 'America/El_Salvador')) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador'))"
     );
     const [dte] = await pool.query(
-      "SELECT COALESCE(SUM(transmission_status='accepted'),0) AS aceptados, COALESCE(SUM(transmission_status='rejected'),0) AS rechazados, COALESCE(SUM(transmission_status IN ('transmitted','contingency')),0) AS pendientes, COALESCE(SUM(transmission_status='contingency'),0) AS contingencia FROM dte_headers WHERE DATE(emission_date) = CURDATE()"
+      "SELECT COALESCE(SUM(transmission_status='accepted'),0) AS aceptados, COALESCE(SUM(transmission_status='rejected'),0) AS rechazados, COALESCE(SUM(transmission_status IN ('transmitted','contingency')),0) AS pendientes, COALESCE(SUM(transmission_status='contingency'),0) AS contingencia FROM dte_headers WHERE emission_date = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador'))"
     );
     const [cont24] = await pool.query(
       "SELECT COUNT(*) AS total FROM dte_headers WHERE transmission_status IN ('contingency','transmitted') AND emission_date < (NOW() - INTERVAL 24 HOUR)"
@@ -64,19 +65,19 @@ const ingresos = async (req, res) => {
   try {
     const { desde, hasta } = rango(req.query);
     const [serie] = await pool.query(
-      "SELECT DATE(p.payment_date) AS fecha, SUM(CASE WHEN p.type = 'payment' THEN p.amount ELSE 0 END) AS bruto, SUM(CASE WHEN p.type = 'refund' THEN p.amount ELSE 0 END) AS reembolsos, SUM(CASE WHEN p.type = 'payment' THEN p.amount ELSE -p.amount END) AS neto FROM payments p WHERE p.status IN ('approved','refunded') AND DATE(p.payment_date) BETWEEN ? AND ? GROUP BY DATE(p.payment_date) ORDER BY fecha",
+      "SELECT DATE(CONVERT_TZ(p.payment_date, 'UTC', 'America/El_Salvador')) AS fecha, SUM(CASE WHEN p.type = 'payment' THEN p.amount ELSE 0 END) AS bruto, SUM(CASE WHEN p.type = 'refund' THEN p.amount ELSE 0 END) AS reembolsos, SUM(CASE WHEN p.type = 'payment' THEN p.amount ELSE -p.amount END) AS neto FROM payments p WHERE p.status IN ('approved','refunded') AND DATE(CONVERT_TZ(p.payment_date, 'UTC', 'America/El_Salvador')) BETWEEN ? AND ? GROUP BY DATE(CONVERT_TZ(p.payment_date, 'UTC', 'America/El_Salvador')) ORDER BY fecha",
       [desde, hasta]
     );
     const [porCanal] = await pool.query(
-      "SELECT r.sales_channel AS canal, COALESCE(SUM(p.amount),0) AS monto, COUNT(*) AS operaciones FROM payments p JOIN reservations r ON r.id = p.reservation_id WHERE p.status = 'approved' AND p.type = 'payment' AND DATE(p.payment_date) BETWEEN ? AND ? GROUP BY r.sales_channel ORDER BY monto DESC",
+      "SELECT r.sales_channel AS canal, COALESCE(SUM(p.amount),0) AS monto, COUNT(*) AS operaciones FROM payments p JOIN reservations r ON r.id = p.reservation_id WHERE p.status = 'approved' AND p.type = 'payment' AND DATE(CONVERT_TZ(p.payment_date, 'UTC', 'America/El_Salvador')) BETWEEN ? AND ? GROUP BY r.sales_channel ORDER BY monto DESC",
       [desde, hasta]
     );
     const [porMetodo] = await pool.query(
-      "SELECT p.method, COALESCE(SUM(p.amount),0) AS monto, COUNT(*) AS operaciones FROM payments p WHERE p.status = 'approved' AND p.type = 'payment' AND DATE(p.payment_date) BETWEEN ? AND ? GROUP BY p.method ORDER BY monto DESC",
+      "SELECT p.method, COALESCE(SUM(p.amount),0) AS monto, COUNT(*) AS operaciones FROM payments p WHERE p.status = 'approved' AND p.type = 'payment' AND DATE(CONVERT_TZ(p.payment_date, 'UTC', 'America/El_Salvador')) BETWEEN ? AND ? GROUP BY p.method ORDER BY monto DESC",
       [desde, hasta]
     );
     const [totales] = await pool.query(
-      "SELECT COALESCE(SUM(CASE WHEN type = 'payment' THEN amount ELSE 0 END),0) AS bruto, COALESCE(SUM(CASE WHEN type = 'refund' THEN amount ELSE 0 END),0) AS reembolsos FROM payments WHERE status IN ('approved','refunded') AND DATE(payment_date) BETWEEN ? AND ?",
+      "SELECT COALESCE(SUM(CASE WHEN type = 'payment' THEN amount ELSE 0 END),0) AS bruto, COALESCE(SUM(CASE WHEN type = 'refund' THEN amount ELSE 0 END),0) AS reembolsos FROM payments WHERE status IN ('approved','refunded') AND DATE(CONVERT_TZ(payment_date, 'UTC', 'America/El_Salvador')) BETWEEN ? AND ?",
       [desde, hasta]
     );
     const serieFmt = serie.map((s) => ({ fecha: fmtFecha(s.fecha), bruto: Number(s.bruto), reembolsos: Number(s.reembolsos), neto: Number(s.neto) }));
@@ -124,11 +125,22 @@ const conciliacion = async (req, res) => {
   try {
     const { desde, hasta } = rango(req.query);
     const [pagos] = await pool.query(
-      "SELECT DATE(p.payment_date) AS fecha, COALESCE(SUM(p.amount),0) AS pagos FROM payments p WHERE p.status = 'approved' AND p.type = 'payment' AND DATE(p.payment_date) BETWEEN ? AND ? GROUP BY DATE(p.payment_date)",
+      `SELECT DATE(COALESCE(d.emission_date, CONVERT_TZ(p.payment_date, 'UTC', 'America/El_Salvador'))) AS fecha, COALESCE(SUM(p.amount),0) AS pagos
+       FROM payments p
+       JOIN reservations r ON r.id = p.reservation_id
+       LEFT JOIN (
+         SELECT reservation_id, MAX(emission_date) AS emission_date
+         FROM dte_headers
+         WHERE transmission_status = 'accepted' AND dte_type IN ('01', '03', '11', '14') AND reservation_id IS NOT NULL
+         GROUP BY reservation_id
+       ) d ON d.reservation_id = r.id
+       WHERE p.status = 'approved' AND p.type = 'payment'
+         AND DATE(COALESCE(d.emission_date, CONVERT_TZ(p.payment_date, 'UTC', 'America/El_Salvador'))) BETWEEN ? AND ?
+       GROUP BY DATE(COALESCE(d.emission_date, CONVERT_TZ(p.payment_date, 'UTC', 'America/El_Salvador')))` ,
       [desde, hasta]
     );
     const [dtes] = await pool.query(
-      "SELECT DATE(emission_date) AS fecha, COALESCE(SUM(total_to_pay),0) AS facturado FROM dte_headers WHERE transmission_status = 'accepted' AND DATE(emission_date) BETWEEN ? AND ? GROUP BY DATE(emission_date)",
+      "SELECT DATE(emission_date) AS fecha, COALESCE(SUM(total_to_pay),0) AS facturado FROM dte_headers WHERE transmission_status = 'accepted' AND dte_type IN ('01', '03', '11', '14') AND reservation_id IS NOT NULL AND DATE(emission_date) BETWEEN ? AND ? GROUP BY DATE(emission_date)",
       [desde, hasta]
     );
     const mapa = {};
@@ -148,13 +160,16 @@ const conciliacion = async (req, res) => {
 
 const dteResumen = async (req, res) => {
   try {
+    const { desde, hasta } = rango(req.query);
     const [porTipo] = await pool.query(
-      "SELECT dte_type, transmission_status, COUNT(*) AS total, COALESCE(SUM(total_to_pay),0) AS monto FROM dte_headers GROUP BY dte_type, transmission_status ORDER BY dte_type, transmission_status"
+      "SELECT dte_type, transmission_status, COUNT(*) AS total, COALESCE(SUM(total_to_pay),0) AS monto FROM dte_headers WHERE DATE(emission_date) BETWEEN ? AND ? GROUP BY dte_type, transmission_status ORDER BY dte_type, transmission_status",
+      [desde, hasta]
     );
     const [bitacora] = await pool.query(
-      "SELECT id, uuid_generation, dte_type, control_number, emission_date, transmission_status, reception_seal, total_to_pay, reservation_id FROM dte_headers ORDER BY id DESC LIMIT 100"
+      "SELECT id, uuid_generation, dte_type, control_number, emission_date, transmission_status, reception_seal, total_to_pay, reservation_id FROM dte_headers WHERE DATE(emission_date) BETWEEN ? AND ? ORDER BY id DESC LIMIT 100",
+      [desde, hasta]
     );
-    res.json({ exito: true, datos: { porTipo: porTipo, bitacora: bitacora } });
+    res.json({ exito: true, datos: { desde, hasta, porTipo: porTipo, bitacora: bitacora } });
   } catch (e) {
     console.error('Error dte resumen:', e);
     res.status(500).json({ error: 'Error interno' });

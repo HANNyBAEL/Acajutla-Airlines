@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
+import { formatearFechaHoraDb } from '../utils/fechaServidor';
 import SearchableSelect from '../components/SearchableSelect';
-import { FiUsers, FiUser, FiTag, FiMap, FiSettings, FiActivity, FiEdit2, FiX, FiToggleLeft, FiToggleRight, FiPlus, FiBriefcase, FiCheckCircle, FiAlertTriangle, FiTrendingUp, FiAward, FiMonitor } from 'react-icons/fi';
+import { FiUsers, FiUser, FiTag, FiMap, FiSettings, FiActivity, FiEdit2, FiTrash2, FiX, FiToggleLeft, FiToggleRight, FiPlus, FiBriefcase, FiCheckCircle, FiAlertTriangle, FiTrendingUp, FiAward, FiMonitor } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { confirmarAccion } from '../utils/confirm';
 
 const KPICard = ({ title, value, icon: Icon, colorClass = "text-primary-600 bg-primary-50" }) => (
   <div className="card p-4 flex items-center space-x-4">
@@ -100,6 +102,23 @@ const Operaciones = () => {
     } finally { setGuardandoCrew(false); }
   };
 
+  const eliminarTripulante = async (c) => {
+    const historial = Number(c.history_count || 0);
+    if (historial > 0) return toast.error('No se puede eliminar: tiene historial de asignaciones a vuelos');
+    if (!await confirmarAccion({
+      title: '¿Eliminar tripulante?',
+      text: `Se eliminará definitivamente a ${c.full_name}. Solo se permite si no tiene historial.`,
+      confirmText: 'Sí, eliminar',
+      isDanger: true
+    })) return;
+    try {
+      await api.delete('/operaciones/tripulacion/' + c.id);
+      toast.success('Tripulante eliminado');
+      setDrawerTripulacion(null);
+      cargarBase();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo eliminar el tripulante'); }
+  };
+
   const rolLabel = (r) => ({ pilot: 'Piloto', copilot: 'Copiloto', cabin: 'Auxiliar de vuelo', maintenance: 'Mantenimiento' }[r] || r);
 
   // Catálogos extensos: se buscan escribiendo (SearchableSelect) en vez de
@@ -149,6 +168,22 @@ const Operaciones = () => {
     } catch (e) { toast.error(e.response && e.response.data ? e.response.data.error : 'Error'); }
   };
 
+  const eliminarClase = async (clase) => {
+    const historial = Number(clase.history_count || 0);
+    if (historial > 0) return toast.error('No se puede eliminar: conserva historial de tarifas');
+    if (!await confirmarAccion({
+      title: '¿Eliminar clase tarifaria?',
+      text: `Se eliminará ${clase.code} · ${clase.name}. Solo se permite si nunca se ha asignado a un vuelo.`,
+      confirmText: 'Sí, eliminar',
+      isDanger: true
+    })) return;
+    try {
+      await api.delete('/operaciones/clases/' + clase.id);
+      toast.success('Clase tarifaria eliminada');
+      cargarBase();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo eliminar la clase tarifaria'); }
+  };
+
   const asignarFare = async () => {
     if (!fFare.flight_id || !fFare.fare_class_id) return toast.error('Selecciona vuelo y clase');
     try {
@@ -173,6 +208,23 @@ const Operaciones = () => {
       setFFac({ airport_id: '', type: 'gate', code: '' });
       cargarBase();
     } catch (e) { toast.error(e.response && e.response.data ? e.response.data.error : 'Error'); }
+  };
+
+  const eliminarFac = async (facility) => {
+    const historial = Number(facility.history_count || 0);
+    if (historial > 0) return toast.error('No se puede eliminar: aparece en el historial de vuelos');
+    if (!await confirmarAccion({
+      title: '¿Eliminar instalación?',
+      text: `Se eliminará ${facility.type} ${facility.code} del aeropuerto ${facility.iata_code}.`,
+      confirmText: 'Sí, eliminar',
+      isDanger: true
+    })) return;
+    try {
+      await api.delete('/operaciones/infraestructura/' + facility.id);
+      toast.success('Instalación eliminada');
+      setDrawerFacilidad(null);
+      cargarBase();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo eliminar la instalación'); }
   };
 
   const guardarConfig = async (key, value) => {
@@ -263,7 +315,10 @@ const Operaciones = () => {
             ) : (
               crewPaginado.map((c) => (
                 <div key={c.id} className={`card p-5 cursor-pointer hover:shadow-lg transition-all relative flex flex-col items-center text-center ${!c.active ? 'opacity-60' : ''}`} onClick={() => setDrawerTripulacion(c)}>
-                  <div className="absolute top-4 right-4">
+                  <div className="absolute top-4 right-4 flex items-center gap-2">
+                    <button type="button" title={Number(c.history_count || 0) > 0 ? 'Tiene historial de vuelos' : 'Eliminar tripulante'} disabled={Number(c.history_count || 0) > 0} className="text-red-600 disabled:cursor-not-allowed disabled:opacity-30" onClick={(e) => { e.stopPropagation(); eliminarTripulante(c); }}>
+                      <FiTrash2 size={17} />
+                    </button>
                     <button type="button" className={c.active ? 'text-green-700' : 'text-red-700'} onClick={(e) => { 
                       e.stopPropagation(); 
                       api.put('/operaciones/tripulacion/' + c.id, { ...c, license_expiry: c.license_expiry ? String(c.license_expiry).slice(0, 10) : '', active: !c.active }).then(cargarBase).catch(() => toast.error('Error al cambiar estado')); 
@@ -287,6 +342,10 @@ const Operaciones = () => {
                     <div className="flex justify-between">
                       <span className="font-semibold">Vence:</span>
                       <span>{c.license_expiry ? String(c.license_expiry).slice(0, 10) : '-'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-semibold">Historial:</span>
+                      <span>{Number(c.history_count || 0)} asignación(es)</span>
                     </div>
                   </div>
                 </div>
@@ -383,6 +442,33 @@ const Operaciones = () => {
               </button>
             </div>
           </div>
+          <div className="card overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b"><tr>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Código</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Nombre</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Multiplicador</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Historial</th>
+                <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 uppercase">Acción</th>
+              </tr></thead>
+              <tbody className="divide-y">
+                {clases.length === 0 ? <tr><td colSpan="5" className="px-4 py-6 text-center text-sm text-gray-500">No hay clases tarifarias.</td></tr> : clases.map((c) => {
+                  const historial = Number(c.history_count || 0);
+                  return <tr key={c.id}>
+                    <td className="px-4 py-3 text-sm font-mono">{c.code}</td>
+                    <td className="px-4 py-3 text-sm">{c.name}</td>
+                    <td className="px-4 py-3 text-sm">x{c.multiplier}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{historial} tarifa(s)</td>
+                    <td className="px-4 py-3 text-right">
+                      <button type="button" title={historial > 0 ? 'No se puede eliminar: conserva historial' : 'Eliminar clase'} disabled={historial > 0} className="inline-flex items-center gap-1 text-red-600 disabled:cursor-not-allowed disabled:opacity-30" onClick={() => eliminarClase(c)}>
+                        <FiTrash2 size={16} /><span className="text-xs">Eliminar</span>
+                      </button>
+                    </td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>
           {fFare.flight_id && (
             <div className="card overflow-hidden">
               <table className="w-full">
@@ -428,6 +514,7 @@ const Operaciones = () => {
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Tipo</th>
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Código</th>
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Activa</th>
+                <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 uppercase">Acción</th>
               </tr></thead>
               <tbody className="divide-y">
                 {facilitiesPaginadas.map((f) => (
@@ -441,6 +528,11 @@ const Operaciones = () => {
                         api.put('/operaciones/infraestructura/' + f.id, { active: !f.active }).then(cargarBase).catch(() => toast.error('Error al cambiar estado')); 
                       }}>
                         {f.active ? <FiToggleRight size={22}/> : <FiToggleLeft size={22}/>}
+                      </button>
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <button type="button" title={Number(f.history_count || 0) > 0 ? 'No se puede eliminar: aparece en vuelos' : 'Eliminar instalación'} disabled={Number(f.history_count || 0) > 0} className="inline-flex items-center gap-1 text-red-600 disabled:cursor-not-allowed disabled:opacity-30" onClick={(e) => { e.stopPropagation(); eliminarFac(f); }}>
+                        <FiTrash2 size={16} /><span className="text-xs">Eliminar</span>
                       </button>
                     </td>
                   </tr>
@@ -488,7 +580,7 @@ const Operaciones = () => {
                     <span className="mt-1 w-2 h-2 rounded-full bg-primary-600"></span>
                     <div>
                       <span className="font-semibold capitalize">{t.stage}</span>
-                      <span className="text-gray-500 ml-2">{new Date(t.created_at).toLocaleString('es-SV')}</span>
+                      <span className="text-gray-500 ml-2">{formatearFechaHoraDb(t.created_at)}</span>
                       {t.detail && <pre className="text-xs text-gray-500 mt-1">{JSON.stringify(t.detail)}</pre>}
                     </div>
                   </li>
@@ -681,10 +773,14 @@ const Operaciones = () => {
               <InfoFila label="Licencia" valor={`${drawerTripulacion.license_type || ''} ${drawerTripulacion.license_number || ''}`} />
               <InfoFila label="Vence" valor={drawerTripulacion.license_expiry ? String(drawerTripulacion.license_expiry).slice(0, 10) : '-'} />
               <InfoFila label="Estado" valor={drawerTripulacion.active ? 'Activo' : 'Inactivo'} />
+              <InfoFila label="Historial" valor={`${Number(drawerTripulacion.history_count || 0)} asignación(es) a vuelos`} />
             </div>
             <div className="p-6 border-t bg-gray-50 flex gap-3">
               <button className="btn-primary flex-1 flex items-center justify-center space-x-2" onClick={() => { setDrawerTripulacion(null); editarTripulante(drawerTripulacion); }}>
                 <FiEdit2 /><span>Editar</span>
+              </button>
+              <button className="btn-secondary flex-1 flex items-center justify-center gap-2 text-red-700 disabled:cursor-not-allowed disabled:opacity-50" disabled={Number(drawerTripulacion.history_count || 0) > 0} onClick={() => eliminarTripulante(drawerTripulacion)}>
+                <FiTrash2 /><span>Eliminar</span>
               </button>
               <button className="btn-secondary flex-1" onClick={() => setDrawerTripulacion(null)}>Cerrar</button>
             </div>
@@ -706,6 +802,9 @@ const Operaciones = () => {
               <InfoFila label="Activa" valor={drawerFacilidad.active ? 'Sí' : 'No'} />
             </div>
             <div className="p-6 border-t bg-gray-50 flex gap-3">
+              <button className="btn-secondary flex-1 flex items-center justify-center gap-2 text-red-700 disabled:cursor-not-allowed disabled:opacity-50" disabled={Number(drawerFacilidad.history_count || 0) > 0} onClick={() => eliminarFac(drawerFacilidad)}>
+                <FiTrash2 /><span>Eliminar</span>
+              </button>
               <button className="btn-secondary flex-1" onClick={() => setDrawerFacilidad(null)}>Cerrar</button>
             </div>
           </div>

@@ -36,7 +36,7 @@ const Payment = {
               SUM(CASE WHEN status = 'approved' AND type != 'refund' THEN amount ELSE 0 END) AS total_income,
               SUM(CASE WHEN type = 'refund' THEN amount ELSE 0 END) AS total_refunds,
               SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
-              SUM(CASE WHEN status = 'pending_confirmation' THEN 1 ELSE 0 END) AS pending
+              SUM(CASE WHEN status = 'pending_confirmation' AND method = 'transfer' AND external_reference IS NOT NULL THEN 1 ELSE 0 END) AS pending
        FROM payments WHERE DATE(payment_date) = ?`,
       [fecha]
     );
@@ -47,7 +47,9 @@ const Payment = {
     const [rows] = await pool.query(
       `SELECT p.*, r.pnr, r.estimated_total, c.first_names AS customer_first_names, c.email AS customer_email
        FROM payments p JOIN reservations r ON p.reservation_id = r.id
-       LEFT JOIN customers c ON r.customer_id = c.id WHERE p.status = 'pending_confirmation' ORDER BY p.payment_date ASC`
+       LEFT JOIN customers c ON r.customer_id = c.id
+       WHERE p.status = 'pending_confirmation' AND p.method = 'transfer' AND p.external_reference IS NOT NULL
+       ORDER BY p.payment_date ASC`
     );
     return rows;
   }

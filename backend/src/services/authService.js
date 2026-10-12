@@ -7,14 +7,14 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const REFRESH_SECRET = process.env.REFRESH_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
 const REFRESH_EXPIRES_IN = '7d';
-const MAX_INTENTOS_FALLIDOS = 1000; // Bloqueo desactivado en desarrollo
+const MAX_INTENTOS_FALLIDOS = 5;
 
 class AuthService {
   static async login(credencial, password, ip, userAgent) {
     const usuario = await Usuario.buscarPorCredencial(credencial);
     if (!usuario) throw new Error('Credenciales inválidas');
 
-    const bloqueado = false; // Bloqueo desactivado en desarrollo
+    const bloqueado = await Usuario.estaBloqueado(usuario.id);
     if (bloqueado) throw new Error('Cuenta bloqueada temporalmente. Intenta en 15 minutos.');
 
     const passwordValido = await Usuario.verificarPassword(password, usuario.password_hash);
@@ -34,7 +34,7 @@ class AuthService {
       try {
         await enviarCorreo(usuario.email, 'Código de verificación - Acajutla Airlines',
           `<div><h2>Código de Verificación</h2><p>Hola ${usuario.username},</p><p>Tu código: <strong style="font-size:32px;letter-spacing:8px;">${codigoMFA}</strong></p><p>Expira en 5 minutos.</p></div>`);
-      } catch (error) { console.error('Error al enviar MFA:', error.message); }
+      } catch (error) { console.error('Error al enviar MFA:', error.message); throw new Error('No se pudo enviar el código MFA. Intenta nuevamente.'); }
       return { requiereMFA: true, usuarioId: usuario.id, mensaje: 'Código MFA enviado al correo' };
     }
 
@@ -47,7 +47,8 @@ class AuthService {
     const valido = await Usuario.verificarCodigoMFA(usuarioId, codigo);
     if (!valido) throw new Error('Código MFA inválido o expirado');
     const usuario = await Usuario.buscarPorId(usuarioId);
-    if (!usuario) throw new Error('Usuario no encontrado');
+    if (!usuario || usuario.status !== 'active') throw new Error('Usuario inactivo o no encontrado');
+    if (await Usuario.estaBloqueado(usuarioId)) throw new Error('Cuenta bloqueada temporalmente');
     const tokens = await AuthService.generarTokens(usuario);
     await Usuario.actualizarUltimoLogin(usuarioId);
     return { ...tokens, usuario: AuthService.sanitizarUsuario(usuario) };
@@ -55,10 +56,9 @@ class AuthService {
 
   static async generarTokens(usuario) {
     const accessToken = jwt.sign({ id: usuario.id, employee_id: usuario.employee_id || null, usuario: usuario.username, rol: usuario.role, nombre: usuario.empleado_nombres ? `${usuario.empleado_nombres} ${usuario.empleado_apellidos}` : usuario.username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-    const refreshToken = jwt.sign({ id: usuario.id, tipo: 'refresh' }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES_IN });
+    const refreshToken = jwt.sign({ id: usuario.id, tipo: 'refresh' }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES_IN, jwtid: crypto.randomUUID() });
     const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-    const expiraEn = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    await Usuario.guardarRefreshToken(usuario.id, tokenHash, expiraEn);
+    await Usuario.guardarRefreshToken(usuario.id, tokenHash);
     return { accessToken, refreshToken };
   }
 
