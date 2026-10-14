@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { roleOf } from '../utils/roles';
 import SearchableSelect from '../components/SearchableSelect';
 import { FiPlus, FiSearch, FiX, FiXCircle, FiRefreshCw, FiMapPin, FiClock, FiCpu, FiDollarSign, FiCalendar } from 'react-icons/fi';
 import toast from 'react-hot-toast';
@@ -7,6 +9,8 @@ import { confirmarAccion } from '../utils/confirm';
 import Swal from 'sweetalert2';
 
 const Vuelos = () => {
+  const { usuario } = useAuth();
+  const puedeGestionar = ['admin', 'operations'].includes(roleOf(usuario));
   const [vuelos, setVuelos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [filtro, setFiltro] = useState('');
@@ -217,9 +221,9 @@ const Vuelos = () => {
           <h1 className="text-3xl font-bold text-gray-800">Gestión de Vuelos</h1>
           <p className="text-gray-500 mt-1">Programación, cancelación y reprogramación</p>
         </div>
-        <button className="btn-primary flex items-center space-x-2" onClick={abrirModal}>
+        {puedeGestionar && <button className="btn-primary flex items-center space-x-2" onClick={abrirModal}>
           <FiPlus /><span>Nuevo Vuelo</span>
-        </button>
+        </button>}
       </div>
 
       <div className="card p-4">
@@ -329,7 +333,7 @@ const Vuelos = () => {
             {/* Footer del drawer con acciones */}
             <div className="px-6 pt-5 pb-10 border-t border-gray-200 bg-gray-50 flex items-center justify-between space-x-3">
               <div className="flex items-center space-x-2">
-                {sePuedeCancelar(estadoDe(drawerVuelo)) && (
+                {puedeGestionar && sePuedeCancelar(estadoDe(drawerVuelo)) && (
                   <button
                     onClick={() => cancelarVuelo(drawerVuelo)}
                     className="btn-danger flex items-center space-x-1.5 text-sm py-2 px-3"
@@ -338,7 +342,7 @@ const Vuelos = () => {
                     <span>Cancelar</span>
                   </button>
                 )}
-                {sePuedeReprogramar(estadoDe(drawerVuelo)) && (
+                {puedeGestionar && sePuedeReprogramar(estadoDe(drawerVuelo)) && (
                   <button
                     onClick={() => abrirReprog(drawerVuelo)}
                     className="btn-primary flex items-center space-x-1.5 text-sm py-2 px-3"

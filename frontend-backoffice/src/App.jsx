@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import { BACKOFFICE_ROLES, DEFAULT_PAGE_BY_ROLE, roleOf, rolesForPage } from './utils/roles';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -28,42 +29,53 @@ import Correos from './pages/Correos';
 import Checkin from './pages/Checkin';
 import FiscalidadTasas from './pages/FiscalidadTasas';
 
+const RutaProtegida = ({ pagina, children }) => (
+  <ProtectedRoute roles={rolesForPage(pagina)}>{children}</ProtectedRoute>
+);
+
+const PaginaInicial = () => {
+  const { usuario } = useAuth();
+  return <Navigate to={DEFAULT_PAGE_BY_ROLE[roleOf(usuario)] || '/dashboard'} replace />;
+};
+
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="clientes" element={<Clientes />} />
-            <Route path="nueva-reserva" element={<NuevaReserva />} />
-            <Route path="vuelos" element={<Vuelos />} />
-            <Route path="aeropuertos" element={<Aeropuertos />} />
-            <Route path="reservas" element={<Reservas />} />
-            <Route path="pagos" element={<Pagos />} />
-            <Route path="dte" element={<DTE />} />
-            <Route path="notas" element={<NotasCredito />} />
-            <Route path="contingencia" element={<ContingenciaDTE />} />
-            <Route path="aeronaves" element={<Aeronaves />} />
-            <Route path="empleados" element={<Empleados />} />
-            <Route path="reportes" element={<Reportes />} />
-            <Route path="comercial" element={<Comercial />} />
-            <Route path="auditoria" element={<Auditoria />} />
-            <Route path="notificaciones" element={<Notificaciones />} />
-            <Route path="cierre-qa" element={<CierreQA />} />
-            <Route path="operaciones" element={<Operaciones />} />
-            <Route path="cumplimiento" element={<CumplimientoFiscal />} />
-            <Route path="fiscalidad" element={<FiscalidadTasas />} />
-            <Route path="dte-export" element={<DteExport />} />
-            <Route path="correos" element={<Correos />} />
-            <Route path="checkin" element={<Checkin />} />
+          <Route path="/" element={<ProtectedRoute roles={BACKOFFICE_ROLES}><Layout /></ProtectedRoute>}>
+            <Route index element={<PaginaInicial />} />
+            <Route path="dashboard" element={<RutaProtegida pagina="dashboard"><Dashboard /></RutaProtegida>} />
+            <Route path="clientes" element={<RutaProtegida pagina="clientes"><Clientes /></RutaProtegida>} />
+            <Route path="nueva-reserva" element={<RutaProtegida pagina="nueva-reserva"><NuevaReserva /></RutaProtegida>} />
+            <Route path="vuelos" element={<RutaProtegida pagina="vuelos"><Vuelos /></RutaProtegida>} />
+            <Route path="aeropuertos" element={<RutaProtegida pagina="aeropuertos"><Aeropuertos /></RutaProtegida>} />
+            <Route path="reservas" element={<RutaProtegida pagina="reservas"><Reservas /></RutaProtegida>} />
+            <Route path="pagos" element={<RutaProtegida pagina="pagos"><Pagos /></RutaProtegida>} />
+            <Route path="dte" element={<RutaProtegida pagina="dte"><DTE /></RutaProtegida>} />
+            <Route path="notas" element={<RutaProtegida pagina="notas"><NotasCredito /></RutaProtegida>} />
+            <Route path="contingencia" element={<RutaProtegida pagina="contingencia"><ContingenciaDTE /></RutaProtegida>} />
+            <Route path="aeronaves" element={<RutaProtegida pagina="aeronaves"><Aeronaves /></RutaProtegida>} />
+            <Route path="empleados" element={<RutaProtegida pagina="empleados"><Empleados /></RutaProtegida>} />
+            <Route path="reportes" element={<RutaProtegida pagina="reportes"><Reportes /></RutaProtegida>} />
+            <Route path="comercial" element={<RutaProtegida pagina="comercial"><Comercial /></RutaProtegida>} />
+            <Route path="auditoria" element={<RutaProtegida pagina="auditoria"><Auditoria /></RutaProtegida>} />
+            <Route path="notificaciones" element={<RutaProtegida pagina="notificaciones"><Notificaciones /></RutaProtegida>} />
+            <Route path="cierre-qa" element={<RutaProtegida pagina="cierre-qa"><CierreQA /></RutaProtegida>} />
+            <Route path="operaciones" element={<RutaProtegida pagina="operaciones"><Operaciones /></RutaProtegida>} />
+            <Route path="cumplimiento" element={<RutaProtegida pagina="cumplimiento"><CumplimientoFiscal /></RutaProtegida>} />
+            <Route path="fiscalidad" element={<RutaProtegida pagina="fiscalidad"><FiscalidadTasas /></RutaProtegida>} />
+            <Route path="dte-export" element={<RutaProtegida pagina="dte-export"><DteExport /></RutaProtegida>} />
+            <Route path="correos" element={<RutaProtegida pagina="correos"><Correos /></RutaProtegida>} />
+            <Route path="checkin" element={<RutaProtegida pagina="checkin"><Checkin /></RutaProtegida>} />
           </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         <Toaster position="top-right" />
       </BrowserRouter>
     </AuthProvider>
   );
 }
+
 export default App;

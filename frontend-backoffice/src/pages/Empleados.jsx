@@ -3,6 +3,7 @@ import api from '../services/api';
 import { FiPlus, FiSearch, FiX, FiUserCheck, FiUserX, FiEdit2, FiMail, FiPhone, FiFileText, FiUser, FiBriefcase, FiShield, FiToggleRight, FiToggleLeft, FiUsers, FiEye, FiEyeOff } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { confirmarAccion } from '../utils/confirm';
+import { ROLE_DEFINITIONS, ROLE_ORDER, STAFF_ROLE_ORDER } from '../utils/roles';
 
 const KPICard = ({ title, value, icon: Icon, colorClass }) => (
   <div className="card p-4 flex items-center space-x-4">
@@ -225,8 +226,8 @@ const Empleados = () => {
       return toast.error('Nombres, apellidos y documento son obligatorios');
     }
     if (!editandoId) {
-      if (form.username && (!form.password || !form.role)) {
-        return toast.error('Si defines usuario, debes indicar contraseña y rol');
+      if ([form.username, form.password, form.role].some(Boolean) && ![form.username, form.password, form.role].every(Boolean)) {
+        return toast.error('Para crear una cuenta debes indicar usuario, contraseña y rol');
       }
       if (form.password && form.password.length < 6) {
         return toast.error('La contraseña debe tener al menos 6 caracteres');
@@ -301,6 +302,22 @@ const Empleados = () => {
           <FiPlus /><span>Nuevo Empleado</span>
         </button>
       </div>
+
+      <section className="card p-5">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-gray-800">Funciones y accesos por rol</h2>
+          <p className="mt-1 text-sm text-gray-500">Asigna a cada empleado el rol que corresponda a su trabajo. El sistema mostrará únicamente sus módulos autorizados.</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {ROLE_ORDER.map((role) => (
+            <div key={role} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <h3 className="text-sm font-semibold text-gray-800">{ROLE_DEFINITIONS[role].label}</h3>
+              <p className="mt-1 text-xs leading-relaxed text-gray-600">{ROLE_DEFINITIONS[role].responsibility}</p>
+              <p className="mt-2 text-xs"><span className="font-semibold text-gray-700">Acceso:</span> <span className="text-gray-500">{ROLE_DEFINITIONS[role].access}</span></p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <div className="card p-4">
         <div className="relative">
@@ -463,14 +480,14 @@ const Empleados = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
                 <select className="input-field" value={form.role} onChange={(e) => setCampo('role', e.target.value)}>
-                  <option value="">-- Sin acceso --</option>
-                  <option value="admin">Administrador</option>
-                  <option value="operations">Operaciones</option>
-                  <option value="cashier">Cajero</option>
-                  <option value="airport_staff">Personal Aeroportuario</option>
-                  <option value="auditor">Auditor</option>
-                  <option value="corporate_agent">Agente Corporativo</option>
+                  {(!editandoId || !form.role) && <option value="">-- Sin acceso --</option>}
+                  {STAFF_ROLE_ORDER.map((role) => <option key={role} value={role}>{ROLE_DEFINITIONS[role].label}</option>)}
                 </select>
+                {form.role && (
+                  <p className="mt-2 text-xs leading-relaxed text-gray-500">
+                    {ROLE_DEFINITIONS[form.role].responsibility} Acceso: {ROLE_DEFINITIONS[form.role].access}.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -488,4 +505,3 @@ const Empleados = () => {
 };
 
 export default Empleados;
-

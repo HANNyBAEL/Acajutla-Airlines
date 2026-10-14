@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react';
 import Select from 'react-select';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { roleOf } from '../utils/roles';
 import { FiShoppingBag, FiUsers, FiBarChart2, FiActivity, FiToggleRight, FiToggleLeft, FiX, FiEdit2 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const Comercial = () => {
-  const [tab, setTab] = useState('reportes');
+  const { usuario } = useAuth();
+  const rol = roleOf(usuario);
+  const esAgenteCorporativo = rol === 'corporate_agent';
+  const puedeConfigurar = ['admin', 'operations'].includes(rol);
+  const puedeCambiarWaitlist = ['admin', 'operations', 'cashier'].includes(rol);
+  const [tab, setTab] = useState(esAgenteCorporativo ? 'waitlist' : 'reportes');
   const [kpi, setKpi] = useState(null);
   const [waitlist, setWaitlist] = useState([]);
   const [ancillaries, setAncillaries] = useState([]);
@@ -34,20 +41,31 @@ const Comercial = () => {
   const itemsPorPagina = 40;
 
   const cargarBase = () => {
-    api.get('/comercial/kpi').then((r) => setKpi(r.data.datos)).catch(() => {});
     api.get('/comercial/waitlist').then((r) => setWaitlist(r.data.datos || [])).catch(() => {});
-    api.get('/comercial/ancillaries').then((r) => setAncillaries(r.data.datos || [])).catch(() => {});
     api.get('/vuelos').then((r) => setVuelos(r.data.datos || [])).catch(() => {});
-    api.get('/reservas').then((r) => setReservas(r.data.datos || [])).catch(() => {});
+    if (!esAgenteCorporativo) {
+      api.get('/comercial/kpi').then((r) => setKpi(r.data.datos)).catch(() => {});
+      api.get('/comercial/ancillaries').then((r) => setAncillaries(r.data.datos || [])).catch(() => {});
+      api.get('/reservas').then((r) => setReservas(r.data.datos || [])).catch(() => {});
+    }
   };
-  useEffect(() => { cargarBase(); cargarReportes(); }, []);
+
+  useEffect(() => {
+    cargarBase();
+    if (!esAgenteCorporativo) cargarReportes();
+  }, []);
 
   const cargarReportes = () => {
+    if (esAgenteCorporativo) return;
     const q = (desde || hasta) ? ('?desde=' + (desde || '') + '&hasta=' + (hasta || '')) : '';
-    api.get('/comercial/reportes/ocupacion' + q).then((r) => setRepOcp(r.data.datos || [])).catch(() => {});
-    api.get('/comercial/reportes/ancillaries').then((r) => setRepAnc(r.data.datos || [])).catch(() => {});
-    api.get('/comercial/reportes/canales').then((r) => setRepCan(r.data.datos || [])).catch(() => {});
-    api.get('/comercial/reportes/conciliacion' + q).then((r) => setRepConc(r.data.datos || [])).catch(() => {});
+    if (rol !== 'cashier') {
+      api.get('/comercial/reportes/ocupacion' + q).then((r) => setRepOcp(r.data.datos || [])).catch(() => {});
+      api.get('/comercial/reportes/ancillaries').then((r) => setRepAnc(r.data.datos || [])).catch(() => {});
+    }
+    if (rol === 'admin') api.get('/comercial/reportes/canales').then((r) => setRepCan(r.data.datos || [])).catch(() => {});
+    if (['admin', 'cashier'].includes(rol)) {
+      api.get('/comercial/reportes/conciliacion' + q).then((r) => setRepConc(r.data.datos || [])).catch(() => {});
+    }
   };
 
   const addWl = async () => {
@@ -125,8 +143,10 @@ const Comercial = () => {
 
   const tabs = [
     { id: 'waitlist', label: 'Lista de Espera', icon: FiUsers },
-    { id: 'ancillaries', label: 'Servicios Adicionales', icon: FiShoppingBag },
-    { id: 'reportes', label: 'Dashboard & Reportes', icon: FiBarChart2 }
+    ...(!esAgenteCorporativo ? [
+      { id: 'ancillaries', label: 'Servicios Adicionales', icon: FiShoppingBag },
+      { id: 'reportes', label: 'Dashboard & Reportes', icon: FiBarChart2 },
+    ] : []),
   ];
   const Bar = ({ value, max, color }) => (
     <div className="w-full bg-gray-100 rounded h-4 overflow-hidden">
@@ -201,8 +221,8 @@ const Comercial = () => {
                     <td className="px-4 py-2 text-sm">{w.doc_type} {w.passenger_doc}</td>
                     <td className="px-4 py-2 text-sm"><span className={'px-2 py-1 rounded text-xs ' + (w.status === 'waiting' ? 'bg-yellow-100 text-yellow-800' : w.status === 'notified' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600')}>{w.status}</span></td>
                     <td className="px-4 py-2 text-sm space-x-2">
-                      {w.status === 'waiting' && <><button className="text-blue-600 hover:underline text-xs" onClick={() => setWl(w.id, 'notified')}>Notificar</button><button className="text-red-600 hover:underline text-xs" onClick={() => setWl(w.id, 'cancelled')}>Cancelar</button></>}
-                      {w.status === 'notified' && <button className="text-green-600 hover:underline text-xs" onClick={() => setWl(w.id, 'confirmed')}>Confirmar</button>}
+                      {puedeCambiarWaitlist && w.status === 'waiting' && <><button className="text-blue-600 hover:underline text-xs" onClick={() => setWl(w.id, 'notified')}>Notificar</button><button className="text-red-600 hover:underline text-xs" onClick={() => setWl(w.id, 'cancelled')}>Cancelar</button></>}
+                      {puedeCambiarWaitlist && w.status === 'notified' && <button className="text-green-600 hover:underline text-xs" onClick={() => setWl(w.id, 'confirmed')}>Confirmar</button>}
                     </td>
                   </tr>
                 ))}
@@ -223,7 +243,7 @@ const Comercial = () => {
         <div className="space-y-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
-              {modalAsignarVuelo && (
+              {puedeConfigurar && modalAsignarVuelo && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                   <div className="bg-white rounded-lg p-6 max-w-2xl w-full">
                     <h3 className="text-lg font-bold mb-4">Asignar Servicio a Vuelo</h3>
@@ -267,7 +287,7 @@ const Comercial = () => {
                       menuPortalTarget={document.body}
                       styles={{ menuPortal: base => ({ ...base, zIndex: 9999 }) }}
                     />
-                    <button className="btn-primary text-sm py-1.5 px-3 whitespace-nowrap" onClick={() => setModalAsignarVuelo(true)}>+ Asignar a Vuelo</button>
+                    {puedeConfigurar && <button className="btn-primary text-sm py-1.5 px-3 whitespace-nowrap" onClick={() => setModalAsignarVuelo(true)}>+ Asignar a Vuelo</button>}
                   </div>
                 </div>
                 {!fFa.flight_id ? (
@@ -370,9 +390,10 @@ const Comercial = () => {
           <div>
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-gray-800">Catálogo de Servicios</h2>
-              <button className="btn-primary" onClick={() => { setEditandoAncId(null); setFAnc({ code: '', name: '', type: 'baggage', description: '', base_price: '' }); setModalAncillary(true); }}>
+{puedeConfigurar && (
+                <button className="btn-primary" onClick={() => { setEditandoAncId(null); setFAnc({ code: '', name: '', type: 'baggage', description: '', base_price: '' }); setModalAncillary(true); }}>
                 + Nuevo Servicio
-              </button>
+              </button>)}
             </div>
             {modalAncillary && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -396,9 +417,9 @@ const Comercial = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {ancillaries.slice((paginaAnc - 1) * itemsPorPagina, paginaAnc * itemsPorPagina).map((a) => (
                 <div key={a.id} className="card p-4 flex flex-col space-y-2 cursor-pointer hover:shadow-lg transition-shadow relative" onClick={() => setDrawerAncillary(a)}>
-                  <button className="absolute top-4 right-4 text-gray-500 hover:text-gray-800" onClick={(e) => cambiarEstadoAncillary(a.id, !a.active, e)}>
+                  {puedeConfigurar && <button className="absolute top-4 right-4 text-gray-500 hover:text-gray-800" onClick={(e) => cambiarEstadoAncillary(a.id, !a.active, e)}>
                     {a.active !== 0 ? <FiToggleRight size={24} className="text-green-500" /> : <FiToggleLeft size={24} />}
-                  </button>
+                  </button>}
                   <div className="flex justify-between items-start mr-8">
                     <span className="font-mono text-sm text-gray-500">{a.code}</span>
                     <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800 capitalize">{a.type}</span>
@@ -430,12 +451,13 @@ const Comercial = () => {
                     <div><span className="text-sm text-gray-500">Precio Base</span><p className="font-bold">${Number(drawerAncillary.base_price).toFixed(2)}</p></div>
                     <div><span className="text-sm text-gray-500">Descripción</span><p className="text-sm">{drawerAncillary.description}</p></div>
                     <div><span className="text-sm text-gray-500">Estado</span><p>{drawerAncillary.active !== 0 ? 'Activo' : 'Inactivo'}</p></div>
-                    <button className="btn-primary w-full flex justify-center items-center gap-2 mt-4" onClick={() => {
+{puedeConfigurar && (
+                      <button className="btn-primary w-full flex justify-center items-center gap-2 mt-4" onClick={() => {
                       setFAnc({ code: drawerAncillary.code, name: drawerAncillary.name, type: drawerAncillary.type, description: drawerAncillary.description || '', base_price: drawerAncillary.base_price });
                       setEditandoAncId(drawerAncillary.id);
                       setModalAncillary(true);
                       setDrawerAncillary(null);
-                    }}><FiEdit2 /> Editar Servicio</button>
+                    }}><FiEdit2 /> Editar Servicio</button>)}
                   </div>
                 </div>
               </div>

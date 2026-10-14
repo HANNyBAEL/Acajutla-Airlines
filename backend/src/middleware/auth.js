@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { Usuario } = require('../models/Usuario');
 require('dotenv').config();
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -11,15 +12,23 @@ const verificarToken = (req, res, next) => {
     return res.status(401).json({ error: 'Token no proporcionado' });
   }
 
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+  jwt.verify(token, JWT_SECRET, async (err, decoded) => {
     if (err) {
       if (err.name === 'TokenExpiredError') {
         return res.status(401).json({ error: 'Token expirado', codigo: 'TOKEN_EXPIRADO' });
       }
       return res.status(403).json({ error: 'Token inválido' });
     }
-    req.usuario = decoded;
-    next();
+    try {
+      const usuarioActual = await Usuario.buscarPorId(decoded.id);
+      if (!usuarioActual || usuarioActual.status !== 'active') {
+        return res.status(401).json({ error: 'La cuenta está inactiva o ya no existe' });
+      }
+      req.usuario = { ...decoded, rol: usuarioActual.role };
+      next();
+    } catch (error) {
+      return res.status(500).json({ error: 'No se pudo validar la cuenta' });
+    }
   });
 };
 

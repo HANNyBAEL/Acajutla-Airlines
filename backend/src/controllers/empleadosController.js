@@ -1,5 +1,7 @@
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
+const { ROLES_VALIDOS } = require('../models/Usuario');
+const ROLES_EMPLEADO = ROLES_VALIDOS.filter((role) => role !== 'customer');
 
 const listar = async (req, res) => {
   try {
@@ -46,6 +48,18 @@ const crear = async (req, res) => {
     if (!first_names || !last_names || !document_number) {
       await connection.rollback();
       return res.status(400).json({ error: 'first_names, last_names y document_number son obligatorios' });
+    }
+    if ([username, password, role].some(Boolean) && !([username, password, role].every(Boolean))) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Para crear una cuenta debes indicar usuario, contraseña y rol' });
+    }
+    if (role && !ROLES_EMPLEADO.includes(role)) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Rol inválido para una cuenta de empleado' });
+    }
+    if (password && password.length < 6) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
     }
 
     const [rEmp] = await connection.query(
@@ -106,6 +120,23 @@ const actualizar = async (req, res) => {
     if (!first_names || !last_names || !document_number) {
       await connection.rollback();
       return res.status(400).json({ error: 'first_names, last_names y document_number son obligatorios' });
+    }
+
+    if (role && !ROLES_EMPLEADO.includes(role)) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Rol inválido para una cuenta de empleado' });
+    }
+    if (emp_status && !['active', 'inactive'].includes(emp_status)) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Estado de empleado inválido' });
+    }
+    if (user_status && !['active', 'inactive', 'blocked', 'suspended'].includes(user_status)) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Estado de cuenta inválido' });
+    }
+    if (password && password.length < 6) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
     }
 
     // Verificar si existe el empleado
@@ -187,8 +218,12 @@ const actualizar = async (req, res) => {
         userParams.push(u.id);
         await connection.query(`UPDATE users SET ${userUpdates.join(', ')} WHERE id = ?`, userParams);
       }
-    } else if (username && role) {
+    } else if (username || password || role) {
       // Si el empleado no tenía usuario y ahora se crea una cuenta
+      if (!username || !role) {
+        await connection.rollback();
+        return res.status(400).json({ error: 'Para crear una cuenta debes indicar usuario y rol' });
+      }
       if (!password || password.length < 6) {
         await connection.rollback();
         return res.status(400).json({ error: 'Para crear una cuenta de acceso la contraseña debe tener al menos 6 caracteres' });

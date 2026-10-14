@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { roleOf } from '../utils/roles';
 import { FiSearch, FiX, FiXCircle, FiUser, FiCalendar, FiDollarSign, FiFileText, FiSend } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { finDiaSV, formatearFechaDb, formatearFechaHoraDb, inicioDiaSV, parsearFechaUtcDb } from '../utils/fechaServidor';
@@ -13,6 +15,8 @@ const ESTADOS = {
 };
 
 const Reservas = () => {
+  const { usuario } = useAuth();
+  const puedeCancelar = ['admin', 'operations', 'cashier'].includes(roleOf(usuario));
   const [reservas, setReservas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [texto, setTexto] = useState('');
@@ -293,7 +297,7 @@ const Reservas = () => {
             {/* Footer del drawer */}
             <div className="px-6 pt-5 pb-10 border-t border-gray-200 bg-gray-50 flex items-center justify-between space-x-3">
               <div>
-                {statusDetalle !== 'cancelled' && (
+                {puedeCancelar && statusDetalle !== 'cancelled' && (
                   <button
                     className="btn-danger flex items-center space-x-2"
                     onClick={cancelar}

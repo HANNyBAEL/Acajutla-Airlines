@@ -4,7 +4,7 @@ const c = require('../controllers/operacionesController');
 const { verificarToken, verificarRol } = require('../middleware/auth');
 const { auditar } = require('../middleware/audit');
 
-router.use(verificarToken);
+router.use(verificarToken, verificarRol('admin', 'operations'));
 router.get('/tripulacion', c.listarTripulacion);
 router.post('/tripulacion', verificarRol('admin', 'operations'), c.crearTripulante);
 router.put('/tripulacion/:id', verificarRol('admin', 'operations'), c.actualizarTripulante);

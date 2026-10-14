@@ -83,7 +83,16 @@ const listarUsuarios = async (req, res) => {
 };
 
 const listarRoles = async (req, res) => {
-  res.json({ exito: true, datos: ROLES_VALIDOS.map(rol => ({ codigo: rol, nombre: { admin: 'Administrador', operations: 'Operaciones', cashier: 'Cajero', airport_staff: 'Personal Aeroportuario', customer: 'Cliente', corporate_agent: 'Agente Corporativo', auditor: 'Auditor Fiscal' }[rol] })) });
+  const nombres = {
+    admin: 'Administrador',
+    operations: 'Operaciones',
+    cashier: 'Cajero',
+    airport_staff: 'Personal aeroportuario',
+    corporate_agent: 'Agente corporativo',
+    auditor: 'Auditor',
+  };
+  const rolesBackoffice = ROLES_VALIDOS.filter((rol) => rol !== 'customer');
+  res.json({ exito: true, datos: rolesBackoffice.map((rol) => ({ codigo: rol, nombre: nombres[rol] })) });
 };
 
 module.exports = { login, verificarMFA, refreshToken, logout, registro, perfil, listarUsuarios, listarRoles };

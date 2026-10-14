@@ -6,7 +6,7 @@ const { auditar } = require('../middleware/audit');
 
 router.use(verificarToken);
 router.get('/', verificarRol('admin', 'operations'), controller.listar);
-router.get('/tipos', controller.listarTipos);
+router.get('/tipos', verificarRol('admin', 'operations'), controller.listarTipos);
 router.post('/', verificarRol('admin', 'operations'), controller.crear);
 router.post('/tipos', verificarRol('admin', 'operations'), controller.crearTipo);
 router.put('/:id', verificarRol('admin', 'operations'), controller.actualizar);

@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { roleOf } from '../utils/roles';
 import { FiDollarSign, FiCheckCircle, FiRefreshCw, FiX, FiFileText, FiSearch, FiCreditCard, FiCalendar, FiHash } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { confirmarAccion } from '../utils/confirm';
 import { formatearFechaHoraDb } from '../utils/fechaServidor';
 
 const Pagos = () => {
+  const { usuario } = useAuth();
+  const puedeGestionarPagos = ['admin', 'cashier'].includes(roleOf(usuario));
   const [pendientes, setPendientes] = useState([]);
   const [pagos, setPagos] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -132,6 +136,7 @@ const Pagos = () => {
   const coincide = (valor, texto) => !texto || JSON.stringify(valor).toLowerCase().includes(texto.trim().toLowerCase());
   const pendientesFiltrados = pendientes.filter((r) => coincide(r, buscarPendientes));
   const pagosFiltrados = pagos.filter((p) => coincide(p, buscarPagos));
+  const reembolsos = pagos.filter((p) => p.type === 'refund');
 
   const [paginaPendientes, setPaginaPendientes] = useState(1);
   const [paginaPagos, setPaginaPagos] = useState(1);
@@ -192,7 +197,7 @@ const Pagos = () => {
                 <td className="px-6 py-4 text-sm">{r.first_names} {r.last_names}</td>
                 <td className="px-6 py-4 text-sm">${parseFloat(r.estimated_total).toFixed(2)}</td>
                 <td className="px-6 py-4 text-sm font-semibold text-orange-600">${parseFloat(r.balance).toFixed(2)}</td>
-                <td className="px-6 py-4"><button className="btn-primary py-1 px-3 text-sm" onClick={() => abrirCobro(r)}>Cobrar</button></td>
+                <td className="px-6 py-4">{puedeGestionarPagos && <button className="btn-primary py-1 px-3 text-sm" onClick={() => abrirCobro(r)}>Cobrar</button>}</td>
               </tr>
             ))}
           </tbody>
@@ -240,12 +245,12 @@ const Pagos = () => {
                 <td className="px-6 py-4"><span className={'px-3 py-1 rounded-full text-xs font-medium ' + badge(p.status)[1]}>{badge(p.status)[0]}</span></td>
                 <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center space-x-3">
-                    {p.status === 'pending_confirmation' && p.type === 'payment' && p.method === 'transfer' && p.external_reference && (
+                    {puedeGestionarPagos && p.status === 'pending_confirmation' && p.type === 'payment' && p.method === 'transfer' && p.external_reference && (
                       <button onClick={() => confirmar(p)} className="text-green-600 hover:text-green-800 flex items-center space-x-1">
                         <FiCheckCircle size={16} /><span className="text-sm">Confirmar</span>
                       </button>
                     )}
-                    {p.status === 'approved' && p.type === 'payment' && Number(p.refundable_balance ?? p.amount) > 0.009 && (
+                    {puedeGestionarPagos && p.status === 'approved' && p.type === 'payment' && Number(p.refundable_balance ?? p.amount) > 0.009 && (
                       <button onClick={() => reembolsar(p)} className="text-red-600 hover:text-red-800 flex items-center space-x-1">
                         <FiRefreshCw size={16} /><span className="text-sm">Reembolsar</span>
                       </button>
@@ -265,6 +270,48 @@ const Pagos = () => {
         )}
         <div className="p-3 bg-gray-50 border-t border-gray-100 text-center">
           <p className="text-xs text-gray-500">Haz clic en cualquier fila del historial para ver el detalle del pago</p>
+        </div>
+      </div>
+
+      {/* Reembolsos visibles en una sección propia además del historial general */}
+      <div className="card overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-800">Historial de reembolsos</h2>
+            <p className="text-sm text-gray-500 mt-1">{reembolsos.length} reembolso{reembolsos.length === 1 ? '' : 's'} registrado{reembolsos.length === 1 ? '' : 's'}</p>
+          </div>
+          <FiRefreshCw className="text-red-600" size={20} />
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">PNR</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Fecha</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Monto devuelto</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Pago original</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Motivo</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Referencia</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {reembolsos.length === 0 ? (
+                <tr><td colSpan="6" className="text-center py-8 text-gray-500">Todavía no hay reembolsos registrados</td></tr>
+              ) : reembolsos.map((p) => (
+                <tr key={'refund-' + p.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setDrawerPago(p)}>
+                  <td className="px-6 py-4 font-mono text-sm text-primary-700">{p.pnr}</td>
+                  <td className="px-6 py-4 text-sm text-gray-500">{formatearFechaHoraDb(p.payment_date)}</td>
+                  <td className="px-6 py-4 text-sm font-semibold text-red-700">-${parseFloat(p.amount).toFixed(2)}</td>
+                  <td className="px-6 py-4 text-sm">#{p.original_payment_id ?? '—'}</td>
+                  <td className="px-6 py-4 text-sm">{p.reason || '—'}</td>
+                  <td className="px-6 py-4 text-sm font-mono">{p.external_reference || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="p-3 bg-gray-50 border-t border-gray-100 text-center">
+          <p className="text-xs text-gray-500">Haz clic en un reembolso para ver su detalle</p>
         </div>
       </div>
 
@@ -304,22 +351,26 @@ const Pagos = () => {
                   <InfoFila icon={FiDollarSign} label="Reembolsable" value={'$' + Number(drawerPago.refundable_balance ?? drawerPago.amount).toFixed(2) + ' USD'} />
                 )}
                 <InfoFila icon={FiFileText} label="Tipo" value={drawerPago.type === 'refund' ? 'Reembolso' : 'Pago'} />
+                {drawerPago.type === 'refund' && <InfoFila icon={FiHash} label="Pago original" value={'#' + (drawerPago.original_payment_id ?? '—')} />}
                 <InfoFila icon={FiFileText} label="DTE" value={drawerPago.tipo_dte ? (drawerPago.tipo_dte === '01' ? 'Factura Electrónica (FE)' : drawerPago.tipo_dte === '03' ? 'Crédito Fiscal (CCFE)' : drawerPago.tipo_dte) : '—'} />
                 <InfoFila icon={FiCalendar} label="Fecha" value={formatearFechaHoraDb(drawerPago.payment_date)} />
-                {drawerPago.referencia && (
-                  <InfoFila icon={FiHash} label="Referencia" value={drawerPago.referencia} />
+                {drawerPago.reason && (
+                  <InfoFila icon={FiFileText} label="Motivo" value={drawerPago.reason} />
+                )}
+                {drawerPago.external_reference && (
+                  <InfoFila icon={FiHash} label="Referencia" value={drawerPago.external_reference} />
                 )}
               </div>
             </div>
 
             <div className="px-6 pt-5 pb-10 border-t border-gray-200 bg-gray-50 flex items-center justify-between space-x-3">
               <div className="flex items-center space-x-2">
-                {drawerPago.status === 'pending_confirmation' && drawerPago.type === 'payment' && drawerPago.method === 'transfer' && drawerPago.external_reference && (
+                {puedeGestionarPagos && drawerPago.status === 'pending_confirmation' && drawerPago.type === 'payment' && drawerPago.method === 'transfer' && drawerPago.external_reference && (
                   <button onClick={() => confirmar(drawerPago)} className="btn-primary flex items-center space-x-1.5 text-sm py-2 px-3">
                     <FiCheckCircle size={16} /><span>Confirmar</span>
                   </button>
                 )}
-                {drawerPago.status === 'approved' && drawerPago.type === 'payment' && Number(drawerPago.refundable_balance ?? drawerPago.amount) > 0.009 && (
+                {puedeGestionarPagos && drawerPago.status === 'approved' && drawerPago.type === 'payment' && Number(drawerPago.refundable_balance ?? drawerPago.amount) > 0.009 && (
                   <button onClick={() => reembolsar(drawerPago)} className="btn-danger flex items-center space-x-1.5 text-sm py-2 px-3">
                     <FiRefreshCw size={16} /><span>Reembolsar</span>
                   </button>
@@ -416,4 +467,3 @@ const Pagos = () => {
 };
 
 export default Pagos;
-

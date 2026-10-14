@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { roleOf } from '../utils/roles';
 import { FiPlus, FiSearch, FiX, FiUser, FiMail, FiPhone, FiFileText, FiCalendar, FiHash } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { confirmarAccion } from '../utils/confirm';
 
 const Clientes = () => {
+  const { usuario } = useAuth();
+  const rol = roleOf(usuario);
+  const puedeModificar = ['admin', 'operations', 'cashier'].includes(rol);
+  const puedeEliminar = rol === 'admin';
   const [clientes, setClientes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [filtro, setFiltro] = useState('');
@@ -102,9 +108,9 @@ const Clientes = () => {
           <h1 className="text-3xl font-bold text-gray-800">Gestión de Clientes</h1>
           <p className="text-gray-500 mt-1">Base de datos de pasajeros y clientes</p>
         </div>
-        <button className="btn-primary flex items-center space-x-2" onClick={abrirModal}>
+        {puedeModificar && <button className="btn-primary flex items-center space-x-2" onClick={abrirModal}>
           <FiPlus /><span>Nuevo Cliente</span>
-        </button>
+        </button>}
       </div>
 
       <div className="card p-4">
@@ -178,8 +184,8 @@ const Clientes = () => {
               <InfoFila icon={FiPhone} label="Teléfono" value={drawerCliente.phone || '-'} />
             </div>
             <div className="px-4 sm:px-6 py-4 border-t border-gray-200 bg-gray-50 grid grid-cols-2 gap-4">
-              <button onClick={() => { setDrawerCliente(null); editar(drawerCliente); }} className="btn-primary w-full">Editar cliente</button>
-              <button onClick={() => eliminar(drawerCliente)} disabled={Number(drawerCliente.reservation_count) > 0} title={Number(drawerCliente.reservation_count) ? 'Tiene historial de reservas' : 'Eliminar cliente'} className="btn-secondary w-full text-red-700 disabled:cursor-not-allowed disabled:opacity-50">Eliminar</button>
+              {puedeModificar && <button onClick={() => { setDrawerCliente(null); editar(drawerCliente); }} className="btn-primary w-full">Editar cliente</button>}
+              {puedeEliminar && <button onClick={() => eliminar(drawerCliente)} disabled={Number(drawerCliente.reservation_count) > 0} title={Number(drawerCliente.reservation_count) ? 'Tiene historial de reservas' : 'Eliminar cliente'} className="btn-secondary w-full text-red-700 disabled:cursor-not-allowed disabled:opacity-50">Eliminar</button>}
               <button onClick={() => setDrawerCliente(null)} className="btn-secondary w-full col-span-2">Cerrar</button>
             </div>
           </div>
@@ -242,4 +248,3 @@ const Clientes = () => {
 };
 
 export default Clientes;
-

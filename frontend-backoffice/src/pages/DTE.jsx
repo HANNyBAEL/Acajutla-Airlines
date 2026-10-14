@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 import api, { dteAPI, reservasAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { roleOf } from '../utils/roles';
 import SearchableSelect from '../components/SearchableSelect';
 import { FiFileText, FiCheckCircle, FiXCircle, FiClock, FiPlus, FiEye, FiX } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const DTE = () => {
+  const { usuario } = useAuth();
+  const puedeEmitir = ['admin', 'cashier'].includes(roleOf(usuario));
   const [dtes, setDtes] = useState([]);
   const [facturables, setFacturables] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -73,9 +77,9 @@ const DTE = () => {
           <h1 className="text-3xl font-bold text-gray-800">Facturación Electrónica (DTE)</h1>
           <p className="text-gray-500 mt-1">FE y CCFE conforme al Anexo II de la normativa MH</p>
         </div>
-        <button className="btn-primary flex items-center space-x-2" onClick={() => setModal(true)}>
+        {puedeEmitir && <button className="btn-primary flex items-center space-x-2" onClick={() => setModal(true)}>
           <FiPlus /><span>Emitir DTE</span>
-        </button>
+        </button>}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
