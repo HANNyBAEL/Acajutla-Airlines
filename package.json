@@ -4,9 +4,10 @@
   "private": true,
   "description": "Comandos unificados para probar y compilar SkyManager",
   "scripts": {
-    "test": "npm run check:backend && npm run test:backend && npm run lint:backoffice && npm run build:backoffice",
+    "test": "npm run check:backend && npm run test:backend && npm run test:logic && npm run lint:backoffice && npm run build:backoffice",
     "check:backend": "node scripts/check-backend-syntax.js",
     "test:backend": "npm --prefix backend test",
+    "test:logic": "node backend/pruebas/logica-negocio-2026-10-14.cjs",
     "build:backoffice": "npm --prefix frontend-backoffice run build",
     "lint:backoffice": "npm --prefix frontend-backoffice run lint"
   }

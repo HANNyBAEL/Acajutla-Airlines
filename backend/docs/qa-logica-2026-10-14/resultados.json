@@ -1,0 +1,268 @@
+{
+  "date": "2026-10-14",
+  "scope": [
+    "backend",
+    "frontend-backoffice"
+  ],
+  "mode": "real functions and JSX handlers; in-memory SQL fixtures and HTTP doubles; no live SQL or browser",
+  "total": 51,
+  "passed": 51,
+  "failed": 0,
+  "results": [
+    {
+      "id": "ROUND-100-adult-2",
+      "name": "El total coincide con la suma de importes guardados",
+      "passed": true
+    },
+    {
+      "id": "ROUND-10.1-child-1",
+      "name": "El total coincide con la suma de importes guardados",
+      "passed": true
+    },
+    {
+      "id": "ROUND-10.1-child-2",
+      "name": "El total coincide con la suma de importes guardados",
+      "passed": true
+    },
+    {
+      "id": "ROUND-10.1-child-3",
+      "name": "El total coincide con la suma de importes guardados",
+      "passed": true
+    },
+    {
+      "id": "ROUND-99.99-child-2",
+      "name": "El total coincide con la suma de importes guardados",
+      "passed": true
+    },
+    {
+      "id": "ROUND-10.05-infant-2",
+      "name": "El total coincide con la suma de importes guardados",
+      "passed": true
+    },
+    {
+      "id": "ROUND-0.01-infant-5",
+      "name": "El total coincide con la suma de importes guardados",
+      "passed": true
+    },
+    {
+      "id": "ROUND-100-child-2",
+      "name": "El total coincide con la suma de importes guardados",
+      "passed": true
+    },
+    {
+      "id": "DTE-100",
+      "name": "Una reserva recien creada y pagada puede facturarse",
+      "passed": true
+    },
+    {
+      "id": "DTE-10.1",
+      "name": "Una reserva recien creada y pagada puede facturarse",
+      "passed": true
+    },
+    {
+      "id": "RES-sin-cliente",
+      "name": "Se rechaza una reserva incompleta",
+      "passed": true
+    },
+    {
+      "id": "RES-sin-vuelos",
+      "name": "Se rechaza una reserva incompleta",
+      "passed": true
+    },
+    {
+      "id": "RES-sin-pasajeros",
+      "name": "Se rechaza una reserva incompleta",
+      "passed": true
+    },
+    {
+      "id": "RES-CAPACIDAD",
+      "name": "No se vende por encima de capacidad",
+      "passed": true
+    },
+    {
+      "id": "RES-ID",
+      "name": "El ID enviado por el cliente no sustituye el pasajero creado",
+      "passed": true
+    },
+    {
+      "id": "RES-EDAD",
+      "name": "Un adulto no obtiene tarifa infantil por declarar infant",
+      "passed": true
+    },
+    {
+      "id": "EXP-0",
+      "name": "Una reserva vencida sin liquidar libera sus asientos",
+      "passed": true
+    },
+    {
+      "id": "EXP-1",
+      "name": "Una reserva vencida sin liquidar libera sus asientos",
+      "passed": true
+    },
+    {
+      "id": "STOCK-cancelar",
+      "name": "Cancelar o expirar devuelve servicios no consumidos al inventario",
+      "passed": true
+    },
+    {
+      "id": "STOCK-expirar",
+      "name": "Cancelar o expirar devuelve servicios no consumidos al inventario",
+      "passed": true
+    },
+    {
+      "id": "STOCK-LIMITE",
+      "name": "No se vende mas stock del disponible",
+      "passed": true
+    },
+    {
+      "id": "CHECKIN-PAGADO",
+      "name": "Reserva pagada con tripulacion valida hace check-in",
+      "passed": true
+    },
+    {
+      "id": "CHECKIN-SALDO",
+      "name": "Un saldo pendiente bloquea check-in",
+      "passed": true
+    },
+    {
+      "id": "CHECKIN-ASIENTO-99F",
+      "name": "Check-in revalida un asiento previo invalido o de emergencia para menor",
+      "passed": true
+    },
+    {
+      "id": "CHECKIN-ASIENTO-12A",
+      "name": "Check-in revalida un asiento previo invalido o de emergencia para menor",
+      "passed": true
+    },
+    {
+      "id": "ASIENTO-CAPACIDAD",
+      "name": "Asignacion explicita rechaza un asiento inexistente",
+      "passed": true
+    },
+    {
+      "id": "ASIENTO-PASE",
+      "name": "Cambiar asiento despues de check-in conserva un pase coherente",
+      "passed": true
+    },
+    {
+      "id": "EMBARQUE-REEMBOLSO",
+      "name": "Reembolso total despues de check-in impide embarcar sin pago",
+      "passed": true
+    },
+    {
+      "id": "EMBARQUE-VUELO-cancelled",
+      "name": "El estado terminal del vuelo impide embarcar",
+      "passed": true
+    },
+    {
+      "id": "EMBARQUE-VUELO-completed",
+      "name": "El estado terminal del vuelo impide embarcar",
+      "passed": true
+    },
+    {
+      "id": "EMBARQUE-SIN-CHECKIN",
+      "name": "No se embarca sin check-in previo",
+      "passed": true
+    },
+    {
+      "id": "UI-MAPA-2",
+      "name": "El mapa solo habilita asientos fisicos existentes",
+      "passed": true
+    },
+    {
+      "id": "UI-MAPA-6",
+      "name": "El mapa solo habilita asientos fisicos existentes",
+      "passed": true
+    },
+    {
+      "id": "UI-MAPA-74",
+      "name": "El mapa solo habilita asientos fisicos existentes",
+      "passed": true
+    },
+    {
+      "id": "UI-OTRA-RESERVA",
+      "name": "Crear otra reserva exige seleccionar nuevamente el cliente",
+      "passed": true
+    },
+    {
+      "id": "UI-REFRESH-OK",
+      "name": "El vencimiento en pagos renueva y reintenta",
+      "passed": true
+    },
+    {
+      "id": "UI-REFRESH-PERFIL",
+      "name": "La carga del perfil tambien renueva una sesion vencida",
+      "passed": true
+    },
+    {
+      "id": "UI-REFRESH-RETRY-400",
+      "name": "Un error del negocio tras renovar no elimina la sesion valida",
+      "passed": true
+    },
+    {
+      "id": "UI-REFRESH-RETRY-403",
+      "name": "Un error del negocio tras renovar no elimina la sesion valida",
+      "passed": true
+    },
+    {
+      "id": "UI-REFRESH-RETRY-500",
+      "name": "Un error del negocio tras renovar no elimina la sesion valida",
+      "passed": true
+    },
+    {
+      "id": "EDAD-LIMITES",
+      "name": "Edad civil valida cumpleaños de 2 y 12 años, fechas futuras e inexistentes",
+      "passed": true
+    },
+    {
+      "id": "RES-EMERGENCIA",
+      "name": "No se crea una reserva infantil en salida de emergencia",
+      "passed": true
+    },
+    {
+      "id": "EMBARQUE-VALIDO",
+      "name": "Un pasajero pagado con check-in valido puede abordar",
+      "passed": true
+    },
+    {
+      "id": "ASIENTO-PENDIENTE",
+      "name": "El asiento se puede cambiar antes del check-in",
+      "passed": true
+    },
+    {
+      "id": "STOCK-IDEMPOTENTE",
+      "name": "Devolver inventario dos veces no duplica stock",
+      "passed": true
+    },
+    {
+      "id": "STOCK-ROLLBACK",
+      "name": "Un fallo de stock revierte la cancelacion completa",
+      "passed": true
+    },
+    {
+      "id": "UI-IMPUESTOS",
+      "name": "El total mostrado coincide con base y tributos redondeados del backend",
+      "passed": true
+    },
+    {
+      "id": "UI-EDAD-CUMPLEANOS",
+      "name": "La interfaz conserva tarifa infantil hasta el cumpleaños civil en El Salvador",
+      "passed": true
+    },
+    {
+      "id": "UI-REFRESH-FALLIDO",
+      "name": "Un refresh revocado limpia la sesion",
+      "passed": true
+    },
+    {
+      "id": "UI-REFRESH-CONCURRENTE",
+      "name": "Dos respuestas 401 comparten una renovacion",
+      "passed": true
+    },
+    {
+      "id": "UI-LOGIN-401",
+      "name": "Una clave de acceso incorrecta no dispara refresh",
+      "passed": true
+    }
+  ]
+}

@@ -17,25 +17,32 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const url = (error.config && error.config.url) || '';
-    if (error.response?.status === 401 && !url.includes('/auth/')) {
+    const acceso = /\/auth\/(?:login|refresh|verificar-mfa|registro)(?:[/?]|$)/.test(url);
+    if (error.response?.status === 401 && !acceso && error.config) {
       const refreshToken = sessionStorage.getItem('bo_refresh');
       if (refreshToken && !error.config?._retry) {
         error.config._retry = true;
-        refreshPromise ||= api.post('/auth/refresh', { refreshToken }).finally(() => { refreshPromise = null; });
-        return refreshPromise.then((response) => {
-          const datos = response.data.datos;
-          sessionStorage.setItem('bo_token', datos.accessToken);
-          sessionStorage.setItem('bo_refresh', datos.refreshToken);
-          error.config.headers.Authorization = 'Bearer ' + datos.accessToken;
-          return api.request(error.config);
-        }).catch(() => {
+        let datos;
+        try {
+          refreshPromise ||= api.post('/auth/refresh', { refreshToken }).then(response => {
+            const tokens = response.data.datos;
+            sessionStorage.setItem('bo_token', tokens.accessToken);
+            sessionStorage.setItem('bo_refresh', tokens.refreshToken);
+            return tokens;
+          }).finally(() => { refreshPromise = null; });
+          datos = await refreshPromise;
+        } catch (refreshError) {
           sessionStorage.removeItem('bo_token');
           sessionStorage.removeItem('bo_refresh');
           window.location.href = '/login';
-          return Promise.reject(error);
-        });
+          return Promise.reject(refreshError);
+        }
+        error.config.headers = error.config.headers || {};
+        error.config.headers.Authorization = 'Bearer ' + datos.accessToken;
+        // El error de negocio del reintento pertenece a la operación, no al refresh.
+        return api.request(error.config);
       }
       sessionStorage.removeItem('bo_token');
       sessionStorage.removeItem('bo_refresh');

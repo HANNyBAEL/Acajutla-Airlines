@@ -149,6 +149,8 @@ function dteFixture() {
   apiApp.use('/api/reservas',require('../src/routes/reservasRoutes'));
   apiApp.use('/api/pasajeros',require('../src/routes/pasajerosRoutes'));
   apiApp.use('/api/clientes',require('../src/routes/clientesRoutes'));
+  const buscarPorIdOriginal=Usuario.buscarPorId;
+  Usuario.buscarPorId=async id=>({id,username:'qa-customer',role:'customer',status:'active'});
   const server=await new Promise(resolve=>{const s=apiApp.listen(0,'127.0.0.1',()=>resolve(s));});
   const url=`http://127.0.0.1:${server.address().port}`;
   const token=jwt.sign({id:999,rol:'customer'},process.env.JWT_SECRET);
@@ -172,7 +174,7 @@ function dteFixture() {
     await test('ACL-04','Customer cannot list all reservations',async()=>{
       assert.equal((await fetch(url+'/api/reservas',{headers})).status,403);
     });
-  } finally { await new Promise(resolve=>server.close(resolve)); }
+  } finally { await new Promise(resolve=>server.close(resolve)); Usuario.buscarPorId=buscarPorIdOriginal; }
   await test('PAY-01','Empty card number is rejected by the active payment gateway',async()=>{
     const random=Math.random;Math.random=()=>0.9;
     try { const r=await Gateway.procesarTarjeta({numero_tarjeta:'',cvv:'123',expiracion:'12/99'});assert.equal(r.exito,false,`Empty card: ${r.codigo}`); }
@@ -277,7 +279,7 @@ function dteFixture() {
     assert.equal(child.status,0,`Node exit=${child.status}; synthetic DB failure was an unhandled rejection`);
     assert.doesNotMatch(child.stderr,/UnhandledPromiseRejection|uncaughtException/i,'Synthetic SQL failure escaped the Express error middleware');
   });
-  const report={date:'2026-10-12',mode:'isolated application acceptance checks; no real DB/email/payment I/O',total:results.length,
+  const report={date:new Date().toISOString().slice(0,10),mode:'isolated application acceptance checks; no real DB/email/payment I/O',total:results.length,
     passed:results.filter(r=>r.passed).length,failed:results.filter(r=>!r.passed).length,results};
   fs.writeFileSync(path.join(__dirname,'../docs/qa-2026-10-12/acceptance-results.json'),JSON.stringify(report,null,2));
   console.log(`RESULTADO: ${report.passed} passed, ${report.failed} failed, ${report.total} total`);

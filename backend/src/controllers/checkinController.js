@@ -1,22 +1,11 @@
 const pool = require('../config/db');
-const { crearMapaAsientos } = require('../utils/asientos');
+const { crearMapaAsientos, errorAsientoPasajero } = require('../utils/asientos');
 const { centavos } = require('../utils/money');
 
 const FILAS_SALIDA = [12, 13];
-const COLS = ['A', 'B', 'C', 'D', 'E', 'F'];
-
-const edadAnios = (birth) => {
-  if (!birth) return null;
-  const b = new Date(birth);
-  const hoy = new Date();
-  let e = hoy.getFullYear() - b.getFullYear();
-  const m = hoy.getMonth() - b.getMonth();
-  if (m < 0 || (m === 0 && hoy.getDate() < b.getDate())) e--;
-  return e;
-};
 
 const parseSeat = (seat) => {
-  const m = /^([1-9][0-9]?)([A-F])$/.exec(String(seat || '').toUpperCase());
+  const m = /^([1-9][0-9]{0,2})([A-F])$/.exec(String(seat || '').toUpperCase());
   return m ? { fila: parseInt(m[1], 10), col: m[2] } : null;
 };
 
@@ -91,12 +80,12 @@ const asignarAsiento = async (req, res) => {
     const seat = String(req.body.seat || '').toUpperCase();
     const s = parseSeat(seat);
     if (!s) { await conn.rollback(); return res.status(400).json({ error: 'Formato de asiento inválido (ej: 12A)' }); }
-    // FOR UPDATE sobre el segmento serializa asignaciones de asiento
-    // concurrentes sobre el mismo vuelo.
+    // Bloquear el segmento y las filas relacionadas durante la asignación.
     const [fs] = await conn.query(
-      `SELECT fs.*, p.passenger_type, p.birth_date, f.departure_datetime, at.total_capacity
+      `SELECT fs.*, p.passenger_type, p.birth_date, r.status AS res_status, f.status AS flight_status, f.departure_datetime, at.total_capacity
        FROM flight_segments fs
        JOIN passengers p ON p.id = fs.passenger_id
+       JOIN reservations r ON r.id = fs.reservation_id
        JOIN flights f ON f.id = fs.flight_id
        JOIN aircraft ac ON ac.id = f.aircraft_id
        JOIN aircraft_types at ON at.id = ac.type_id
@@ -104,13 +93,12 @@ const asignarAsiento = async (req, res) => {
       [req.params.segmentId]
     );
     if (!fs.length) { await conn.rollback(); return res.status(404).json({ error: 'Segmento no encontrado' }); }
-    const filas = Math.ceil(fs[0].total_capacity / 6);
-    if (!crearMapaAsientos(fs[0].total_capacity).asientos.includes(seat)) { await conn.rollback(); return res.status(400).json({ error: 'El asiento no existe en esta aeronave' }); }
-    if (FILAS_SALIDA.includes(s.fila)) {
-      if (fs[0].passenger_type !== 'adult') { await conn.rollback(); return res.status(400).json({ error: 'RN-OP-03: Solo adultos pueden ocupar filas de salida de emergencia' }); }
-      const e = edadAnios(fs[0].birth_date);
-      if (e === null || e < 15) { await conn.rollback(); return res.status(400).json({ error: 'RN-OP-03: Salida de emergencia requiere adulto mayor de 15 años' }); }
+    if (fs[0].checkin_status !== 'pending') { await conn.rollback(); return res.status(409).json({ error: 'El asiento no se puede cambiar después del check-in' }); }
+    if (!['pending', 'confirmed', 'paid'].includes(fs[0].res_status) || !['scheduled', 'confirmed'].includes(fs[0].flight_status) || new Date(fs[0].departure_datetime) <= new Date()) {
+      await conn.rollback(); return res.status(409).json({ error: 'La reserva o el vuelo ya no permiten cambiar el asiento' });
     }
+    const errorAsiento = errorAsientoPasajero(seat, fs[0].total_capacity, fs[0].passenger_type, fs[0].birth_date);
+    if (errorAsiento) { await conn.rollback(); return res.status(400).json({ error: errorAsiento }); }
     const [occ] = await conn.query(
       `SELECT fs.id FROM flight_segments fs JOIN reservations r ON r.id = fs.reservation_id
        WHERE fs.flight_id = ? AND fs.seat = ? AND fs.id <> ? AND r.status IN ('pending','confirmed','paid')`,
@@ -131,8 +119,9 @@ const hacerCheckin = async (req, res) => {
   try {
     await conn.beginTransaction();
     const [fs] = await conn.query(
-      `SELECT fs.*, r.pnr, r.status AS res_status, r.paid_total, r.estimated_total, f.status AS flight_status, f.departure_datetime, f.flight_number, at.total_capacity
+      `SELECT fs.*, p.passenger_type, p.birth_date, r.pnr, r.status AS res_status, r.paid_total, r.estimated_total, f.status AS flight_status, f.departure_datetime, f.flight_number, at.total_capacity
        FROM flight_segments fs
+       JOIN passengers p ON p.id = fs.passenger_id
        JOIN reservations r ON r.id = fs.reservation_id
        JOIN flights f ON f.id = fs.flight_id
        JOIN aircraft ac ON ac.id = f.aircraft_id
@@ -168,6 +157,10 @@ const hacerCheckin = async (req, res) => {
     if (s.checkin_status !== 'pending') { await conn.rollback(); return res.status(400).json({ error: 'El pasajero ya tiene check-in (' + s.checkin_status + ')' }); }
 
     let seat = s.seat;
+    if (seat) {
+      const errorAsiento = errorAsientoPasajero(seat, s.total_capacity, s.passenger_type, s.birth_date);
+      if (errorAsiento) { await conn.rollback(); return res.status(400).json({ error: errorAsiento }); }
+    }
     if (!seat) {
       const filas = Math.ceil(s.total_capacity / 6);
       const [occ] = await conn.query(
@@ -190,13 +183,27 @@ const hacerCheckin = async (req, res) => {
 };
 
 const abordar = async (req, res) => {
+  let conn;
   try {
-    const [fs] = await pool.query('SELECT checkin_status FROM flight_segments WHERE id = ?', [req.params.segmentId]);
-    if (!fs.length) return res.status(404).json({ error: 'Segmento no encontrado' });
-    if (fs[0].checkin_status !== 'checked_in') return res.status(400).json({ error: 'El pasajero debe tener check-in para abordar' });
-    await pool.query("UPDATE flight_segments SET checkin_status = 'boarded' WHERE id = ?", [req.params.segmentId]);
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    const [fs] = await conn.query(
+      `SELECT fs.*, r.status AS res_status, r.paid_total, r.estimated_total, f.status AS flight_status
+       FROM flight_segments fs JOIN reservations r ON r.id = fs.reservation_id
+       JOIN flights f ON f.id = fs.flight_id WHERE fs.id = ? FOR UPDATE`, [req.params.segmentId]
+    );
+    if (!fs.length) { await conn.rollback(); return res.status(404).json({ error: 'Segmento no encontrado' }); }
+    const s = fs[0];
+    if (s.checkin_status !== 'checked_in') throw new Error('El pasajero debe tener check-in para abordar');
+    if (s.res_status !== 'paid' || centavos(s.paid_total || 0) < centavos(s.estimated_total)) throw new Error('La reserva debe estar completamente pagada para abordar');
+    if (!['scheduled', 'confirmed', 'in_progress'].includes(s.flight_status)) throw new Error('El estado del vuelo no permite abordar');
+    await conn.query("UPDATE flight_segments SET checkin_status = 'boarded' WHERE id = ?", [req.params.segmentId]);
+    await conn.commit();
     res.json({ exito: true, mensaje: 'Pasajero abordado' });
-  } catch (e) { res.status(400).json({ error: e.message }); }
+  } catch (e) {
+    if (conn) await conn.rollback();
+    res.status(400).json({ error: e.message });
+  } finally { if (conn) conn.release(); }
 };
 
 const manifiesto = async (req, res) => {

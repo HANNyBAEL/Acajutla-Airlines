@@ -5,6 +5,16 @@ const { generarPNRUnico } = require('../utils/pnrGenerator');
 const pool = require('../config/db');
 const { obtenerImpuestos } = require('../services/taxService');
 const { resolverClase } = require('../utils/fareClass');
+const { centavos } = require('../utils/money');
+const { tipoPorNacimiento } = require('../utils/passengerAge');
+const { errorAsientoPasajero } = require('../utils/asientos');
+const { cancelarServiciosReserva } = require('../services/reservationInventoryService');
+
+const importesPasajero = (tarifa, tipo) => {
+  const porcentaje = tipo === 'child' ? 75 : tipo === 'infant' ? 10 : 100;
+  const aplicar = monto => Math.round(centavos(monto) * porcentaje / 100);
+  return { base: aplicar(tarifa.precio), impuestos: tarifa.impuestos.lines.map(line => ({ ...line, amount: aplicar(line.amount), taxable_amount: aplicar(line.taxable_amount) })) };
+};
 
 const crearReserva = async (req, res) => {
   let connection;
@@ -19,13 +29,20 @@ const crearReserva = async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ error: 'customer_id es obligatorio' });
     }
-    if (!vuelos || vuelos.length === 0) {
+    if (!Array.isArray(vuelos) || vuelos.length === 0) {
       await connection.rollback();
       return res.status(400).json({ error: 'Debe seleccionar al menos un vuelo' });
     }
-    if (!pasajeros || pasajeros.length === 0) {
+    if (!Array.isArray(pasajeros) || pasajeros.length === 0) {
       await connection.rollback();
       return res.status(400).json({ error: 'Debe agregar al menos un pasajero' });
+    }
+    for (const pax of pasajeros) {
+      const tipo = tipoPorNacimiento(pax?.birth_date);
+      if (!tipo || tipo !== (pax.passenger_type || 'adult')) {
+        await connection.rollback();
+        return res.status(400).json({ error: 'Fecha de nacimiento inválida o tipo de pasajero incompatible con su edad actual' });
+      }
     }
 
     // Validar disponibilidad de cada vuelo
@@ -48,6 +65,12 @@ const crearReserva = async (req, res) => {
           disponibles: disponibilidad.available_seats,
           requeridos: pasajeros.length
         });
+      }
+      if (vuelo.seat) {
+        for (const pax of pasajeros) {
+          const error = errorAsientoPasajero(vuelo.seat, disponibilidad.total_capacity, pax.passenger_type || 'adult', pax.birth_date);
+          if (error) { await connection.rollback(); return res.status(400).json({ error }); }
+        }
       }
     }
 
@@ -83,11 +106,11 @@ const crearReserva = async (req, res) => {
       tarifasPorVuelo.set(String(v.flight_id), { id: tarifa[0].id, precio: Number(tarifa[0].price), clase: clase.segmentCode, impuestos });
     }
 
-    const factorPasajero = (tipo) => tipo === 'child' ? 0.75 : tipo === 'infant' ? 0.10 : 1;
-    const estimated_total = Math.round(
-      pasajeros.reduce((total, pax) => total + vuelos.reduce((porTramo, v) =>
-        porTramo + (tarifasPorVuelo.get(String(v.flight_id)).precio + tarifasPorVuelo.get(String(v.flight_id)).impuestos.total) * factorPasajero(pax.passenger_type || 'adult'), 0), 0) * 100
-    ) / 100;
+    // Sumar los mismos centavos que se persistirán en segmentos y tributos.
+    const estimated_total = pasajeros.reduce((total, pax) => total + vuelos.reduce((subtotal, v) => {
+      const importes = importesPasajero(tarifasPorVuelo.get(String(v.flight_id)), pax.passenger_type || 'adult');
+      return subtotal + importes.base + importes.impuestos.reduce((sum, line) => sum + line.amount, 0);
+    }, 0), 0) / 100;
 
     // Generar PNR único
     const pnr = await generarPNRUnico(connection);
@@ -124,15 +147,15 @@ const crearReserva = async (req, res) => {
           pax.phone || null
         ]
       );
-      pasajerosCreados.push({ id: resultPax.insertId, ...pax });
+      pasajerosCreados.push({ ...pax, id: resultPax.insertId });
     }
 
     // Asignar segmentos de vuelo
     for (const pax of pasajerosCreados) {
       for (const vuelo of vuelos) {
         const tarifa = tarifasPorVuelo.get(String(vuelo.flight_id));
-        const factor = factorPasajero(pax.passenger_type || 'adult');
-        const precioUnitario = Math.round(tarifa.precio * factor * 100) / 100;
+        const importes = importesPasajero(tarifa, pax.passenger_type || 'adult');
+        const precioUnitario = importes.base / 100;
         await FlightSegment.asignar({
           reservation_id,
           passenger_id: pax.id,
@@ -143,12 +166,12 @@ const crearReserva = async (req, res) => {
           unit_price: precioUnitario,
           total_price: precioUnitario
         }, connection);
-        for (const impuesto of tarifa.impuestos.lines) {
-          const monto = Math.round(impuesto.amount * factor * 100) / 100;
+        for (const impuesto of importes.impuestos) {
+          const monto = impuesto.amount / 100;
           await connection.query(
             `INSERT INTO reservation_tax_lines (reservation_id, passenger_id, flight_id, tax_rule_id, country_id, airport_id, code, name, calculation_type, rate, taxable_amount, amount)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [reservation_id, pax.id, vuelo.flight_id, impuesto.id, impuesto.country_id, impuesto.airport_id, impuesto.code, impuesto.name, impuesto.calculation_type, impuesto.value, Math.round(impuesto.taxable_amount * factor * 100) / 100, monto]
+            [reservation_id, pax.id, vuelo.flight_id, impuesto.id, impuesto.country_id, impuesto.airport_id, impuesto.code, impuesto.name, impuesto.calculation_type, impuesto.value, impuesto.taxable_amount / 100, monto]
           );
         }
       }
@@ -239,6 +262,7 @@ const cancelarReserva = async (req, res) => {
       "UPDATE payments SET status = 'cancelled' WHERE reservation_id = ? AND type = 'payment' AND status = 'pending_confirmation'",
       [reserva.id]
     );
+    await cancelarServiciosReserva(reserva.id, connection);
     await FlightSegment.liberarPorReserva(reserva.id, connection);
     await connection.commit();
     res.json({ exito: true, mensaje: 'Reserva cancelada', datos: { pnr, status: 'cancelled' } });

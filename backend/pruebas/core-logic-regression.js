@@ -20,6 +20,8 @@ const paymentPool = {
       async rollback() { Object.assign(paymentState, snapshot); },
       release() {},
       async query(sql, params = []) {
+        if (sql.startsWith("SELECT id FROM flight_segments WHERE reservation_id = ? AND checkin_status = 'boarded'")) return [[]];
+        if (sql.startsWith("UPDATE flight_segments SET checkin_status = 'pending'")) return [{ affectedRows: 0 }];
         if (sql.startsWith('SELECT * FROM reservations WHERE id = ? FOR UPDATE')) {
           return [paymentState.reservation?.id === Number(params[0]) ? [{ ...paymentState.reservation }] : []];
         }
@@ -156,6 +158,7 @@ const cancellationPool = {
         if (sql.startsWith('UPDATE reservations SET paid_total = 0')) return [{ affectedRows: 1 }];
         if (sql.startsWith('UPDATE flights SET status =')) return [{ affectedRows: 1 }];
         if (sql.startsWith('DELETE FROM flight_segments')) return [{ affectedRows: 1 }];
+        if (sql.startsWith('SELECT id, flight_id, ancillary_id FROM reservation_ancillaries')) return [[]];
         throw new Error(`Unexpected cancellation SQL: ${sql}`);
       }
     };
@@ -183,6 +186,7 @@ const lifecyclePool = {
           lifecycleState.released = true;
           return [{ affectedRows: 1 }];
         }
+        if (sql.startsWith('SELECT id, flight_id, ancillary_id FROM reservation_ancillaries')) return [[]];
         throw new Error(`Unexpected reservation lifecycle SQL: ${sql}`);
       }
     };
@@ -195,7 +199,8 @@ const expirationPool = {
     return {
       async beginTransaction() {}, async commit() {}, async rollback() {}, release() {},
       async query(sql) {
-        if (sql.startsWith("SELECT id, pnr FROM reservations WHERE status = 'pending'")) return [expirationState.reservations];
+        if (sql.startsWith('SELECT id, pnr FROM reservations WHERE')) return [expirationState.reservations];
+        if (sql.startsWith('SELECT id, flight_id, ancillary_id FROM reservation_ancillaries')) return [[]];
         if (sql.startsWith("UPDATE reservations SET status = 'expired'")) {
           expirationState.reservationStatus = 'expired';
           return [{ affectedRows: 1 }];

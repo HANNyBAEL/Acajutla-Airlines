@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-12",
+  "date": "2026-10-14",
   "mode": "isolated application acceptance checks; no real DB/email/payment I/O",
   "total": 26,
   "passed": 26,

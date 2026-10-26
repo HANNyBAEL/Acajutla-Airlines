@@ -12,11 +12,14 @@ const pasajeroVacio = () => ({
   document_type: '13', document_number: '', birth_date: '', nationality: 'SV',
 });
 const tipoPorEdad = (birth) => {
-  if (!birth) return null;
-  const b = new Date(birth); const hoy = new Date();
-  let e = hoy.getFullYear() - b.getFullYear();
-  const m = hoy.getMonth() - b.getMonth();
-  if (m < 0 || (m === 0 && hoy.getDate() < b.getDate())) e--;
+  const text = String(birth || '').slice(0, 10);
+  const hoy = fechaActualSV();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || text > hoy) return null;
+  const [y, m, d] = text.split('-').map(Number);
+  const validacion = new Date(Date.UTC(y, m - 1, d));
+  if (validacion.getUTCFullYear() !== y || validacion.getUTCMonth() !== m - 1 || validacion.getUTCDate() !== d) return null;
+  const [hy, hm, hd] = hoy.split('-').map(Number);
+  const e = hy - y - (hm < m || (hm === m && hd < d) ? 1 : 0);
   if (e < 2) return 'infant';
   if (e < 12) return 'child';
   return 'adult';
@@ -163,12 +166,16 @@ const NuevaReserva = () => {
 
   const vuelosSeleccionados = trayectos.map((t) => t.vuelos.find((v) => v.id === t.vueloId)).filter(Boolean);
   const vuelosSinCupo = vuelosSeleccionados.filter((vuelo) => pasajeros.length > Number(vuelo.available_seats || 0));
-  const factorPasajero = (tipo) => tipo === 'child' ? 0.75 : tipo === 'infant' ? 0.10 : 1;
-  const totalFactorPasajeros = pasajeros.reduce((total, pasajero) => total + factorPasajero(pasajero.passenger_type), 0);
-  const totalEstimado = vuelosSeleccionados.reduce((total, vuelo) => total + Number(vuelo.total_price ?? 0), 0) * totalFactorPasajeros;
+  const totalEstimado = pasajeros.reduce((sum, pax) => {
+    const porcentaje = pax.passenger_type === 'child' ? 75 : pax.passenger_type === 'infant' ? 10 : 100;
+    return sum + vuelosSeleccionados.reduce((total, vuelo) => {
+      const lineas = vuelo.fare_price != null ? [vuelo.fare_price, ...(vuelo.taxes || []).map(t => t.amount)] : [vuelo.total_price || 0];
+      return total + lineas.reduce((subtotal, monto) => subtotal + Math.round(Math.round(Number(monto) * 100) * porcentaje / 100), 0);
+    }, 0);
+  }, 0) / 100;
 
   const guardar = async () => {
-    if (!clienteId) return toast.error('Selecciona un cliente o agrega uno nuevo');
+    if (!clienteId || !clienteSel || Number(clienteSel.id) !== Number(clienteId)) return toast.error('Selecciona un cliente o agrega uno nuevo');
     if (trayectos.some((t) => !t.vueloId)) return toast.error('Selecciona un vuelo para cada trayecto');
     const vueloSinCupo = vuelosSeleccionados.find((vuelo) => pasajeros.length > Number(vuelo.available_seats || 0));
     if (vueloSinCupo) {
@@ -208,7 +215,7 @@ const NuevaReserva = () => {
           <p className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-6">
             Reserva en estado PENDIENTE con time limit de 30 minutos (RN-COM-01). Sigue al módulo de Pagos.
           </p>
-          <button className="btn-primary mt-6" onClick={() => { setPnrCreado(null); setPasajeros([pasajeroVacio()]); setTrayectos([{ origen: 'SAL', destino: 'MIA', fecha: '', vuelos: [], vueloId: null, buscando: false }]); setClienteSel(null); }}>
+          <button className="btn-primary mt-6" onClick={() => { setPnrCreado(null); setPasajeros([pasajeroVacio()]); setTrayectos([{ origen: 'SAL', destino: 'MIA', fecha: '', vuelos: [], vueloId: null, buscando: false }]); setClienteId(''); setClienteSel(null); setTipoViaje('ida'); setClase('economy'); }}>
             Crear otra reserva
           </button>
         </div>

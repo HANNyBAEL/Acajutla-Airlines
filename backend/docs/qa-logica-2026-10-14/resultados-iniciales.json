@@ -1,0 +1,236 @@
+{
+  "date": "2026-10-14",
+  "scope": [
+    "backend",
+    "frontend-backoffice"
+  ],
+  "mode": "real functions and JSX handlers; in-memory SQL fixtures and HTTP doubles; no live SQL or browser",
+  "total": 40,
+  "passed": 17,
+  "failed": 23,
+  "results": [
+    {
+      "id": "ROUND-100-adult-2",
+      "name": "El total coincide con la suma de importes guardados",
+      "passed": true
+    },
+    {
+      "id": "ROUND-10.1-child-1",
+      "name": "El total coincide con la suma de importes guardados",
+      "passed": true
+    },
+    {
+      "id": "ROUND-10.1-child-2",
+      "name": "El total coincide con la suma de importes guardados",
+      "passed": false,
+      "evidence": "Total reserva=15.15; suma segmentos=15.14\n\n1515 !== 1514\n"
+    },
+    {
+      "id": "ROUND-10.1-child-3",
+      "name": "El total coincide con la suma de importes guardados",
+      "passed": false,
+      "evidence": "Total reserva=22.73; suma segmentos=22.71\n\n2273 !== 2271\n"
+    },
+    {
+      "id": "ROUND-99.99-child-2",
+      "name": "El total coincide con la suma de importes guardados",
+      "passed": true
+    },
+    {
+      "id": "ROUND-10.05-infant-2",
+      "name": "El total coincide con la suma de importes guardados",
+      "passed": false,
+      "evidence": "Total reserva=2.01; suma segmentos=2.02\n\n201 !== 202\n"
+    },
+    {
+      "id": "ROUND-0.01-infant-5",
+      "name": "El total coincide con la suma de importes guardados",
+      "passed": false,
+      "evidence": "Total reserva=0.01; suma segmentos=0\n\n1 !== 0\n"
+    },
+    {
+      "id": "ROUND-100-child-2",
+      "name": "El total coincide con la suma de importes guardados",
+      "passed": true
+    },
+    {
+      "id": "DTE-100",
+      "name": "Una reserva recien creada y pagada puede facturarse",
+      "passed": true
+    },
+    {
+      "id": "DTE-10.1",
+      "name": "Una reserva recien creada y pagada puede facturarse",
+      "passed": false,
+      "evidence": "Las tarifas, servicios e impuestos guardados no concilian con la reserva"
+    },
+    {
+      "id": "RES-sin-cliente",
+      "name": "Se rechaza una reserva incompleta",
+      "passed": true
+    },
+    {
+      "id": "RES-sin-vuelos",
+      "name": "Se rechaza una reserva incompleta",
+      "passed": true
+    },
+    {
+      "id": "RES-sin-pasajeros",
+      "name": "Se rechaza una reserva incompleta",
+      "passed": true
+    },
+    {
+      "id": "RES-CAPACIDAD",
+      "name": "No se vende por encima de capacidad",
+      "passed": true
+    },
+    {
+      "id": "RES-ID",
+      "name": "El ID enviado por el cliente no sustituye el pasajero creado",
+      "passed": false,
+      "evidence": "Pasajero creado=10; segmento asociado=999\n\n999 !== 10\n"
+    },
+    {
+      "id": "RES-EDAD",
+      "name": "Un adulto no obtiene tarifa infantil por declarar infant",
+      "passed": false,
+      "evidence": "Adulto de 1990 aceptado HTTP 201 por $10"
+    },
+    {
+      "id": "EXP-0",
+      "name": "Una reserva vencida sin liquidar libera sus asientos",
+      "passed": true
+    },
+    {
+      "id": "EXP-1",
+      "name": "Una reserva vencida sin liquidar libera sus asientos",
+      "passed": false,
+      "evidence": "Estado=confirmed; pagado=1; vencida=true; asiento retenido"
+    },
+    {
+      "id": "STOCK-cancelar",
+      "name": "Cancelar o expirar devuelve servicios no consumidos al inventario",
+      "passed": false,
+      "evidence": "Reserva=cancelled; stock=1 en vez de 3; servicios activos=2\n\n1 !== 3\n"
+    },
+    {
+      "id": "STOCK-expirar",
+      "name": "Cancelar o expirar devuelve servicios no consumidos al inventario",
+      "passed": false,
+      "evidence": "Reserva=expired; stock=1 en vez de 3; servicios activos=2\n\n1 !== 3\n"
+    },
+    {
+      "id": "STOCK-LIMITE",
+      "name": "No se vende mas stock del disponible",
+      "passed": true
+    },
+    {
+      "id": "CHECKIN-PAGADO",
+      "name": "Reserva pagada con tripulacion valida hace check-in",
+      "passed": true
+    },
+    {
+      "id": "CHECKIN-SALDO",
+      "name": "Un saldo pendiente bloquea check-in",
+      "passed": true
+    },
+    {
+      "id": "CHECKIN-ASIENTO-99F",
+      "name": "Check-in revalida un asiento previo invalido o de emergencia para menor",
+      "passed": false,
+      "evidence": "Menor con asiento 99F obtuvo HTTP 200 y pase BP-QA0001-99F"
+    },
+    {
+      "id": "CHECKIN-ASIENTO-12A",
+      "name": "Check-in revalida un asiento previo invalido o de emergencia para menor",
+      "passed": false,
+      "evidence": "Menor con asiento 12A obtuvo HTTP 200 y pase BP-QA0001-12A"
+    },
+    {
+      "id": "ASIENTO-CAPACIDAD",
+      "name": "Asignacion explicita rechaza un asiento inexistente",
+      "passed": true
+    },
+    {
+      "id": "ASIENTO-PASE",
+      "name": "Cambiar asiento despues de check-in conserva un pase coherente",
+      "passed": false,
+      "evidence": "HTTP 200; asiento=2B; pase=BP-QA0001-1A"
+    },
+    {
+      "id": "EMBARQUE-REEMBOLSO",
+      "name": "Reembolso total despues de check-in impide embarcar sin pago",
+      "passed": false,
+      "evidence": "Pagado=0; reserva=pending; embarque HTTP 200; pasajero=boarded"
+    },
+    {
+      "id": "EMBARQUE-VUELO-cancelled",
+      "name": "El estado terminal del vuelo impide embarcar",
+      "passed": false,
+      "evidence": "Vuelo=cancelled; embarque HTTP 200"
+    },
+    {
+      "id": "EMBARQUE-VUELO-completed",
+      "name": "El estado terminal del vuelo impide embarcar",
+      "passed": false,
+      "evidence": "Vuelo=completed; embarque HTTP 200"
+    },
+    {
+      "id": "EMBARQUE-SIN-CHECKIN",
+      "name": "No se embarca sin check-in previo",
+      "passed": true
+    },
+    {
+      "id": "UI-MAPA-2",
+      "name": "El mapa solo habilita asientos fisicos existentes",
+      "passed": false,
+      "evidence": "Asientos inexistentes habilitados: 1C, 1D, 1E, 1F\n\n4 !== 0\n"
+    },
+    {
+      "id": "UI-MAPA-6",
+      "name": "El mapa solo habilita asientos fisicos existentes",
+      "passed": true
+    },
+    {
+      "id": "UI-MAPA-74",
+      "name": "El mapa solo habilita asientos fisicos existentes",
+      "passed": false,
+      "evidence": "Asientos inexistentes habilitados: 13C, 13D, 13E, 13F\n\n4 !== 0\n"
+    },
+    {
+      "id": "UI-OTRA-RESERVA",
+      "name": "Crear otra reserva exige seleccionar nuevamente el cliente",
+      "passed": false,
+      "evidence": "Cliente visible=null; POST /reservas envio customer_id=77"
+    },
+    {
+      "id": "UI-REFRESH-OK",
+      "name": "El vencimiento en pagos renueva y reintenta",
+      "passed": true
+    },
+    {
+      "id": "UI-REFRESH-PERFIL",
+      "name": "La carga del perfil tambien renueva una sesion vencida",
+      "passed": false,
+      "evidence": "401 en /auth/perfil no intenta renovar con refresh token valido\n\n0 !== 1\n"
+    },
+    {
+      "id": "UI-REFRESH-RETRY-400",
+      "name": "Un error del negocio tras renovar no elimina la sesion valida",
+      "passed": false,
+      "evidence": "Reintento HTTP 400; token=undefined; destino=/login\n+ actual - expected\n\n+ undefined\n- 'new-access'\n"
+    },
+    {
+      "id": "UI-REFRESH-RETRY-403",
+      "name": "Un error del negocio tras renovar no elimina la sesion valida",
+      "passed": false,
+      "evidence": "Reintento HTTP 403; token=undefined; destino=/login\n+ actual - expected\n\n+ undefined\n- 'new-access'\n"
+    },
+    {
+      "id": "UI-REFRESH-RETRY-500",
+      "name": "Un error del negocio tras renovar no elimina la sesion valida",
+      "passed": false,
+      "evidence": "Reintento HTTP 500; token=undefined; destino=/login\n+ actual - expected\n\n+ undefined\n- 'new-access'\n"
+    }
+  ]
+}

@@ -7,4 +7,15 @@ const crearMapaAsientos = (capacidad) => {
   const filas = Math.ceil(n / 6);
   return { capacidad: n, filas, columnas, asientos, filasSalida: [12, 13].filter(f => f <= filas) };
 };
-module.exports = { crearMapaAsientos };
+const { edadEnFecha } = require('./passengerAge');
+const errorAsientoPasajero = (seat, capacidad, tipo, birth) => {
+  const mapa = crearMapaAsientos(capacidad);
+  if (!mapa.asientos.includes(seat)) return 'El asiento no existe en esta aeronave';
+  const fila = parseInt(seat, 10);
+  if (mapa.filasSalida.includes(fila)) {
+    const edad = edadEnFecha(birth);
+    if (tipo !== 'adult' || edad === null || edad < 15) return 'RN-OP-03: Salida de emergencia requiere adulto de al menos 15 años';
+  }
+  return null;
+};
+module.exports = { crearMapaAsientos, errorAsientoPasajero };

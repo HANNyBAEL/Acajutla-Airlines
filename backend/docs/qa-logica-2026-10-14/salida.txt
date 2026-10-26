@@ -1,0 +1,92 @@
+
+> skymanager-system@1.0.0 test:logic
+> node backend/pruebas/logica-negocio-2026-10-14.cjs
+
+PASS ROUND-100-adult-2 El total coincide con la suma de importes guardados
+PASS ROUND-10.1-child-1 El total coincide con la suma de importes guardados
+FAIL ROUND-10.1-child-2 El total coincide con la suma de importes guardados: Total reserva=15.15; suma segmentos=15.14
+
+1515 !== 1514
+
+FAIL ROUND-10.1-child-3 El total coincide con la suma de importes guardados: Total reserva=22.73; suma segmentos=22.71
+
+2273 !== 2271
+
+PASS ROUND-99.99-child-2 El total coincide con la suma de importes guardados
+FAIL ROUND-10.05-infant-2 El total coincide con la suma de importes guardados: Total reserva=2.01; suma segmentos=2.02
+
+201 !== 202
+
+FAIL ROUND-0.01-infant-5 El total coincide con la suma de importes guardados: Total reserva=0.01; suma segmentos=0
+
+1 !== 0
+
+PASS ROUND-100-child-2 El total coincide con la suma de importes guardados
+PASS DTE-100 Una reserva recien creada y pagada puede facturarse
+FAIL DTE-10.1 Una reserva recien creada y pagada puede facturarse: Las tarifas, servicios e impuestos guardados no concilian con la reserva
+PASS RES-sin-cliente Se rechaza una reserva incompleta
+PASS RES-sin-vuelos Se rechaza una reserva incompleta
+PASS RES-sin-pasajeros Se rechaza una reserva incompleta
+PASS RES-CAPACIDAD No se vende por encima de capacidad
+FAIL RES-ID El ID enviado por el cliente no sustituye el pasajero creado: Pasajero creado=10; segmento asociado=999
+
+999 !== 10
+
+FAIL RES-EDAD Un adulto no obtiene tarifa infantil por declarar infant: Adulto de 1990 aceptado HTTP 201 por $10
+⏰ Reserva QA0001 expirada automáticamente; asientos liberados
+PASS EXP-0 Una reserva vencida sin liquidar libera sus asientos
+FAIL EXP-1 Una reserva vencida sin liquidar libera sus asientos: Estado=confirmed; pagado=1; vencida=true; asiento retenido
+FAIL STOCK-cancelar Cancelar o expirar devuelve servicios no consumidos al inventario: Reserva=cancelled; stock=1 en vez de 3; servicios activos=2
+
+1 !== 3
+
+⏰ Reserva QA0001 expirada automáticamente; asientos liberados
+FAIL STOCK-expirar Cancelar o expirar devuelve servicios no consumidos al inventario: Reserva=expired; stock=1 en vez de 3; servicios activos=2
+
+1 !== 3
+
+PASS STOCK-LIMITE No se vende mas stock del disponible
+PASS CHECKIN-PAGADO Reserva pagada con tripulacion valida hace check-in
+PASS CHECKIN-SALDO Un saldo pendiente bloquea check-in
+FAIL CHECKIN-ASIENTO-99F Check-in revalida un asiento previo invalido o de emergencia para menor: Menor con asiento 99F obtuvo HTTP 200 y pase BP-QA0001-99F
+FAIL CHECKIN-ASIENTO-12A Check-in revalida un asiento previo invalido o de emergencia para menor: Menor con asiento 12A obtuvo HTTP 200 y pase BP-QA0001-12A
+PASS ASIENTO-CAPACIDAD Asignacion explicita rechaza un asiento inexistente
+FAIL ASIENTO-PASE Cambiar asiento despues de check-in conserva un pase coherente: HTTP 200; asiento=2B; pase=BP-QA0001-1A
+FAIL EMBARQUE-REEMBOLSO Reembolso total despues de check-in impide embarcar sin pago: Pagado=0; reserva=pending; embarque HTTP 200; pasajero=boarded
+FAIL EMBARQUE-VUELO-cancelled El estado terminal del vuelo impide embarcar: Vuelo=cancelled; embarque HTTP 200
+FAIL EMBARQUE-VUELO-completed El estado terminal del vuelo impide embarcar: Vuelo=completed; embarque HTTP 200
+PASS EMBARQUE-SIN-CHECKIN No se embarca sin check-in previo
+FAIL UI-MAPA-2 El mapa solo habilita asientos fisicos existentes: Asientos inexistentes habilitados: 1C, 1D, 1E, 1F
+
+4 !== 0
+
+PASS UI-MAPA-6 El mapa solo habilita asientos fisicos existentes
+FAIL UI-MAPA-74 El mapa solo habilita asientos fisicos existentes: Asientos inexistentes habilitados: 13C, 13D, 13E, 13F
+
+4 !== 0
+
+FAIL UI-OTRA-RESERVA Crear otra reserva exige seleccionar nuevamente el cliente: Cliente visible=null; POST /reservas envio customer_id=77
+PASS UI-REFRESH-OK El vencimiento en pagos renueva y reintenta
+FAIL UI-REFRESH-PERFIL La carga del perfil tambien renueva una sesion vencida: 401 en /auth/perfil no intenta renovar con refresh token valido
+
+0 !== 1
+
+FAIL UI-REFRESH-RETRY-400 Un error del negocio tras renovar no elimina la sesion valida: Reintento HTTP 400; token=undefined; destino=/login
++ actual - expected
+
++ undefined
+- 'new-access'
+
+FAIL UI-REFRESH-RETRY-403 Un error del negocio tras renovar no elimina la sesion valida: Reintento HTTP 403; token=undefined; destino=/login
++ actual - expected
+
++ undefined
+- 'new-access'
+
+FAIL UI-REFRESH-RETRY-500 Un error del negocio tras renovar no elimina la sesion valida: Reintento HTTP 500; token=undefined; destino=/login
++ actual - expected
+
++ undefined
+- 'new-access'
+
+RESULTADO 17/40 PASS; 23 FAIL

@@ -1,17 +1,20 @@
 const pool = require('../config/db');
+const { cancelarServiciosReserva } = require('./reservationInventoryService');
 
-// Marca como 'expired' las reservas pendientes cuyo time_limit venció y
-// libera los asientos que mantenían ocupados (flight_segments).
+// Expira pendientes y abonos sin liquidar. Conserva el libro de pagos y el
+// paid_total para que un reembolso explícito pueda devolver los abonos.
+// Libera los asientos que mantenían ocupados (flight_segments).
 const expirarReservas = async () => {
   let connection;
   try {
     connection = await pool.getConnection();
     await connection.beginTransaction();
     const [vencidas] = await connection.query(
-      "SELECT id, pnr FROM reservations WHERE status = 'pending' AND time_limit < NOW() FOR UPDATE"
+      "SELECT id, pnr FROM reservations WHERE (status = 'pending' OR (status = 'confirmed' AND paid_total < estimated_total)) AND time_limit < NOW() FOR UPDATE"
     );
     const ids = vencidas.map((r) => r.id);
     if (ids.length) {
+      for (const id of ids) await cancelarServiciosReserva(id, connection);
       await connection.query(
         `UPDATE reservations SET status = 'expired',
           cancellation_date = NOW(), cancellation_reason = 'Expirada automáticamente (time limit vencido)'

@@ -1,0 +1,152 @@
+
+> skymanager-system@1.0.0 test
+> npm run check:backend && npm run test:backend && npm run test:logic && npm run lint:backoffice && npm run build:backoffice
+
+
+> skymanager-system@1.0.0 check:backend
+> node scripts/check-backend-syntax.js
+
+Sintaxis correcta en 141 archivos JavaScript del backend.
+
+> skymanager-system@1.0.0 test:backend
+> npm --prefix backend test
+
+
+> skymanager-backend@1.0.0 test
+> node pruebas/core-logic-regression.js && node pruebas/eventos-dte-regression.js && node pruebas/web-checkout-auth-regression.js && node pruebas/payment-workflow-regression.js && node pruebas/qr-dte-regression.js && node pruebas/simulation-boundary-regression.js
+
+PASS | FE bajo $25,000 permite comprador natural sin documento si no pide deducción
+PASS | FE de exactamente $25,000 sigue la regla legal de monto superior a $25,000
+PASS | FE sobre $25,000 requiere identificación del receptor
+PASS | FE bajo umbral requiere identificación cuando se marca gasto deducible
+PASS | FE de comprador extranjero requiere identificación aun bajo el umbral
+PASS | bloqueo de emisión detecta un DTE activo y permite reintento tras rechazo
+PASS | rate limiter activo devuelve 429 y respeta RATE_LIMIT_DISABLED
+PASS | segunda transferencia no puede reservar un saldo ya pendiente de confirmación
+PASS | pago parcial devuelve el saldo restante sin marcar la reserva como pagada
+PASS | checkout acepta PayPal simulado y no bloquea por una intención antigua de tarjeta
+PASS | pago rechaza reservas vencidas usando el reloj de la base
+PASS | montos de pago se limitan a centavos y un centavo pendiente no se da por pagado
+PASS | confirmar transferencia rechaza pago mayor al saldo actual
+PASS | confirmar transferencia ignora intenciones heredadas sin referencia de pago
+PASS | reembolsos parciales acumulados no superan el pago original
+PASS | cancelar vuelo devuelve solo el saldo de cada pago que aún no fue reembolsado
+PASS | cancelar reserva libera asientos y cancela transferencias pendientes en la misma transacción
+⏰ Reserva EXP401 expirada automáticamente; asientos liberados
+PASS | expirar reserva libera asientos y cancela transferencias pendientes
+PASS | job de expiración limpia transferencias pendientes huérfanas de reservas terminales
+PASS | reembolso no reactiva una reserva cancelada
+PASS | retornos parciales repetidos suman hasta el valor original, sin excederlo
+PASS | retorno no puede fecharse antes de la generación del DTE
+PASS | retorno multifactura conserva numeración consecutiva si un DTE ya fue agotado
+
+RESULTADO: 23/23 passed
+PASS | contingencia asocia solo pendientes y completa transición simulada
+PASS | contingencia no transmite sin pendientes
+PASS | contingencia rechaza CAT-005 inválido y motivo 5 vacío
+PASS | contingencia rechaza orden temporal incorrecto y más de 24 horas
+PASS | contingencia rechaza DTE generado fuera del período
+PASS | contingencia rechaza lote superior a 1000 sin truncarlo
+PASS | contingencia revierte la transacción ante una selección parcialmente inválida
+PASS | invalidación FE tipo 2 genera evento y actualiza estado atómicamente
+PASS | invalidación CCFE conserva la fecha SQL exacta y permite plazo vigente
+PASS | invalidación tipo 1 exige reemplazo aceptado del mismo tipo
+PASS | invalidación rechaza reemplazo sin sello o de tipo distinto
+PASS | invalidación de tipo desconocido, DTE no aceptado y DTE ausente se rechaza
+PASS | invalidación FE valida fecha del evento contra fecha de generación
+PASS | invalidación CCFE vence al pasar el décimo día hábil del mes siguiente
+PASS | validador fiscal usa plazos de fecha de generación y sello
+PASS | validador de DTE rechaza CAT-005 inválido y motivo 5 vacío
+
+RESULTADO: 16 passed, 0 failed
+PASS | checkout interno requiere secreto configurado y válido
+PASS | el workflow comparte pago, espera confirmación y conserva el error DTE sin revertir el pago
+PASS | el QR de prueba identifica el DTE simulado y no incluye URLs de Hacienda
+PASS | límite de simulación: ambiente 00 y ningún destino fiscal externo
+
+> skymanager-system@1.0.0 test:logic
+> node backend/pruebas/logica-negocio-2026-10-14.cjs
+
+PASS ROUND-100-adult-2 El total coincide con la suma de importes guardados
+PASS ROUND-10.1-child-1 El total coincide con la suma de importes guardados
+PASS ROUND-10.1-child-2 El total coincide con la suma de importes guardados
+PASS ROUND-10.1-child-3 El total coincide con la suma de importes guardados
+PASS ROUND-99.99-child-2 El total coincide con la suma de importes guardados
+PASS ROUND-10.05-infant-2 El total coincide con la suma de importes guardados
+PASS ROUND-0.01-infant-5 El total coincide con la suma de importes guardados
+PASS ROUND-100-child-2 El total coincide con la suma de importes guardados
+PASS DTE-100 Una reserva recien creada y pagada puede facturarse
+PASS DTE-10.1 Una reserva recien creada y pagada puede facturarse
+PASS RES-sin-cliente Se rechaza una reserva incompleta
+PASS RES-sin-vuelos Se rechaza una reserva incompleta
+PASS RES-sin-pasajeros Se rechaza una reserva incompleta
+PASS RES-CAPACIDAD No se vende por encima de capacidad
+PASS RES-ID El ID enviado por el cliente no sustituye el pasajero creado
+PASS RES-EDAD Un adulto no obtiene tarifa infantil por declarar infant
+⏰ Reserva QA0001 expirada automáticamente; asientos liberados
+PASS EXP-0 Una reserva vencida sin liquidar libera sus asientos
+⏰ Reserva QA0001 expirada automáticamente; asientos liberados
+PASS EXP-1 Una reserva vencida sin liquidar libera sus asientos
+PASS STOCK-cancelar Cancelar o expirar devuelve servicios no consumidos al inventario
+⏰ Reserva QA0001 expirada automáticamente; asientos liberados
+PASS STOCK-expirar Cancelar o expirar devuelve servicios no consumidos al inventario
+PASS STOCK-LIMITE No se vende mas stock del disponible
+PASS CHECKIN-PAGADO Reserva pagada con tripulacion valida hace check-in
+PASS CHECKIN-SALDO Un saldo pendiente bloquea check-in
+PASS CHECKIN-ASIENTO-99F Check-in revalida un asiento previo invalido o de emergencia para menor
+PASS CHECKIN-ASIENTO-12A Check-in revalida un asiento previo invalido o de emergencia para menor
+PASS ASIENTO-CAPACIDAD Asignacion explicita rechaza un asiento inexistente
+PASS ASIENTO-PASE Cambiar asiento despues de check-in conserva un pase coherente
+PASS EMBARQUE-REEMBOLSO Reembolso total despues de check-in impide embarcar sin pago
+PASS EMBARQUE-VUELO-cancelled El estado terminal del vuelo impide embarcar
+PASS EMBARQUE-VUELO-completed El estado terminal del vuelo impide embarcar
+PASS EMBARQUE-SIN-CHECKIN No se embarca sin check-in previo
+PASS UI-MAPA-2 El mapa solo habilita asientos fisicos existentes
+PASS UI-MAPA-6 El mapa solo habilita asientos fisicos existentes
+PASS UI-MAPA-74 El mapa solo habilita asientos fisicos existentes
+PASS UI-OTRA-RESERVA Crear otra reserva exige seleccionar nuevamente el cliente
+PASS UI-REFRESH-OK El vencimiento en pagos renueva y reintenta
+PASS UI-REFRESH-PERFIL La carga del perfil tambien renueva una sesion vencida
+PASS UI-REFRESH-RETRY-400 Un error del negocio tras renovar no elimina la sesion valida
+PASS UI-REFRESH-RETRY-403 Un error del negocio tras renovar no elimina la sesion valida
+PASS UI-REFRESH-RETRY-500 Un error del negocio tras renovar no elimina la sesion valida
+PASS EDAD-LIMITES Edad civil valida cumpleaños de 2 y 12 años, fechas futuras e inexistentes
+PASS RES-EMERGENCIA No se crea una reserva infantil en salida de emergencia
+PASS EMBARQUE-VALIDO Un pasajero pagado con check-in valido puede abordar
+PASS ASIENTO-PENDIENTE El asiento se puede cambiar antes del check-in
+PASS STOCK-IDEMPOTENTE Devolver inventario dos veces no duplica stock
+PASS STOCK-ROLLBACK Un fallo de stock revierte la cancelacion completa
+PASS UI-IMPUESTOS El total mostrado coincide con base y tributos redondeados del backend
+PASS UI-EDAD-CUMPLEANOS La interfaz conserva tarifa infantil hasta el cumpleaños civil en El Salvador
+PASS UI-REFRESH-FALLIDO Un refresh revocado limpia la sesion
+PASS UI-REFRESH-CONCURRENTE Dos respuestas 401 comparten una renovacion
+PASS UI-LOGIN-401 Una clave de acceso incorrecta no dispara refresh
+RESULTADO 51/51 PASS; 0 FAIL
+
+> skymanager-system@1.0.0 lint:backoffice
+> npm --prefix frontend-backoffice run lint
+
+
+> skymanager-backoffice@1.0.0 lint
+> eslint src --quiet --rule no-unused-vars:off --rule react-hooks/set-state-in-effect:off --rule react-hooks/static-components:off --rule react-hooks/immutability:off --rule react-refresh/only-export-components:off --rule react-hooks/exhaustive-deps:off --rule react-hooks/preserve-manual-memoization:off
+
+
+> skymanager-system@1.0.0 build:backoffice
+> npm --prefix frontend-backoffice run build
+
+
+> skymanager-backoffice@1.0.0 build
+> vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 997 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                        0.75 kB │ gzip:   0.44 kB
+dist/assets/index-e5ZAkzrS.css        31.30 kB │ gzip:   5.91 kB
+dist/assets/react-Cm2epcum.js        163.90 kB │ gzip:  53.46 kB
+dist/assets/charts-mIQfhuSU.js       412.37 kB │ gzip: 111.06 kB
+dist/assets/index-Bgj34BFp.js        580.77 kB │ gzip: 143.09 kB
+dist/assets/exceljs.min-B-5dyBDx.js  938.56 kB │ gzip: 271.04 kB
+✓ built in 8.58s

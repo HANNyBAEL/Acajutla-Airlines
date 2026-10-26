@@ -155,7 +155,7 @@ const Checkin = () => {
                       <td className="px-4 py-3"><span className={'px-2 py-1 rounded-full text-xs font-medium ' + (ESTADO_PAX[p.checkin_status] || ['-'])[1]}>{(ESTADO_PAX[p.checkin_status] || ['-'])[0]}</span></td>
                       <td className="px-4 py-3">
                         <div className="flex space-x-2">
-                          <button className="btn-secondary py-1 px-2 text-xs" onClick={() => abrirMapa(p)}>Asiento</button>
+                          {p.checkin_status === 'pending' && <button className="btn-secondary py-1 px-2 text-xs" onClick={() => abrirMapa(p)}>Asiento</button>}
                           {p.checkin_status === 'pending' && <button className="btn-primary py-1 px-2 text-xs" onClick={() => hacerCheckin(p)}>Check-in</button>}
                           {p.checkin_status === 'checked_in' && <button className="btn-primary py-1 px-2 text-xs" onClick={() => abordar(p)}>Abordar</button>}
                           {p.boarding_pass_code && <button className="btn-secondary py-1 px-2 text-xs" onClick={() => setPase({ pasajero: p, bp: p.boarding_pass_code, seat: p.seat })}><FiPrinter size={12} /> Pase</button>}
@@ -197,7 +197,7 @@ const Checkin = () => {
                       <td className="px-4 py-3"><span className={'px-2 py-1 rounded-full text-xs font-medium ' + (ESTADO_PAX[p.checkin_status] || ['-'])[1]}>{(ESTADO_PAX[p.checkin_status] || ['-'])[0]}</span></td>
                       <td className="px-4 py-3">
                         <div className="flex space-x-2">
-                          <button className="btn-secondary py-1 px-2 text-xs" onClick={() => abrirMapa(p)}>Asiento</button>
+                          {p.checkin_status === 'pending' && <button className="btn-secondary py-1 px-2 text-xs" onClick={() => abrirMapa(p)}>Asiento</button>}
                           {p.checkin_status === 'pending' && <button className="btn-primary py-1 px-2 text-xs" onClick={() => hacerCheckin(p)}>Check-in</button>}
                           {p.checkin_status === 'checked_in' && <button className="btn-primary py-1 px-2 text-xs" onClick={() => abordar(p)}>Abordar</button>}
                           {p.boarding_pass_code && <button className="btn-secondary py-1 px-2 text-xs" onClick={() => setPase({ pasajero: p, bp: p.boarding_pass_code, seat: p.seat })}><FiPrinter size={12} /> Pase</button>}
@@ -229,6 +229,7 @@ const Checkin = () => {
                   <div className="w-8 text-right text-xs text-gray-500 pr-1">{fila}</div>
                   {mapa.columnas.map((c) => {
                     const id = fila + c;
+                    if (!mapa.asientos.includes(id)) return <span key={id} className="w-9 h-9" aria-hidden="true" />;
                     const occ = ocupados.has(id) && id !== seatSel;
                     const salida = mapa.filasSalida.includes(fila);
                     const sel = seatSel === id;

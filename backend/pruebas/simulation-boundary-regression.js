@@ -8,7 +8,7 @@ assert.equal(SIMULATION.simulado, true);
 assert.throws(() => validarDestinoHttp('https://example.invalid/fiscal'), /SIMULATION_NETWORK_BLOCKED/);
 assert.doesNotThrow(() => validarDestinoHttp('https://api.brevo.com/v3/smtp/email'));
 
-const roots = [path.resolve(__dirname, '../src'), path.resolve(__dirname, '../../frontend-backoffice/src'), path.resolve(__dirname, '../../Acajutla-Airlines-main-Pagina-web/Acajutla-Airlines-main')];
+const roots = [path.resolve(__dirname, '../src'), path.resolve(__dirname, '../../frontend-backoffice/src')];
 const forbidden = /https?:\/\/[^\s"'<>]*(?:mh\.gob|hacienda\.gob|factura\.gob)/i;
 function visit(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

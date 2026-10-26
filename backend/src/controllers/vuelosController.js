@@ -3,6 +3,7 @@ const Vuelo = require('../models/Vuelo');
 const { obtenerImpuestos } = require('../services/taxService');
 const { resolverClase } = require('../utils/fareClass');
 const { saldoReembolsable } = require('../utils/money');
+const { cancelarServiciosReserva } = require('../services/reservationInventoryService');
 
 const fechaLocalYaPaso = async (fecha, executor = pool) => {
   const fechaSql = String(fecha).replace('T', ' ');
@@ -249,6 +250,7 @@ const cancelarVuelo = async (req, res) => {
         [resItem.id]
       );
 
+      await cancelarServiciosReserva(resItem.id, connection);
       await connection.query('DELETE FROM flight_segments WHERE flight_id = ? AND reservation_id = ?', [id, resItem.id]);
 
       // Si tiene pagos aprobados, registrar reembolso

@@ -146,6 +146,8 @@ const reembolsar = async (paymentId, monto, reason, usuario) => {
     if (rows.length === 0) throw new Error('Pago aprobado no encontrado');
     const pago = rows[0];
     const montoRef = normalizarImporte(monto ?? pago.amount, 'El monto del reembolso');
+    const [embarcados] = await connection.query("SELECT id FROM flight_segments WHERE reservation_id = ? AND checkin_status = 'boarded' LIMIT 1 FOR UPDATE", [pago.reservation_id]);
+    if (embarcados.length) throw new Error('No se puede reembolsar una reserva con pasajeros embarcados');
     const montoRefCentavos = centavos(montoRef);
     const [reembolsosPrevios] = await connection.query(
       "SELECT COALESCE(SUM(amount), 0) AS amount FROM payments WHERE original_payment_id = ? AND type = 'refund' AND status = 'refunded'",
@@ -167,6 +169,9 @@ const reembolsar = async (paymentId, monto, reason, usuario) => {
     const nuevoPagadoCentavos = Math.max(0, centavos(reserva.paid_total || 0) - montoRefCentavos);
     const nuevoPagado = nuevoPagadoCentavos / 100;
     const nuevoStatus = (nuevoPagadoCentavos >= centavos(reserva.estimated_total)) ? 'paid' : (nuevoPagadoCentavos > 0 ? 'confirmed' : 'pending');
+    if (nuevoStatus !== 'paid') {
+      await connection.query("UPDATE flight_segments SET checkin_status = 'pending', checkin_at = NULL, boarding_pass_code = NULL WHERE reservation_id = ? AND checkin_status = 'checked_in'", [reserva.id]);
+    }
     // Un reembolso no debe revivir reservas canceladas, expiradas o completadas.
     const estadoTerminal = ['cancelled', 'expired', 'completed'].includes(reserva.status);
     if (estadoTerminal) {
