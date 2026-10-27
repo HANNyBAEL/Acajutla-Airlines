@@ -3,18 +3,20 @@ import api from '../services/api';
 import toast from 'react-hot-toast';
 import { FiPlus, FiToggleLeft, FiToggleRight, FiX } from 'react-icons/fi';
 
+const reglaVacia = { country_id: '', airport_id: '', code: '', name: '', calculation_type: 'percentage', value: '', applies_to: 'all', source_url: '', notes: '' };
+
 const FiscalidadTasas = () => {
-  const [paises, setPaises] = useState([]); const [aeropuertos, setAeropuertos] = useState([]); const [reglas, setReglas] = useState([]);
+  const [paises, setPaises] = useState([]); const [aeropuertos, setAeropuertos] = useState([]); const [reglas, setReglas] = useState([]); const [referencias, setReferencias] = useState([]);
   const [pais, setPais] = useState({ code: '', name: '' });
-  const [regla, setRegla] = useState({ country_id: '', airport_id: '', code: '', name: '', calculation_type: 'percentage', value: '', applies_to: 'all' });
+  const [regla, setRegla] = useState(reglaVacia);
   const [drawerRegla, setDrawerRegla] = useState(null);
   const [modal, setModal] = useState(false);
   const [reglaEditando, setReglaEditando] = useState(null);
 
   const cargar = async () => {
     try {
-      const [p, a, r] = await Promise.all([api.get('/fiscalidad/paises'), api.get('/aeropuertos'), api.get('/fiscalidad/reglas')]);
-      setPaises(p.data.datos || []); setAeropuertos(a.data.datos || []); setReglas(r.data.datos || []);
+      const [p, a, r, refs] = await Promise.all([api.get('/fiscalidad/paises'), api.get('/aeropuertos'), api.get('/fiscalidad/reglas'), api.get('/fiscalidad/referencias')]);
+      setPaises(p.data.datos || []); setAeropuertos(a.data.datos || []); setReglas(r.data.datos || []); setReferencias(refs.data.datos || []);
     } catch { toast.error('No se pudo cargar la configuración fiscal'); }
   };
   useEffect(() => { cargar(); }, []);
@@ -23,7 +25,7 @@ const FiscalidadTasas = () => {
     catch (e) { toast.error(e.response?.data?.error || 'Error al crear país'); }
   };
   const crearRegla = async () => {
-    try { await api.post('/fiscalidad/reglas', regla); setRegla({ country_id: '', airport_id: '', code: '', name: '', calculation_type: 'percentage', value: '', applies_to: 'all' }); toast.success('Regla fiscal creada'); cargar(); }
+    try { await api.post('/fiscalidad/reglas', regla); setRegla(reglaVacia); toast.success('Regla fiscal creada'); cargar(); }
     catch (e) { toast.error(e.response?.data?.error || 'Error al crear regla'); }
   };
   const editarReglaAction = (r) => {
@@ -35,7 +37,9 @@ const FiscalidadTasas = () => {
       name: r.name || '',
       calculation_type: r.calculation_type || 'percentage',
       value: r.value || '',
-      applies_to: r.applies_to || 'all'
+      applies_to: r.applies_to || 'all',
+      source_url: r.source_url || '',
+      notes: r.notes || ''
     });
     setModal(true);
   };
@@ -44,13 +48,13 @@ const FiscalidadTasas = () => {
       await api.put('/fiscalidad/reglas/' + reglaEditando.id, regla); 
       setModal(false); 
       setReglaEditando(null); 
-      setRegla({ country_id: '', airport_id: '', code: '', name: '', calculation_type: 'percentage', value: '', applies_to: 'all' }); 
+      setRegla(reglaVacia);
       toast.success('Regla fiscal actualizada'); 
       cargar(); 
     }
     catch (e) { toast.error(e.response?.data?.error || 'Error al actualizar regla'); }
   };
-  const toggle = async (r) => { try { await api.patch('/fiscalidad/reglas/' + r.id, { active: !r.active }); cargar(); } catch { toast.error('No se pudo actualizar la regla'); } };
+  const toggle = async (r) => { try { await api.patch('/fiscalidad/reglas/' + r.id, { active: !r.active }); toast.success(r.active ? 'Regla desactivada' : 'Regla activada'); cargar(); } catch { toast.error('No se pudo actualizar la regla'); } };
   const set = (key, value) => setRegla((prev) => ({ ...prev, [key]: value, ...(key === 'country_id' ? { airport_id: '' } : {}) }));
 
   const InfoFila = ({ label, value }) => (
@@ -65,17 +69,35 @@ const FiscalidadTasas = () => {
     <div className="grid lg:grid-cols-2 gap-6">
       <div className="card p-5 space-y-3"><h2 className="font-semibold text-gray-800">Nuevo país</h2>
         <div className="flex gap-3"><input className="input-field w-28" maxLength="2" placeholder="MX" value={pais.code} onChange={(e) => setPais({ ...pais, code: e.target.value.toUpperCase() })}/><input className="input-field" placeholder="México" value={pais.name} onChange={(e) => setPais({ ...pais, name: e.target.value })}/><button className="btn-primary" onClick={crearPais}><FiPlus /></button></div>
-        <div className="flex flex-wrap gap-2">{paises.map((p) => <span key={p.id} className="px-2 py-1 rounded bg-gray-100 text-sm">{p.code} · {p.name}</span>)}</div>
+        <div className="flex flex-wrap gap-2">{paises.filter((p) => p.active).map((p) => <span key={p.id} className="px-2 py-1 rounded bg-gray-100 text-sm">{p.code} · {p.name}</span>)}</div>
       </div>
       <div className="card p-5 space-y-3"><h2 className="font-semibold text-gray-800">Nueva regla fiscal</h2>
         <div className="grid grid-cols-2 gap-3"><select className="input-field" value={regla.country_id} onChange={(e) => set('country_id', e.target.value)}><option value="">País *</option>{paises.filter((p) => p.active).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
           <select className="input-field" value={regla.airport_id} onChange={(e) => set('airport_id', e.target.value)} disabled={!regla.country_id}><option value="">Todo el país</option>{aeropuertos.filter((a) => String(a.country_id) === String(regla.country_id)).map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select>
           <input className="input-field" placeholder="Código: IVA" value={regla.code} onChange={(e) => set('code', e.target.value.toUpperCase())}/><input className="input-field" placeholder="Nombre: IVA" value={regla.name} onChange={(e) => set('name', e.target.value)}/>
           <select className="input-field" value={regla.calculation_type} onChange={(e) => set('calculation_type', e.target.value)}><option value="percentage">Porcentaje</option><option value="fixed">Monto fijo por pasajero</option></select><input type="number" min="0" step="0.01" className="input-field" placeholder={regla.calculation_type === 'percentage' ? 'Porcentaje' : 'USD'} value={regla.value} onChange={(e) => set('value', e.target.value)}/>
-          <select className="input-field" value={regla.applies_to} onChange={(e) => set('applies_to', e.target.value)}><option value="all">Todos los vuelos</option><option value="domestic">Solo nacionales</option><option value="international">Solo internacionales</option></select><button className="btn-primary" onClick={() => { setReglaEditando(null); crearRegla(); }}>Crear regla</button></div>
+          <select className="input-field" value={regla.applies_to} onChange={(e) => set('applies_to', e.target.value)}><option value="all">Todos los vuelos</option><option value="domestic">Solo nacionales</option><option value="international">Solo internacionales</option></select><button className="btn-primary" onClick={() => { setReglaEditando(null); crearRegla(); }}>Crear regla</button>
+          <input className="input-field col-span-2" type="url" placeholder="Fuente oficial (URL, opcional)" value={regla.source_url} onChange={(e) => set('source_url', e.target.value)}/>
+          <textarea className="input-field col-span-2 min-h-20" placeholder="Notas, vigencia o condiciones (opcional)" value={regla.notes} onChange={(e) => set('notes', e.target.value)}/></div>
       </div>
     </div>
     <div className="card overflow-hidden"><table className="w-full"><thead className="bg-gray-50"><tr><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Ámbito</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Impuesto/tasa</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Cálculo</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Aplica a</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Estado</th></tr></thead><tbody className="divide-y">{reglas.map((r) => <tr key={r.id} onClick={() => setDrawerRegla(r)} className="cursor-pointer hover:bg-gray-50"><td className="p-3 text-sm">{r.country_name}{r.airport_code ? ' · ' + r.airport_code : ' · Nacional'}</td><td className="p-3 text-sm font-medium">{r.code} · {r.name}</td><td className="p-3 text-sm">{r.calculation_type === 'percentage' ? r.value + '%' : '$' + Number(r.value).toFixed(2)}</td><td className="p-3 text-sm">{r.applies_to === 'all' ? 'Todos' : r.applies_to === 'domestic' ? 'Nacional' : 'Internacional'}</td><td className="p-3"><button className={r.active ? 'text-green-700' : 'text-red-700'} onClick={(e) => { e.stopPropagation(); toggle(r); }}>{r.active ? <FiToggleRight size={22}/> : <FiToggleLeft size={22}/>}</button></td></tr>)}{!reglas.length && <tr><td colSpan="5" className="p-6 text-center text-gray-500">No hay reglas configuradas.</td></tr>}</tbody></table></div>
+
+    <section className="space-y-3">
+      <div><h2 className="text-xl font-bold text-gray-800">Referencias fiscales y aeroportuarias</h2><p className="text-sm text-gray-500 mt-1">Datos consultados el 27/10/2026. Las reglas marcadas para cobro automático se suman al precio; las demás son informativas por moneda local, variación mensual o condiciones del pasajero.</p></div>
+      <div className="card overflow-x-auto"><table className="w-full min-w-[1050px]"><thead className="bg-gray-50"><tr>
+        <th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Ámbito</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Concepto</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Importe publicado</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Aplica a</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Uso</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Fuente / nota</th>
+      </tr></thead><tbody className="divide-y">{referencias.map((ref) => <tr key={ref.id} className="align-top hover:bg-gray-50">
+        <td className="p-3 text-sm">{ref.country_name}{ref.airport_code ? ` · ${ref.airport_code}` : ' · Todo el país'}</td>
+        <td className="p-3 text-sm font-medium">{ref.name}<div className="text-xs text-gray-500 mt-1">{ref.code}</div></td>
+        <td className="p-3 text-sm">{ref.value == null ? 'Sin tarifa publicada' : ref.calculation_type === 'percentage' ? `${Number(ref.value)}%` : `${ref.currency} ${Number(ref.value).toLocaleString('es-SV', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`}
+          {ref.valid_from && <div className="text-xs text-gray-500 mt-1">Vigencia: {String(ref.valid_from).slice(0, 10)}{ref.valid_to ? ` a ${String(ref.valid_to).slice(0, 10)}` : ''}</div>}
+        </td>
+        <td className="p-3 text-sm">{ref.applies_to === 'all' ? 'Todos' : ref.applies_to === 'domestic' ? 'Nacional' : 'Internacional'}</td>
+        <td className="p-3"><span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${ref.has_active_rule ? 'bg-green-100 text-green-800' : ref.status === 'verified' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}`}>{ref.has_active_rule ? (ref.status === 'review' ? 'Cobro automático · revisar' : 'Cobro automático') : ref.status === 'verified' ? 'Referencia' : 'Revisar'}</span></td>
+        <td className="p-3 text-sm max-w-md">{ref.source_url && <a href={ref.source_url} target="_blank" rel="noreferrer" className="text-primary-700 underline">Fuente oficial / autoridad</a>}{ref.source_checked_at && <span className="text-xs text-gray-500"> · revisada {String(ref.source_checked_at).slice(0, 10)}</span>}{ref.notes && <p className="mt-1 text-xs text-gray-600">{ref.notes}</p>}</td>
+      </tr>)}{!referencias.length && <tr><td colSpan="6" className="p-6 text-center text-gray-500">No hay referencias cargadas. Ejecuta la migración de fiscalidad.</td></tr>}</tbody></table></div>
+    </section>
 
     {/* Drawer */}
     {drawerRegla && (
@@ -105,6 +127,9 @@ const FiscalidadTasas = () => {
             <InfoFila label="Valor" value={drawerRegla.calculation_type === 'percentage' ? drawerRegla.value + '%' : '$' + Number(drawerRegla.value).toFixed(2)} />
             <InfoFila label="Aplica a" value={drawerRegla.applies_to === 'all' ? 'Todos' : drawerRegla.applies_to === 'domestic' ? 'Nacional' : 'Internacional'} />
             <InfoFila label="Estado" value={drawerRegla.active ? 'Activo' : 'Inactivo'} />
+            {drawerRegla.source_checked_at && <InfoFila label="Fuente revisada" value={String(drawerRegla.source_checked_at).slice(0, 10)} />}
+            {drawerRegla.source_url && <div className="py-3 border-b border-gray-100"><span className="block font-medium text-gray-700 mb-1">Fuente</span><a href={drawerRegla.source_url} target="_blank" rel="noreferrer" className="text-primary-700 underline break-all">Abrir fuente</a></div>}
+            {drawerRegla.notes && <div className="py-3"><span className="block font-medium text-gray-700 mb-1">Notas</span><p className="text-sm text-gray-600">{drawerRegla.notes}</p></div>}
           </div>
           <div className="px-6 pt-5 pb-10 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
             <button onClick={() => { const r = drawerRegla; setDrawerRegla(null); toggle(r); }} className="btn-secondary">
@@ -125,7 +150,7 @@ const FiscalidadTasas = () => {
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-gray-800">Editar Regla Fiscal</h2>
-            <button onClick={() => { setModal(false); setRegla({ country_id: '', airport_id: '', code: '', name: '', calculation_type: 'percentage', value: '', applies_to: 'all' }); }} className="text-gray-500 hover:text-gray-700">
+            <button onClick={() => { setModal(false); setRegla(reglaVacia); setReglaEditando(null); }} className="text-gray-500 hover:text-gray-700">
               <FiX size={22} />
             </button>
           </div>
@@ -161,7 +186,7 @@ const FiscalidadTasas = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Valor *</label>
-              <input type="number" min="0" step="0.01" className="input-field" placeholder={regla.calculation_type === 'percentage' ? 'Porcentaje' : 'USD'} value={regla.value} onChange={(e) => set('value', e.target.value)}/>
+              <input type="number" min="0" step="0.01" className="input-field" placeholder={regla.calculation_type === 'percentage' ? 'Porcentaje' : 'USD por pasajero'} value={regla.value} onChange={(e) => set('value', e.target.value)}/>
             </div>
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Aplica a *</label>
@@ -171,9 +196,17 @@ const FiscalidadTasas = () => {
                 <option value="international">Solo internacionales</option>
               </select>
             </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fuente oficial (opcional)</label>
+              <input type="url" className="input-field" placeholder="https://..." value={regla.source_url} onChange={(e) => set('source_url', e.target.value)}/>
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Notas y condiciones (opcional)</label>
+              <textarea className="input-field min-h-20" value={regla.notes} onChange={(e) => set('notes', e.target.value)}/>
+            </div>
           </div>
           <div className="flex justify-end space-x-2 mt-6">
-            <button className="btn-secondary" onClick={() => { setModal(false); setRegla({ country_id: '', airport_id: '', code: '', name: '', calculation_type: 'percentage', value: '', applies_to: 'all' }); }}>Cancelar</button>
+            <button className="btn-secondary" onClick={() => { setModal(false); setRegla(reglaVacia); setReglaEditando(null); }}>Cancelar</button>
             <button className="btn-primary" onClick={actualizarRegla}>Guardar cambios</button>
           </div>
         </div>

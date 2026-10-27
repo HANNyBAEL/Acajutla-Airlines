@@ -5,6 +5,8 @@ router.use(verificarToken);
 router.get('/paises', verificarRol('admin', 'operations'), c.listarPaises);
 router.post('/paises', verificarRol('admin', 'operations'), c.crearPais);
 router.get('/reglas', verificarRol('admin', 'operations'), c.listarReglas);
+router.get('/referencias', verificarRol('admin', 'operations'), c.listarReferencias);
 router.post('/reglas', verificarRol('admin', 'operations'), c.crearRegla);
+router.put('/reglas/:id', verificarRol('admin', 'operations'), c.actualizarRegla);
 router.patch('/reglas/:id', verificarRol('admin', 'operations'), c.cambiarRegla);
 module.exports = router;

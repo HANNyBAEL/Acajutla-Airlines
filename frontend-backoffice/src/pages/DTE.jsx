@@ -6,6 +6,8 @@ import SearchableSelect from '../components/SearchableSelect';
 import { FiFileText, FiCheckCircle, FiXCircle, FiClock, FiPlus, FiEye, FiX } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
+const ETIQUETAS_DTE = { '01': 'FE', '03': 'CCFE', '05': 'NCE', '06': 'NDE', '11': 'FEXE', '14': 'FSEE' };
+
 const DTE = () => {
   const { usuario } = useAuth();
   const puedeEmitir = ['admin', 'cashier'].includes(roleOf(usuario));
@@ -36,7 +38,13 @@ const DTE = () => {
       const payload = { reservation_id: Number(form.reservation_id), tipo_dte: form.tipo_dte, requiere_deduccion_fiscal: form.tipo_dte === '01' && form.requiere_deduccion_fiscal };
       if (form.tipo_dte === '03') payload.receptor = { nit: form.nit, nrc: form.nrc || null };
       const r = await dteAPI.emitir(payload);
-      if (r.data.datos.estado === 'accepted') { toast.success('DTE emitido. Sello: ' + r.data.datos.sello); api.post('/correos/dte', { uuid: r.data.datos.uuid }).catch(() => {}); } else { toast.error('MH rechazó el DTE: ' + (r.data.datos.errores || []).join(', ')); }
+      if (r.data.datos.estado === 'accepted') {
+        toast.success('DTE emitido. Sello: ' + r.data.datos.sello);
+        const correo = r.data.datos.correo;
+        if (correo && correo.enviado && correo.simulado) toast('Correo registrado como simulado; no llegó al destinatario.', { icon: 'ℹ️' });
+        else if (correo && correo.enviado) toast.success('Copia enviada al correo del cliente');
+        else if (correo) toast.error('DTE emitido, pero no se envió el correo: ' + (correo.motivo || 'Error desconocido'));
+      } else { toast.error('MH rechazó el DTE: ' + (r.data.datos.errores || []).join(', ')); }
       setModal(false);
       cargar();
     } catch (e) {
@@ -75,7 +83,7 @@ const DTE = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-800">Facturación Electrónica (DTE)</h1>
-          <p className="text-gray-500 mt-1">FE y CCFE conforme al Anexo II de la normativa MH</p>
+          <p className="text-gray-500 mt-1">FE, CCFE, NCE y NDE conforme al Anexo II de la normativa MH</p>
         </div>
         {puedeEmitir && <button className="btn-primary flex items-center space-x-2" onClick={() => setModal(true)}>
           <FiPlus /><span>Emitir DTE</span>
@@ -122,7 +130,7 @@ const DTE = () => {
             ) : dtes.map((d) => (
               <tr key={d.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4"><code className="text-xs font-mono text-gray-700">{d.control_number}</code></td>
-                <td className="px-6 py-4"><span className="px-2 py-1 bg-primary-100 text-primary-700 rounded text-xs font-medium">{d.dte_type === '01' ? 'FE' : 'CCFE'}</span></td>
+                <td className="px-6 py-4"><span className="px-2 py-1 bg-primary-100 text-primary-700 rounded text-xs font-medium">{ETIQUETAS_DTE[String(d.dte_type).padStart(2, '0')] || `DTE ${d.dte_type}`}</span></td>
                 <td className="px-6 py-4 font-mono text-sm text-primary-700">{d.pnr || '-'}</td>
                 <td className="px-6 py-4 text-sm">{d.receiver_name}</td>
                 <td className="px-6 py-4 text-sm font-semibold">${parseFloat(d.total_to_pay).toFixed(2)}</td>

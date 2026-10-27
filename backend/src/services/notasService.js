@@ -40,7 +40,7 @@ function numeroALetras(num) {
 }
 
 async function generarNotaInterna(datos, conn) {
-  const { origenUuid, tipoDte, motivo, monto, noGravado } = datos;
+  const { origenUuid, tipoDte, motivo, monto, noGravado, montoIncluyeIva } = datos;
   if (!['05', '06'].includes(tipoDte)) throw new Error('Tipo de nota inválido (05 NCE / 06 NDE)');
   const [orig] = await conn.query("SELECT * FROM dte_headers WHERE uuid_generation = ? AND dte_type IN ('01','03','11')", [origenUuid]);
   if (!orig.length) throw new Error('DTE origen no encontrado o no válido (Solo FE, CCFE o FEXE)');
@@ -55,14 +55,15 @@ async function generarNotaInterna(datos, conn) {
   const esCCFE = tipoOrigen === '03';
   const esFEXE = tipoOrigen === '11';
 
-  const ventaGravada = redondeo(m);
   // El IVA no se fija aquí: se replica la proporción que tenía el DTE de origen,
   // cuyos tributos provienen de las reglas de "Fiscalidad y tasas".
   const resOrig = origJson.resumen || {};
   const tributoIvaOrig = (Array.isArray(resOrig.tributos) ? resOrig.tributos : []).find((t) => String(t.codigo) === '20');
   const ivaOrig = Number(esCCFE ? (tributoIvaOrig ? tributoIvaOrig.valor : 0) : (resOrig.totalIva || 0)) || 0;
   const proporcionIva = Number(resOrig.totalGravada) > 0 ? ivaOrig / Number(resOrig.totalGravada) : 0;
-  const totalivaItem = esFEXE ? 0 : redondeo(ventaGravada * proporcionIva);
+  const montoConIva = esCCFE && montoIncluyeIva === true;
+  const ventaGravada = redondeo(montoConIva && proporcionIva > 0 ? m / (1 + proporcionIva) : m);
+  const totalivaItem = esFEXE ? 0 : redondeo(montoConIva ? m - ventaGravada : ventaGravada * proporcionIva);
   const llevaIva = esCCFE && totalivaItem > 0;
   const tributosItem = llevaIva ? ['20'] : null;
   const codTributoItem = llevaIva ? '20' : null;

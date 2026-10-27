@@ -6,6 +6,7 @@ const { VERSIONES_DTE } = require('./dte/catalogs');
 const { serializarEmision, siguienteControl } = require('./dte/serializarEmision');
 const { SIMULATION } = require('../config/simulation');
 const { fechaElSalvador, horaElSalvador } = require('../utils/fechaElSalvador');
+const { resolverPoliticaFacturacion } = require('./facturacionOrigenService');
 
 const CONFIG = {
   ambiente: SIMULATION.ambiente,
@@ -55,6 +56,13 @@ const emitirInterno = async (opciones, conn) => {
   );
   if (res.length === 0) throw new Error('Reserva no encontrada');
   const reserva = res[0];
+  const politicaFacturacion = await resolverPoliticaFacturacion(reservation_id, conn);
+  if (politicaFacturacion.tipo === 'recibo_venta') {
+    throw new Error('No aplica DTE salvadoreño: el primer vuelo no sale de El Salvador. Emita el recibo de venta.');
+  }
+  if (politicaFacturacion.tipo === 'revision_manual') {
+    throw new Error('No se puede emitir el DTE hasta confirmar manualmente el país de origen del primer vuelo.');
+  }
   if (reserva.status !== 'paid') throw new Error('La reserva debe estar en estado PAGADA para emitir DTE');
 
   const [pax] = await conn.query('SELECT * FROM passengers WHERE reservation_id = ? ORDER BY id', [reservation_id]);

@@ -1,4 +1,5 @@
 const notasService = require('../services/notasService');
+const pagoDteService = require('../services/pagoDteService');
 
 const listar = async (req, res) => {
   try {
@@ -17,7 +18,10 @@ const origenes = async (req, res) => {
 const crear = async (req, res) => {
   try {
     const r = await notasService.generarNota(req.body);
-    res.status(201).json({ exito: true, mensaje: 'Nota emitida y sellada', datos: r });
+    let correo;
+    try { correo = await pagoDteService.enviarDTEExistente(r.uuid); }
+    catch (e) { correo = { enviado: false, motivo: e.message }; }
+    res.status(201).json({ exito: true, mensaje: 'Nota emitida y sellada', datos: Object.assign({}, r, { correo: correo }) });
   } catch (e) {
     console.error('Error nota:', e);
     res.status(400).json({ error: e.message });

@@ -22,7 +22,11 @@ const wrap = (titulo, cuerpo) =>
   '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' + estilos + '</style></head><body><div class="card">' +
   '<div class="head"><h1>ACAJUTLA AIRLINES</h1><p>Sistema Integral de Gestión</p></div>' +
   '<div class="body"><h2 style="margin:0 0 12px;font-size:16px;color:#1d4ed8">' + titulo + '</h2>' + cuerpo + '</div>' +
-  '<div class="foot">Correo transaccional automático. Ambiente de pruebas (CAT-001: 00). Representación gráfica disponible en el backoffice.</div></div></body></html>';
+  '<div class="foot">Correo transaccional automático de Acajutla Airlines.</div></div></body></html>';
+
+const escaparHtml = (valor) => String(valor == null ? '' : valor)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/\"/g, '&quot;').replace(/'/g, '&#39;');
 
 async function dispatch(outboxId) {
   const [rows] = await pool.query('SELECT * FROM email_outbox WHERE id = ?', [outboxId]);
@@ -95,7 +99,7 @@ async function enviarConfirmacionReserva(reservationId) {
 async function enviarComprobantePago(pago) {
   const pagoId = typeof pago === 'object' && pago !== null ? (pago.id || pago.payment_id) : pago;
   const [p] = await pool.query(
-    `SELECT p.*, r.pnr, r.estimated_total, c.first_names, c.last_names, c.email
+    `SELECT p.*, r.pnr, r.estimated_total, r.paid_total, c.first_names, c.last_names, c.email
      FROM payments p JOIN reservations r ON r.id = p.reservation_id LEFT JOIN customers c ON c.id = r.customer_id
      WHERE p.id = ?`, [pagoId]);
   if (!p.length) return { enviado: false, motivo: 'Pago no encontrado' };
@@ -112,6 +116,35 @@ async function enviarComprobantePago(pago) {
   return queue('comprobante_pago', row.email, 'Comprobante de pago - Reserva ' + row.pnr, wrap('Comprobante de Pago', cuerpo), 'pago', pagoId);
 }
 
+async function enviarReciboVenta(pago) {
+  const pagoId = typeof pago === 'object' && pago !== null ? (pago.id || pago.payment_id) : pago;
+  const [p] = await pool.query(
+    `SELECT p.*, r.pnr, r.estimated_total, r.paid_total, c.first_names, c.last_names, c.email
+     FROM payments p JOIN reservations r ON r.id = p.reservation_id LEFT JOIN customers c ON c.id = r.customer_id
+     WHERE p.id = ? AND p.status = 'approved' AND p.type = 'payment'`, [pagoId]);
+  if (!p.length) return { enviado: false, motivo: 'Pago aprobado no encontrado' };
+  const row = p[0];
+  const [vuelos] = await pool.query(
+    `SELECT f.flight_number, f.departure_datetime, ao.iata_code AS origen, ad.iata_code AS destino
+     FROM flight_segments fs JOIN flights f ON f.id = fs.flight_id
+     JOIN routes rt ON rt.id = f.route_id JOIN airports ao ON ao.id = rt.origin_id JOIN airports ad ON ad.id = rt.destination_id
+     WHERE fs.reservation_id = ? ORDER BY f.departure_datetime, fs.id`, [row.reservation_id]);
+  const rutas = vuelos.map(v => '<tr><td>' + escaparHtml(v.flight_number) + '</td><td>' + escaparHtml(v.origen) + ' → ' + escaparHtml(v.destino) + '</td><td>' + escaparHtml(new Date(v.departure_datetime).toLocaleString('es-SV')) + '</td></tr>').join('');
+  const cuerpo =
+    '<p>Estimado/a ' + escaparHtml(row.first_names || '') + ' ' + escaparHtml(row.last_names || '') + ', hemos recibido el pago de su boleto.</p>' +
+    '<table class="kv"><tr><td>Reserva (PNR)</td><td class="total">' + escaparHtml(row.pnr) + '</td></tr>' +
+    '<tr><td>Total del boleto</td><td>$' + Number(row.estimated_total).toFixed(2) + ' ' + escaparHtml(row.currency) + '</td></tr>' +
+    '<tr><td>Total recibido</td><td>$' + Number(row.paid_total || 0).toFixed(2) + ' ' + escaparHtml(row.currency) + '</td></tr>' +
+    '<tr><td>Último pago</td><td>$' + Number(row.amount).toFixed(2) + ' ' + escaparHtml(row.currency) + '</td></tr>' +
+    '<tr><td>Método</td><td>' + escaparHtml(row.method) + '</td></tr>' +
+    '<tr><td>Referencia</td><td>' + escaparHtml(row.external_reference || '-') + '</td></tr>' +
+    '<tr><td>Fecha</td><td>' + escaparHtml(new Date(row.payment_date).toLocaleString('es-SV')) + '</td></tr></table>' +
+    '<h3 style="font-size:13px;margin:12px 0 4px">Itinerario</h3>' +
+    '<table class="kv"><tr><td>Vuelo</td><td>Ruta</td><td>Salida</td></tr>' + rutas + '</table>' +
+    '<p class="note">Este recibo acredita la venta y el pago. No es un DTE ni sustituye los documentos fiscales que pudieran corresponder en la jurisdicción aplicable.</p>';
+  return queue('recibo_venta', row.email, 'Recibo de venta - Reserva ' + row.pnr, wrap('Recibo de Venta', cuerpo), 'pago', pagoId);
+}
+
 async function enviarDTE(dte) {
   const uuid = typeof dte === 'object' && dte !== null ? (dte.uuid || dte.uuid_generation) : dte;
   const [h] = await pool.query(
@@ -120,7 +153,14 @@ async function enviarDTE(dte) {
      WHERE h.uuid_generation = ?`, [uuid]);
   if (!h.length) return { enviado: false, motivo: 'DTE no encontrado' };
   const row = h[0];
-  const tipoNombre = row.dte_type === '01' ? 'Factura Electrónica (FE)' : row.dte_type === '03' ? 'Comprobante de Crédito Fiscal (CCFE)' : 'DTE ' + row.dte_type;
+  const tipoNombre = ({
+    '01': 'Factura Electrónica (FE)',
+    '03': 'Comprobante de Crédito Fiscal (CCFE)',
+    '05': 'Nota de Crédito Electrónica (NCE)',
+    '06': 'Nota de Débito Electrónica (NDE)',
+    '11': 'Factura de Exportación Electrónica (FEXE)',
+    '14': 'Factura de Sujeto Excluido Electrónica (FSEE)'
+  })[String(row.dte_type)] || 'DTE ' + row.dte_type;
   const cuerpo =
     '<p>Estimado/a ' + (row.first_names || '') + ' ' + (row.last_names || '') + ', adjuntamos los datos de su documento tributario electrónico.</p>' +
     '<table class="kv"><tr><td>Tipo</td><td>' + tipoNombre + '</td></tr>' +
@@ -156,12 +196,19 @@ async function listar() {
   return rows;
 }
 
+async function obtener(id) {
+  const [rows] = await pool.query('SELECT * FROM email_outbox WHERE id = ?', [id]);
+  return rows[0] || null;
+}
+
 module.exports = {
   queue: queue,
   dispatch: dispatch,
   enviarConfirmacionReserva: enviarConfirmacionReserva,
   enviarComprobantePago: enviarComprobantePago,
+  enviarReciboVenta: enviarReciboVenta,
   enviarDTE: enviarDTE,
   enviarCancelacionVuelo: enviarCancelacionVuelo,
-  listar: listar
+  listar: listar,
+  obtener: obtener
 };

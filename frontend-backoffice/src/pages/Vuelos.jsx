@@ -3,7 +3,7 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { roleOf } from '../utils/roles';
 import SearchableSelect from '../components/SearchableSelect';
-import { FiPlus, FiSearch, FiX, FiXCircle, FiRefreshCw, FiMapPin, FiClock, FiCpu, FiDollarSign, FiCalendar } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiX, FiXCircle, FiRefreshCw, FiMapPin, FiClock, FiCpu, FiDollarSign, FiCalendar, FiUsers } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { confirmarAccion } from '../utils/confirm';
 import Swal from 'sweetalert2';
@@ -232,7 +232,7 @@ const Vuelos = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-800">Gestión de Vuelos</h1>
-          <p className="text-gray-500 mt-1">Programación, cancelación y reprogramación</p>
+          <p className="text-gray-500 mt-1">Programación y operación; los boletos vendidos cuentan reservas totalmente pagadas</p>
         </div>
         {puedeGestionar && <button className="btn-primary flex items-center space-x-2" onClick={abrirModal}>
           <FiPlus /><span>Nuevo Vuelo</span>
@@ -263,17 +263,18 @@ const Vuelos = () => {
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="w-[12%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Vuelo</th>
-                <th className="w-[16%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Ruta</th>
-                <th className="w-[22%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Salida</th>
-                <th className="w-[22%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Aeronave</th>
+                <th className="w-[15%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Ruta</th>
+                <th className="w-[21%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Salida</th>
+                <th className="w-[18%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Aeronave</th>
+                <th className="w-[14%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Boletos vendidos</th>
                 <th className="w-[14%] px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {cargando ? (
-                <tr><td colSpan="5" className="text-center py-8 text-gray-500">Cargando vuelos...</td></tr>
+                <tr><td colSpan="6" className="text-center py-8 text-gray-500">Cargando vuelos...</td></tr>
               ) : lista.length === 0 ? (
-                <tr><td colSpan="5" className="text-center py-8 text-gray-500">No hay vuelos registrados</td></tr>
+                <tr><td colSpan="6" className="text-center py-8 text-gray-500">No hay vuelos registrados</td></tr>
               ) : vuelosPaginados.map((v) => (
                 <tr
                   key={v.id}
@@ -284,6 +285,9 @@ const Vuelos = () => {
                   <td className="px-6 py-4 text-sm font-medium text-gray-800" title={(v.origin || '') + ' a ' + (v.destination || '')}>{v.origin} → {v.destination}</td>
                   <td className="px-6 py-4 text-sm text-gray-600" title={new Date(v.departure_datetime).toLocaleString('es-SV')}>{new Date(v.departure_datetime).toLocaleString('es-SV')}</td>
                   <td className="px-6 py-4 text-sm text-gray-600" title={v.aircraft || ''}>{v.aircraft || '-'}</td>
+                  <td className="px-6 py-4 text-sm font-semibold text-gray-800" title="Reservas completamente pagadas / capacidad total">
+                    {Number(v.tickets_sold || 0)} / {Number(v.total_capacity || 0)}
+                  </td>
                   <td className="px-6 py-4">
                     <span className={'px-3 py-1 rounded-full text-xs font-medium ' + estadoBadge(estadoDe(v))}>{estadoLabel(estadoDe(v))}</span>
                   </td>
@@ -340,6 +344,8 @@ const Vuelos = () => {
                 <InfoFila icon={FiCpu} label="Aeronave" value={drawerVuelo.aircraft || '—'} />
                 <InfoFila icon={FiMapPin} label="Puerta de embarque" value={drawerVuelo.gate || 'Sin asignar'} />
                 <InfoFila icon={FiDollarSign} label="Precio base" value={drawerVuelo.base_price ? `$${Number(drawerVuelo.base_price).toFixed(2)} USD` : '—'} />
+                <InfoFila icon={FiUsers} label="Boletos vendidos" value={`${Number(drawerVuelo.tickets_sold || 0)} / ${Number(drawerVuelo.total_capacity || 0)}`} />
+                <InfoFila icon={FiClock} label="En reserva / pago parcial" value={String(Number(drawerVuelo.tickets_reserved || 0))} />
               </div>
             </div>
 

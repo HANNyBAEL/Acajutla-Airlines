@@ -36,7 +36,7 @@ export const ROLE_ORDER = ['admin', 'operations', 'cashier', 'airport_staff', 'c
 const ACCESS_BY_ROLE = {
   admin: ['*'],
   operations: ['dashboard', 'clientes', 'nueva-reserva', 'vuelos', 'aeropuertos', 'reservas', 'aeronaves', 'reportes', 'comercial', 'operaciones', 'fiscalidad', 'correos', 'notificaciones', 'checkin'],
-  cashier: ['dashboard', 'clientes', 'nueva-reserva', 'reservas', 'pagos', 'dte', 'notas', 'contingencia', 'dte-export', 'reportes', 'comercial', 'cumplimiento', 'correos', 'notificaciones', 'checkin'],
+  cashier: ['dashboard', 'clientes', 'nueva-reserva', 'reservas', 'pagos', 'dte', 'notas', 'contingencia', 'reportes', 'comercial', 'cumplimiento', 'correos', 'notificaciones', 'checkin'],
   airport_staff: ['checkin', 'notificaciones'],
   corporate_agent: ['comercial', 'notificaciones'],
   auditor: ['dashboard', 'clientes', 'vuelos', 'reservas', 'pagos', 'dte', 'reportes', 'auditoria', 'cierre-qa', 'cumplimiento', 'correos', 'notificaciones'],

@@ -82,7 +82,7 @@ const Pagos = () => {
       if (!/^\d{3,4}$/.test(form.cvv)) return toast.error('El CVV debe tener 3 o 4 dígitos');
     }
     if (form.method === 'transfer' && (!form.referencia.trim() || form.referencia.length > 100)) return toast.error('La referencia debe tener entre 1 y 100 caracteres');
-    if (form.tipo_dte === '03') {
+    if (modal.origin_country_code === 'SV' && form.tipo_dte === '03') {
       if (!/^\d{9,14}$/.test(form.receptor_nit)) return toast.error('El NIT del receptor debe contener entre 9 y 14 dígitos');
       if (!/^\d{1,8}$/.test(form.receptor_nrc)) return toast.error('El NRC del receptor debe contener entre 1 y 8 dígitos');
     }
@@ -90,13 +90,13 @@ const Pagos = () => {
     try {
       const payload = {
         reservation_id: modal.id, method: form.method, amount: monto,
-        tipo_dte: form.tipo_dte,
-        receptor: form.tipo_dte === '03' ? { nit: form.receptor_nit, nrc: form.receptor_nrc || null } : undefined,
-        requiere_deduccion_fiscal: form.tipo_dte === '01' && form.requiere_deduccion_fiscal
+        tipo_dte: modal.origin_country_code === 'SV' ? form.tipo_dte : null,
+        receptor: modal.origin_country_code === 'SV' && form.tipo_dte === '03' ? { nit: form.receptor_nit, nrc: form.receptor_nrc || null } : undefined,
+        requiere_deduccion_fiscal: modal.origin_country_code === 'SV' && form.tipo_dte === '01' && form.requiere_deduccion_fiscal
       };
       if (form.method === 'card') payload.card = { numero: form.numero, expiracion: form.expiracion, cvv: form.cvv };
       if (form.method === 'transfer') payload.referencia = form.referencia;
-      if (form.tipo_dte === '03') payload.receptor = { nit: form.receptor_nit, nrc: form.receptor_nrc || null };
+      if (modal.origin_country_code === 'SV' && form.tipo_dte === '03') payload.receptor = { nit: form.receptor_nit, nrc: form.receptor_nrc || null };
       const r = await api.post('/pagos/procesar', payload);
       const st = r.data.datos.status;
       if (st === 'approved') {
@@ -105,7 +105,13 @@ const Pagos = () => {
         } else {
           toast.success('Pago aprobado. Saldo pendiente: $' + Number(r.data.datos.reservation_balance || 0).toFixed(2));
         }
-        if (r.data.dte && r.data.dte.envio && r.data.dte.envio.enviado) {
+        if (r.data.facturacion?.tipo === 'recibo_venta') {
+          if (r.data.recibo_venta?.enviado) toast.success('DTE salvadoreño omitido. Recibo de venta enviado' + (r.data.recibo_venta.simulado ? ' (simulado)' : ''));
+          else if (r.data.datos.reservation_status === 'paid') toast.error('Pago aprobado; no aplica DTE salvadoreño. No se pudo enviar el recibo: ' + (r.data.recibo_venta?.motivo || 'sin correo'));
+          else toast.success('Primer vuelo fuera de El Salvador: se enviará recibo de venta al completar el pago, sin DTE salvadoreño.');
+        } else if (r.data.facturacion?.tipo === 'revision_manual') {
+          toast.error('Pago aprobado; origen sin confirmar. La facturación requiere revisión manual.');
+        } else if (r.data.dte && r.data.dte.envio && r.data.dte.envio.enviado) {
           toast.success('DTE ' + r.data.dte.numeroControl + ' emitido. Correo enviado con PDF y ZIP que contiene el JSON' + (r.data.dte.envio.simulado ? ' (simulado, ver storage/correos)' : ''));
         } else if (r.data.dte && r.data.dte.error) {
           toast.error('Pago OK, pero el DTE falló: ' + r.data.dte.error);
@@ -113,9 +119,13 @@ const Pagos = () => {
           toast.error('DTE emitido pero el correo no se envió: ' + (r.data.dte.envio ? r.data.dte.envio.motivo : 'sin correo'));
         }
       } else if (st === 'pending_confirmation') {
-        toast.success('Transferencia registrada. El DTE se emitirá cuando la reserva quede totalmente pagada.');
+        if (r.data.facturacion?.tipo === 'recibo_venta') toast.success('Transferencia registrada. Al completar el pago se enviará recibo de venta, sin DTE salvadoreño.');
+        else if (r.data.facturacion?.tipo === 'revision_manual') toast.error('Transferencia registrada; origen sin confirmar. Facturación requiere revisión manual.');
+        else toast.success('Transferencia registrada. El DTE se emitirá cuando la reserva quede totalmente pagada.');
       } else {
-        toast.error('Pago rechazado por la pasarela');
+        toast.error(r.data.datos.gateway_message
+          ? 'Pago rechazado: ' + r.data.datos.gateway_message
+          : 'Pago rechazado por la pasarela');
       }
       cerrarCobro();
       cargar();
@@ -127,7 +137,7 @@ const Pagos = () => {
   const confirmar = async (p) => {
     const confirmado = await confirmarAccion({
       title: '¿Confirmar transferencia?',
-      text: '¿Confirmar la transferencia del pago #' + p.id + ' (PNR ' + p.pnr + ')? El DTE se emitirá cuando la reserva quede totalmente pagada.',
+      text: '¿Confirmar la transferencia del pago #' + p.id + ' (PNR ' + p.pnr + ')? Se enviará DTE o recibo de venta según el origen del primer vuelo cuando la reserva quede totalmente pagada.',
       confirmText: 'Sí, confirmar',
       isDanger: false
     });
@@ -139,7 +149,13 @@ const Pagos = () => {
       } else {
         toast.success('Transferencia confirmada. Saldo pendiente: $' + Number(r.data.datos.reservation_balance || 0).toFixed(2));
       }
-      if (r.data.dte && r.data.dte.envio && r.data.dte.envio.enviado) {
+      if (r.data.facturacion?.tipo === 'recibo_venta') {
+        if (r.data.recibo_venta?.enviado) toast.success('DTE salvadoreño omitido. Recibo de venta enviado' + (r.data.recibo_venta.simulado ? ' (simulado)' : ''));
+        else if (r.data.datos.reservation_status === 'paid') toast.error('No se pudo enviar el recibo de venta: ' + (r.data.recibo_venta?.motivo || 'sin correo'));
+        else toast.success('Sin DTE salvadoreño; se enviará el recibo al completar el pago.');
+      } else if (r.data.facturacion?.tipo === 'revision_manual') {
+        toast.error('Origen sin confirmar; la facturación requiere revisión manual.');
+      } else if (r.data.dte && r.data.dte.envio && r.data.dte.envio.enviado) {
         toast.success('DTE ' + r.data.dte.numeroControl + ' emitido y enviado con PDF y ZIP que contiene el JSON');
       } else if (r.data.dte && r.data.dte.error) {
         toast.error('Confirmado, pero el DTE falló: ' + r.data.dte.error);
@@ -398,7 +414,7 @@ const Pagos = () => {
                 )}
                 <InfoFila icon={FiFileText} label="Tipo" value={drawerPago.type === 'refund' ? 'Reembolso' : 'Pago'} />
                 {drawerPago.type === 'refund' && <InfoFila icon={FiHash} label="Pago original" value={'#' + (drawerPago.original_payment_id ?? '—')} />}
-                <InfoFila icon={FiFileText} label="DTE" value={drawerPago.tipo_dte ? (drawerPago.tipo_dte === '01' ? 'Factura Electrónica (FE)' : drawerPago.tipo_dte === '03' ? 'Crédito Fiscal (CCFE)' : drawerPago.tipo_dte) : '—'} />
+                <InfoFila icon={FiFileText} label="Documento" value={drawerPago.tipo_dte ? (drawerPago.tipo_dte === '01' ? 'Factura Electrónica (FE)' : drawerPago.tipo_dte === '03' ? 'Crédito Fiscal (CCFE)' : drawerPago.tipo_dte) : (drawerPago.type === 'payment' && drawerPago.origin_country_code && drawerPago.origin_country_code !== 'SV' ? 'Recibo de venta' : '—')} />
                 <InfoFila icon={FiCalendar} label="Fecha" value={formatearFechaHoraDb(drawerPago.payment_date)} />
                 {drawerPago.reason && (
                   <InfoFila icon={FiFileText} label="Motivo" value={drawerPago.reason} />
@@ -449,14 +465,18 @@ const Pagos = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Monto (USD) *</label>
                 <input type="number" min="0.01" max={Number(modal.balance)} step="0.01" inputMode="decimal" className="input-field" value={form.amount} onKeyDown={(e) => { if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault(); }} onChange={(e) => setForm(Object.assign({}, form, { amount: e.target.value }))} />
               </div>
-              <div>
+              {modal.origin_country_code === 'SV' ? <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de DTE a emitir *</label>
                 <select className="input-field" value={form.tipo_dte} onChange={(e) => setForm(Object.assign({}, form, { tipo_dte: e.target.value }))}>
                   <option value="01">01 - Factura Electrónica (FE)</option>
                   <option value="03">03 - Comprobante de Crédito Fiscal (CCFE)</option>
                 </select>
-              </div>
-              {form.tipo_dte === '03' && (
+              </div> : <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 col-span-2">
+                {modal.origin_country_code
+                  ? `Primer vuelo desde ${modal.origin_airport_code || 'el extranjero'}: se enviará recibo de venta y no DTE salvadoreño.`
+                  : 'No se pudo confirmar el origen del primer vuelo; la facturación quedará para revisión manual.'}
+              </div>}
+              {modal.origin_country_code === 'SV' && form.tipo_dte === '03' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">NIT receptor *</label>
@@ -468,7 +488,7 @@ const Pagos = () => {
                   </div>
                 </div>
               )}
-              {form.tipo_dte === '01' && (
+              {modal.origin_country_code === 'SV' && form.tipo_dte === '01' && (
                 <label className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
                   <input type="checkbox" className="mt-1" checked={form.requiere_deduccion_fiscal} onChange={(e) => setForm(Object.assign({}, form, { requiere_deduccion_fiscal: e.target.checked }))} />
                   <span>El cliente solicita que la factura documente un costo o gasto deducible. Se requiere que sus datos de identificación estén registrados en el cliente.</span>
@@ -497,8 +517,12 @@ const Pagos = () => {
                 </div>
               )}
               <div className="bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-lg p-3">
-                Al quedar la reserva totalmente pagada se emitirá el DTE seleccionado y se enviará correo al cliente con el PDF y un ZIP que contiene el JSON adjuntos.
-                Tarjeta de prueba aprobada: 4111111111111111.
+                <p>{modal.origin_country_code === 'SV'
+                  ? 'Al quedar la reserva totalmente pagada se emitirá el DTE seleccionado.'
+                  : modal.origin_country_code
+                    ? 'Al quedar la reserva totalmente pagada se enviará un recibo de venta por correo; no se emitirá DTE salvadoreño.'
+                    : 'El origen debe confirmarse manualmente antes de determinar el documento fiscal.'}</p>
+                {form.method === 'card' && <p className="mt-1">Entorno de demostración: no se conecta a un banco ni realiza cobros reales. Use solo la tarjeta de prueba 4111111111111111, expiración 12/29 y cualquier CVV de 3 dígitos. No ingrese una tarjeta real.</p>}
               </div>
             </div>
             <div className="flex justify-end space-x-2 mt-6">

@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const DTEService = require('../services/dteService');
+const pagoDteService = require('../services/pagoDteService');
 
 const emitir = async (req, res) => {
   try {
@@ -8,10 +9,15 @@ const emitir = async (req, res) => {
     const r = await DTEService.emitirDTE({ reservation_id, tipo_dte, receptor, requiereDeduccionFiscal: requiere_deduccion_fiscal === true });
     const esRechazado = r.estado === 'rejected';
     const statusHttp = esRechazado ? 422 : 201;
+    let correo = null;
+    if (r.estado === 'accepted' && r.uuid) {
+      try { correo = await pagoDteService.enviarDTEExistente(r.uuid); }
+      catch (e) { correo = { enviado: false, motivo: e.message }; }
+    }
     res.status(statusHttp).json({
       exito: !esRechazado,
       mensaje: r.estado === 'accepted' ? 'DTE emitido y sellado por MH' : (esRechazado ? 'DTE generado pero RECHAZADO por MH' : 'DTE emitido'),
-      datos: r
+      datos: Object.assign({}, r, { correo: correo })
     });
   } catch (e) {
     console.error('Error emitir DTE:', e);

@@ -5,6 +5,7 @@ const { verificarToken, verificarRol } = require('../middleware/auth');
 
 router.use(verificarToken, verificarRol('admin', 'cashier', 'operations', 'auditor'));
 router.get('/', c.listar);
+router.get('/:id', c.obtener);
 // Compatibilidad con los envíos automáticos que incluyen el identificador
 // en el cuerpo de la petición.
 router.post('/confirmacion-reserva', c.enviarReservaPorCuerpo);

@@ -8,6 +8,16 @@ const listar = async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Error interno' }); }
 };
 
+const obtener = async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'ID de correo inválido' });
+  try {
+    const row = await mailer.obtener(id);
+    if (!row) return res.status(404).json({ error: 'Correo no encontrado' });
+    res.json({ exito: true, datos: row });
+  } catch (e) { res.status(500).json({ error: 'Error interno' }); }
+};
+
 const reenviar = async (req, res) => {
   try {
     const r = await mailer.dispatch(parseInt(req.params.id, 10));
@@ -69,6 +79,7 @@ const enviarDte = async (req, res) => {
 
 module.exports = {
   listar,
+  obtener,
   reenviar,
   enviarReserva,
   enviarReservaPorCuerpo,

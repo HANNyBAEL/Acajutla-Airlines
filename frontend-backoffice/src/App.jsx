@@ -23,7 +23,6 @@ import Notificaciones from './pages/Notificaciones';
 import CierreQA from './pages/CierreQA';
 import Operaciones from './pages/Operaciones';
 import CumplimientoFiscal from './pages/CumplimientoFiscal';
-import DteExport from './pages/DteExport';
 import Comercial from './pages/Comercial';
 import Correos from './pages/Correos';
 import Checkin from './pages/Checkin';
@@ -66,7 +65,6 @@ function App() {
             <Route path="operaciones" element={<RutaProtegida pagina="operaciones"><Operaciones /></RutaProtegida>} />
             <Route path="cumplimiento" element={<RutaProtegida pagina="cumplimiento"><CumplimientoFiscal /></RutaProtegida>} />
             <Route path="fiscalidad" element={<RutaProtegida pagina="fiscalidad"><FiscalidadTasas /></RutaProtegida>} />
-            <Route path="dte-export" element={<RutaProtegida pagina="dte-export"><DteExport /></RutaProtegida>} />
             <Route path="correos" element={<RutaProtegida pagina="correos"><Correos /></RutaProtegida>} />
             <Route path="checkin" element={<RutaProtegida pagina="checkin"><Checkin /></RutaProtegida>} />
           </Route>

@@ -6,13 +6,13 @@ Monolito modular Node.js + Express + MySQL (Aiven) · Frontend backoffice React+
 Flujo DTE: reserva paid → builder JSON (Anexo II) → firma simulada → transmisión simulada MH → sello → representación gráfica PDF (pdfkit+qrcode) → correo Brevo con adjuntos.
 
 ## Estructura backend
-src/app.js · config/(db, brevo) · controllers/ · routes/ · services/(dteService, dteEventosService, dteExportService, notasService, fiscalCompliance, rgPdfService, mailerService, paymentService, paymentGateway) · middleware/(auth, audit, rateLimiter, paymentValidator) · models/ · utils/(pnrGenerator, masking).
+src/app.js · config/(db, brevo) · controllers/ · routes/ · services/(dteService, dteEventosService, notasService, fiscalCompliance, rgPdfService, mailerService, paymentService, paymentGateway) · middleware/(auth, audit, rateLimiter, paymentValidator) · models/ · utils/(pnrGenerator, masking).
 
 ## Principales tablas
 users, employees, customers, passengers, airports, aircraft_types, aircraft, routes, flights, reservations, flight_segments, payments, dte_headers, dte_items, contingency_events, contingency_event_docs, dte_invalidation_events, fiscal_events, email_outbox, waitlist, ancillaries, flight_ancillaries, reservation_ancillaries, crew_members, flight_crew, fare_classes, flight_fares, airport_facilities, config_params, dte_trace, audit_logs, dte_transmission_tests.
 
 ## Endpoints principales (prefijo /api)
-auth(login, verificar-mfa, perfil) · vuelos(buscar, crear, cancelar, reprogramar) · reservas · pasajeros · pagos(procesar, confirmar, reembolsar) · dte(emitir, :uuid/pdf, :uuid/json) · dte-eventos(pendientes, evento-contingencia, invalidar) · notas · dte-export · fiscal(aplicar, evento-retorno, validar-invalidacion) · comercial(waitlist, ancillaries, reportes, kpi) · operaciones · correos · reportes · auditoria · qa.
+auth(login, verificar-mfa, perfil) · vuelos(buscar, crear, cancelar, reprogramar) · reservas · pasajeros · pagos(procesar, confirmar, reembolsar) · dte(emitir, :uuid/pdf, :uuid/json) · dte-eventos(pendientes, evento-contingencia, invalidar) · notas · fiscal(aplicar, evento-retorno, validar-invalidacion) · comercial(waitlist, ancillaries, reportes, kpi) · operaciones · correos · reportes · auditoria · qa.
 
 ## Seguridad
 JWT + refresh + MFA · roles (admin, operations, cashier, airport_staff, customer, corporate_agent, auditor) · rate limiting por IP · masking de PII · auditoría inmutable por triggers · validación Luhn y PCI-DSS (sin CVV/PAN).

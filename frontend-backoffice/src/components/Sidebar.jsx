@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   FiHome, FiSend, FiCalendar, FiFileText, FiFileMinus, FiCpu, FiUsers,
   FiBarChart2, FiLogOut, FiUserPlus, FiMap, FiUser, FiShield, FiCreditCard,
-  FiAlertTriangle, FiUserCheck, FiMail, FiShoppingBag, FiGlobe, FiSettings,
+  FiAlertTriangle, FiUserCheck, FiMail, FiShoppingBag, FiSettings,
   FiCheckSquare, FiBell,
 } from 'react-icons/fi';
 import { canAccessPage, roleOf, ROLE_DEFINITIONS } from '../utils/roles';
@@ -46,7 +46,6 @@ const Sidebar = () => {
         { page: 'dte', path: '/dte', icon: FiFileText, label: 'Facturación DTE' },
         { page: 'notas', path: '/notas', icon: FiFileMinus, label: 'Notas NCE/NDE' },
         { page: 'contingencia', path: '/contingencia', icon: FiAlertTriangle, label: 'Contingencia DTE' },
-        { page: 'dte-export', path: '/dte-export', icon: FiGlobe, label: 'FEXE / FSEE' },
         { page: 'cumplimiento', path: '/cumplimiento', icon: FiShield, label: 'Cumplimiento Fiscal' },
         { page: 'fiscalidad', path: '/fiscalidad', icon: FiSettings, label: 'Fiscalidad y tasas' },
       ],

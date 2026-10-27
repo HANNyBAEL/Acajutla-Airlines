@@ -49,6 +49,11 @@ const Vuelo = {
     }
     const [rows] = await pool.query(`
       SELECT f.*, ao.iata_code AS origin, ad.iata_code AS destination, at.model AS aircraft,
+             at.total_capacity,
+             (SELECT COUNT(*) FROM flight_segments fs JOIN reservations rs ON rs.id = fs.reservation_id
+              WHERE fs.flight_id = f.id AND rs.status = 'paid') AS tickets_sold,
+             (SELECT COUNT(*) FROM flight_segments fs JOIN reservations rr ON rr.id = fs.reservation_id
+              WHERE fs.flight_id = f.id AND rr.status IN ('pending', 'confirmed')) AS tickets_reserved,
              CASE
                WHEN f.arrival_datetime <= CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador') AND f.status IN ('scheduled', 'confirmed', 'delayed', 'in_progress') THEN 'completed'
                WHEN f.departure_datetime <= CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador') AND f.status IN ('scheduled', 'confirmed', 'delayed', 'in_progress') THEN 'deployed'

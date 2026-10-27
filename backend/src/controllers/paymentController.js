@@ -1,6 +1,8 @@
 const PaymentService = require('../services/paymentService');
 const pagoDteService = require('../services/pagoDteService');
 const paymentWorkflowService = require('../services/paymentWorkflowService');
+const mailerService = require('../services/mailerService');
+const { resolverPoliticaFacturacion } = require('../services/facturacionOrigenService');
 const pool = require('../config/db');
 
 const procesarPago = async (req, res) => {
@@ -18,15 +20,26 @@ const confirmarTransferencia = async (req, res) => {
     const resultado = await PaymentService.confirmarTransferencia(parseInt(req.params.id, 10), req.usuario);
     const [pago] = await pool.query('SELECT * FROM payments WHERE id = ?', [req.params.id]);
     let dteInfo = null;
-    if (pago.length && pago[0].tipo_dte && pago[0].status === 'approved' && resultado.reservation_status === 'paid') {
-      try {
-        const receptor = typeof pago[0].receptor_dte === 'string' ? JSON.parse(pago[0].receptor_dte) : pago[0].receptor_dte;
-        dteInfo = await pagoDteService.emitirYEnviar(pago[0].reservation_id, pago[0].tipo_dte, receptor || null, { requiereDeduccionFiscal: Boolean(pago[0].requiere_deduccion_fiscal) });
-      } catch (e) {
-        dteInfo = { error: e.message };
+    let reciboVenta = null;
+    let facturacion = null;
+    if (pago.length && pago[0].status === 'approved') {
+      facturacion = await resolverPoliticaFacturacion(pago[0].reservation_id);
+      if (facturacion.tipo !== 'dte_salvador') {
+        await pool.query('UPDATE payments SET tipo_dte = NULL WHERE id = ?', [pago[0].id]);
+        if (resultado.reservation_status === 'paid' && facturacion.tipo === 'recibo_venta') {
+          try { reciboVenta = await mailerService.enviarReciboVenta(pago[0].id); }
+          catch (e) { reciboVenta = { enviado: false, motivo: e.message }; }
+        }
+      } else if (pago[0].tipo_dte && resultado.reservation_status === 'paid') {
+        try {
+          const receptor = typeof pago[0].receptor_dte === 'string' ? JSON.parse(pago[0].receptor_dte) : pago[0].receptor_dte;
+          dteInfo = await pagoDteService.emitirYEnviar(pago[0].reservation_id, pago[0].tipo_dte, receptor || null, { requiereDeduccionFiscal: Boolean(pago[0].requiere_deduccion_fiscal) });
+        } catch (e) {
+          dteInfo = { error: e.message };
+        }
       }
     }
-    res.json({ exito: true, datos: resultado, dte: dteInfo });
+    res.json({ exito: true, datos: resultado, dte: dteInfo, recibo_venta: reciboVenta, facturacion: facturacion });
   } catch (e) {
     console.error('Error confirmar transferencia:', e);
     res.status(400).json({ error: e.message });
@@ -48,6 +61,10 @@ const listar = async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT p.*, r.pnr, u.username AS procesado_por,
+              (SELECT COALESCE(NULLIF(co.code, ''), NULLIF(ao.country_code, '')) FROM flight_segments fs
+                JOIN flights f ON f.id = fs.flight_id JOIN routes rt ON rt.id = f.route_id
+                JOIN airports ao ON ao.id = rt.origin_id LEFT JOIN countries co ON co.id = ao.country_id
+                WHERE fs.reservation_id = r.id ORDER BY f.departure_datetime, fs.id LIMIT 1) AS origin_country_code,
               CASE WHEN p.type = 'payment' AND p.status = 'approved'
                 THEN GREATEST(0, p.amount - COALESCE((
                   SELECT SUM(rf.amount) FROM payments rf
@@ -70,7 +87,15 @@ const reservasPendientes = async (req, res) => {
     const [rows] = await pool.query(
       `SELECT r.id, r.pnr, r.status, r.estimated_total, r.paid_total, r.time_limit,
               (r.estimated_total - r.paid_total) AS balance,
-              c.first_names, c.last_names, c.email
+              c.first_names, c.last_names, c.email,
+              (SELECT ao.iata_code FROM flight_segments fs
+                JOIN flights f ON f.id = fs.flight_id JOIN routes rt ON rt.id = f.route_id
+                JOIN airports ao ON ao.id = rt.origin_id
+                WHERE fs.reservation_id = r.id ORDER BY f.departure_datetime, fs.id LIMIT 1) AS origin_airport_code,
+              (SELECT COALESCE(NULLIF(co.code, ''), NULLIF(ao.country_code, '')) FROM flight_segments fs
+                JOIN flights f ON f.id = fs.flight_id JOIN routes rt ON rt.id = f.route_id
+                JOIN airports ao ON ao.id = rt.origin_id LEFT JOIN countries co ON co.id = ao.country_id
+                WHERE fs.reservation_id = r.id ORDER BY f.departure_datetime, fs.id LIMIT 1) AS origin_country_code
        FROM reservations r
        LEFT JOIN customers c ON c.id = r.customer_id
        WHERE r.status IN ('pending','confirmed') AND (r.estimated_total - r.paid_total) > 0.009

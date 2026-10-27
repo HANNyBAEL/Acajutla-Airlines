@@ -4,13 +4,15 @@ require('dotenv').config();
 const aeropuertos = [
   ['SAL', 'MSLP', 'Aeropuerto Internacional Monseñor Óscar Arnulfo Romero', 'San Salvador', 'El Salvador', 'SV'],
   ['MIA', 'KMIA', 'Aeropuerto Internacional de Miami', 'Miami', 'Estados Unidos', 'US'],
+  ['SFO', 'KSFO', 'Aeropuerto Internacional de San Francisco', 'San Francisco', 'Estados Unidos', 'US'],
   ['GUA', 'MGGT', 'Aeropuerto Internacional La Aurora', 'Guatemala City', 'Guatemala', 'GT'],
   ['SJO', 'MROC', 'Aeropuerto Internacional Juan Santamaría', 'San José', 'Costa Rica', 'CR'],
   ['MEX', 'MMMX', 'Aeropuerto Internacional de la Ciudad de México', 'Ciudad de México', 'México', 'MX'],
   ['PTY', 'MPTO', 'Aeropuerto Internacional de Tocumen', 'Panamá City', 'Panamá', 'PA'],
   ['LIR', 'MRLB', 'Aeropuerto Internacional Daniel Oduber', 'Liberia', 'Costa Rica', 'CR'],
   ['LUA', 'MSLU', 'Aeropuerto Internacional de La Unión', 'La Unión', 'El Salvador', 'SV'],
-  ['TGU', 'MHTG', 'Aeropuerto Internacional Toncontín', 'Tegucigalpa', 'Honduras', 'HN'],
+  ['TGU', 'MHTG', 'Aeropuerto Nacional Toncontín', 'Tegucigalpa', 'Honduras', 'HN'],
+  ['XPL', 'MHPR', 'Aeropuerto Internacional de Palmerola', 'Comayagua', 'Honduras', 'HN'],
   ['MGA', 'MNMG', 'Aeropuerto Internacional Augusto C. Sandino', 'Managua', 'Nicaragua', 'NI']
 ];
 

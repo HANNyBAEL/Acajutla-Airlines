@@ -90,6 +90,8 @@ async function enviarAdjuntos(header) {
   const jsonStr = typeof header.full_json === 'string' ? header.full_json : JSON.stringify(header.full_json, null, 2);
   const to = await obtenerCorreo(header);
   const nombreBase = 'DTE_' + header.control_number;
+  const nombresTipo = { '01': 'Factura Electrónica (FE)', '03': 'Comprobante de Crédito Fiscal (CCFE)', '05': 'Nota de Crédito Electrónica (NCE)', '06': 'Nota de Débito Electrónica (NDE)', '11': 'Factura de Exportación Electrónica (FEXE)', '14': 'Factura de Sujeto Excluido Electrónica (FSEE)' };
+  const tipoNombre = nombresTipo[String(header.dte_type).padStart(2, '0')] || 'DTE ' + header.dte_type;
   const jsonZip = zipArchivo(nombreBase + '.json', Buffer.from(jsonStr, 'utf8'));
   const adjuntos = [
     { name: nombreBase + '.pdf', content: pdfBuffer.toString('base64') },
@@ -104,7 +106,7 @@ async function enviarAdjuntos(header) {
         sender: SENDER,
         to: [{ email: to }],
         subject: asunto,
-        htmlContent: '<p>Estimado cliente: adjuntamos su Documento Tributario Electrónico.</p>' +
+        htmlContent: '<p>Estimado cliente: adjuntamos su ' + tipoNombre + ' en PDF y el archivo JSON.</p>' +
           '<p><strong>N° de Control:</strong> ' + header.control_number + '<br>' +
           '<strong>Código de Generación:</strong> ' + header.uuid_generation + '<br>' +
           '<strong>Sello de Recepción:</strong> ' + (header.reception_seal || 'Pendiente') + '</p>' +
@@ -138,6 +140,24 @@ async function reenviarAdjuntos(uuid) {
   return enviarAdjuntos(h[0]);
 }
 
+async function enviarDTEExistente(uuid) {
+  const [h] = await pool.query('SELECT * FROM dte_headers WHERE uuid_generation = ?', [uuid]);
+  if (!h.length) return { enviado: false, motivo: 'DTE no encontrado' };
+  const header = h[0];
+  const to = await obtenerCorreo(header);
+  if (!to) return { enviado: false, motivo: 'El receptor no tiene correo registrado' };
+
+  let envio;
+  try { envio = await enviarAdjuntos(header); }
+  catch (e) { envio = { enviado: false, motivo: e.message }; }
+  const nombreBase = 'DTE_' + header.control_number;
+  await pool.query(
+    "INSERT INTO email_outbox (template, to_email, subject, html, ref_type, ref_id, status, brevo_message_id, created_at) VALUES (?,?,?,?,?,?,?,?,NOW())",
+    ['dte_entrega_adjuntos', to, asuntoDte(header, nombreBase), 'DTE enviado con PDF y ZIP que contiene el JSON', 'dte', header.uuid_generation, envio.enviado ? (envio.simulado ? 'simulado' : 'sent') : 'failed', envio.messageId || null]
+  );
+  return envio;
+}
+
 async function emitirYEnviar(reservationId, tipoDte, receptorOverride, opciones = {}) {
   const resultado = await dteService.emitirDTE({
     reservation_id: reservationId, tipo_dte: tipoDte,
@@ -162,4 +182,4 @@ async function emitirYEnviar(reservationId, tipoDte, receptorOverride, opciones 
   return { uuid: uuid, numeroControl: header.control_number, sello: header.reception_seal, envio: envio };
 }
 
-module.exports = { emitirYEnviar: emitirYEnviar, reenviarAdjuntos: reenviarAdjuntos };
+module.exports = { emitirYEnviar: emitirYEnviar, reenviarAdjuntos: reenviarAdjuntos, enviarDTEExistente: enviarDTEExistente };
