@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const FC = require('../services/fiscalCompliance');
 const dteEventosService = require('../services/dteEventosService');
+const mailerService = require('../services/mailerService');
 
 const aplicar = async (req, res) => {
   try {
@@ -30,7 +31,10 @@ const eventoRetorno = async (req, res) => {
   try {
     const { dteUuids, monto, descripcion } = req.body;
     const resultado = await dteEventosService.retornarDTEs(dteUuids, { monto, motivo: descripcion });
-    res.status(201).json({ exito: true, mensaje: 'Evento de Retorno simulado y sellado', datos: { ...resultado, json: resultado.evento } });
+    let correo;
+    try { correo = await mailerService.enviarEventoRetorno(resultado.uuid); }
+    catch (e) { correo = { enviado: false, motivo: e.message }; console.error('Error enviando aviso de Evento de Retorno:', e); }
+    res.status(201).json({ exito: true, mensaje: 'Evento de Retorno simulado y sellado', datos: { ...resultado, json: resultado.evento, correo } });
   } catch (e) { res.status(e.code ? 500 : 400).json({ error: e.message }); }
 };
 

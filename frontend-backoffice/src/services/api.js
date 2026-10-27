@@ -125,7 +125,12 @@ export const clientesAPI = auto('/clientes');
 export const aeropuertosAPI = auto('/aeropuertos');
 export const aeronavesAPI = auto('/aeronaves');
 export const empleadosAPI = auto('/empleados');
-export const usuariosAPI = auto('/usuarios');
+export const usuariosAPI = {
+  listar: (params) => api.get('/auth/usuarios', { params }),
+  crear: (datos) => api.post('/auth/usuarios', datos),
+  actualizar: (id, datos) => api.put('/auth/usuarios/' + id, datos),
+  cambiarEstado: (id, status) => api.patch('/auth/usuarios/' + id + '/status', { status }),
+};
 export const auditoriaAPI = { listar: (p) => api.get('/auditoria', { params: p }) };
 export const reportesAPI = auto('/reportes');
 export const checkinAPI = {

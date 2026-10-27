@@ -1,6 +1,7 @@
 const svc = require('../services/dteEventosService');
 const dteService = require('../services/dteService');
 const mhSimulator = require('../services/mhSimulatorService');
+const mailerService = require('../services/mailerService');
 
 const pendientes = async (req, res) => {
   try { res.json({ exito: true, datos: await svc.listarPendientes() }); }
@@ -18,14 +19,20 @@ const eventoContingencia = async (req, res) => {
 const invalidar = async (req, res) => {
   try {
     const r = await svc.invalidarDTE(req.params.uuid, req.body);
-    res.json({ exito: true, mensaje: 'Evento de invalidación transmitido', datos: r });
+    let correo;
+    try { correo = await mailerService.enviarEventoInvalidacion(r.uuid); }
+    catch (e) { correo = { enviado: false, motivo: e.message }; console.error('Error enviando aviso de Evento de Invalidación:', e); }
+    res.json({ exito: true, mensaje: 'Evento de invalidación transmitido', datos: { ...r, correo } });
   } catch (e) { res.status(400).json({ error: e.message }); }
 };
 
 const retorno = async (req, res) => {
   try {
     const r = await svc.retornarDTE(req.params.uuid, req.body);
-    res.json({ exito: true, mensaje: 'Evento de retorno transmitido', datos: r });
+    let correo;
+    try { correo = await mailerService.enviarEventoRetorno(r.uuid); }
+    catch (e) { correo = { enviado: false, motivo: e.message }; console.error('Error enviando aviso de Evento de Retorno:', e); }
+    res.json({ exito: true, mensaje: 'Evento de retorno transmitido', datos: { ...r, correo } });
   } catch (e) { res.status(400).json({ error: e.message }); }
 };
 

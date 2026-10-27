@@ -44,10 +44,10 @@ class PaymentGateway {
     return { exito: false, codigo: 'PAYPAL_DECLINED', mensaje: 'PayPal declinó' };
   }
 
-  static async reembolsar(paymentId, monto, motivo) {
+  static async reembolsar(paymentId, monto, motivo, metodoReembolso) {
     await this.simularLatencia(500, 1500);
     const exito = true; // Reembolso exclusivamente simulado.
-    if (exito) return { exito: true, codigo: 'REFUND_APPROVED', refund_id: 'RF-' + Date.now(), monto_reembolsado: monto };
+    if (exito) return { exito: true, codigo: 'REFUND_APPROVED', refund_id: 'RF-' + Date.now(), monto_reembolsado: monto, metodo_reembolso: metodoReembolso || null };
     return { exito: false, codigo: 'REFUND_FAILED', mensaje: 'No se pudo procesar el reembolso' };
   }
 

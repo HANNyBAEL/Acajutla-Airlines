@@ -1,6 +1,18 @@
 const AuthService = require('../services/authService');
 const { Usuario, ROLES_VALIDOS } = require('../models/Usuario');
 const AuditLog = require('../models/AuditLog');
+const pool = require('../config/db');
+const bcrypt = require('bcryptjs');
+
+const ROLES_BACKOFFICE = ROLES_VALIDOS.filter((role) => role !== 'customer');
+const validarCuenta = ({ username, email, role, password }, incluirPassword) => {
+  if (typeof username !== 'string' || !/^[a-zA-Z0-9._-]{3,40}$/.test(username.trim())) return 'El usuario debe tener entre 3 y 40 caracteres (letras, números, punto, guion o guion bajo)';
+  if (typeof email !== 'string' || email.trim().length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return 'Ingrese un correo electrónico válido';
+  if (!ROLES_BACKOFFICE.includes(role)) return 'Seleccione un rol válido para el sistema';
+  if (incluirPassword && typeof password !== 'string') return 'La contraseña es obligatoria';
+  if (typeof password === 'string' && password.length > 0 && password.length < 6) return 'La contraseña debe tener al menos 6 caracteres';
+  return null;
+};
 
 const login = async (req, res) => {
   try {
@@ -82,6 +94,134 @@ const listarUsuarios = async (req, res) => {
   }
 };
 
+const crearUsuario = async (req, res) => {
+  const datos = {
+    username: typeof req.body.username === 'string' ? req.body.username.trim() : '',
+    email: typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '',
+    password: req.body.password,
+    role: req.body.role
+  };
+  const errorValidacion = validarCuenta(datos, true);
+  if (errorValidacion) return res.status(400).json({ error: errorValidacion });
+
+  try {
+    const [existentes] = await pool.query('SELECT id FROM users WHERE username = ? OR email = ?', [datos.username, datos.email]);
+    if (existentes.length) return res.status(409).json({ error: 'El usuario o correo ya están registrados' });
+    const passwordHash = await bcrypt.hash(datos.password, 12);
+    const mfaRequerido = ['admin', 'cashier'].includes(datos.role) ? 1 : 0;
+    const [result] = await pool.query(
+      `INSERT INTO users (username, email, password_hash, role, employee_id, mfa_enabled, mfa_required, status, created_at)
+       VALUES (?, ?, ?, ?, NULL, 0, ?, 'active', NOW())`,
+      [datos.username, datos.email, passwordHash, datos.role, mfaRequerido]
+    );
+    res.status(201).json({ exito: true, datos: { id: result.insertId } });
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'El usuario o correo ya están registrados' });
+    console.error('Error crear usuario de sistema:', error);
+    res.status(500).json({ error: 'No se pudo crear el usuario' });
+  }
+};
+
+const actualizarUsuario = async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  const datos = {
+    username: typeof req.body.username === 'string' ? req.body.username.trim() : '',
+    email: typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '',
+    password: req.body.password,
+    role: req.body.role
+  };
+  const errorValidacion = validarCuenta(datos, false);
+  if (errorValidacion) return res.status(400).json({ error: errorValidacion });
+  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'ID de usuario inválido' });
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query('SELECT id, role, status FROM users WHERE id = ? FOR UPDATE', [id]);
+    if (!rows.length) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    const actual = rows[0];
+    if (Number(req.usuario.id) === id && datos.role !== actual.role) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'No puedes cambiar tu propio rol' });
+    }
+    const [duplicados] = await connection.query('SELECT id FROM users WHERE (username = ? OR email = ?) AND id <> ? LIMIT 1', [datos.username, datos.email, id]);
+    if (duplicados.length) {
+      await connection.rollback();
+      return res.status(409).json({ error: 'El usuario o correo ya están registrados' });
+    }
+    if (actual.role === 'admin' && actual.status === 'active' && datos.role !== 'admin') {
+      const [admins] = await connection.query("SELECT COUNT(*) AS total FROM users WHERE role = 'admin' AND status = 'active'");
+      if (Number(admins[0]?.total || 0) <= 1) {
+        await connection.rollback();
+        return res.status(409).json({ error: 'Debe permanecer al menos un administrador activo' });
+      }
+    }
+
+    const campos = ['username = ?', 'email = ?', 'role = ?', 'mfa_required = ?'];
+    const valores = [datos.username, datos.email, datos.role, ['admin', 'cashier'].includes(datos.role) ? 1 : 0];
+    if (typeof datos.password === 'string' && datos.password.length > 0) {
+      campos.push('password_hash = ?', 'password_changed_at = NOW()');
+      valores.push(await bcrypt.hash(datos.password, 12));
+    }
+    valores.push(id);
+    await connection.query(`UPDATE users SET ${campos.join(', ')} WHERE id = ?`, valores);
+    if (typeof datos.password === 'string' && datos.password.length > 0) {
+      await connection.query('DELETE FROM refresh_tokens WHERE user_id = ?', [id]);
+    }
+    await connection.commit();
+    res.json({ exito: true, mensaje: 'Usuario actualizado' });
+  } catch (error) {
+    await connection.rollback();
+    if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'El usuario o correo ya están registrados' });
+    console.error('Error actualizar usuario de sistema:', error);
+    res.status(500).json({ error: 'No se pudo actualizar el usuario' });
+  } finally {
+    connection.release();
+  }
+};
+
+const cambiarEstadoUsuario = async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  const { status } = req.body;
+  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'ID de usuario inválido' });
+  if (!['active', 'inactive'].includes(status)) return res.status(400).json({ error: 'El estado debe ser activo o inactivo' });
+  if (Number(req.usuario.id) === id && status !== 'active') return res.status(400).json({ error: 'No puedes desactivar tu propia cuenta' });
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query('SELECT id, role, status FROM users WHERE id = ? FOR UPDATE', [id]);
+    if (!rows.length) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    const actual = rows[0];
+    if (actual.role === 'admin' && actual.status === 'active' && status !== 'active') {
+      const [admins] = await connection.query("SELECT COUNT(*) AS total FROM users WHERE role = 'admin' AND status = 'active'");
+      if (Number(admins[0]?.total || 0) <= 1) {
+        await connection.rollback();
+        return res.status(409).json({ error: 'Debe permanecer al menos un administrador activo' });
+      }
+    }
+    await connection.query('UPDATE users SET status = ? WHERE id = ?', [status, id]);
+    if (status !== 'active') {
+      await connection.query('DELETE FROM refresh_tokens WHERE user_id = ?', [id]);
+      await connection.query('UPDATE mfa_codes SET used = TRUE WHERE user_id = ?', [id]);
+    }
+    await connection.commit();
+    res.json({ exito: true, mensaje: 'Estado del usuario actualizado' });
+  } catch (error) {
+    await connection.rollback();
+    console.error('Error cambiar estado de usuario:', error);
+    res.status(500).json({ error: 'No se pudo actualizar el estado del usuario' });
+  } finally {
+    connection.release();
+  }
+};
+
 const listarRoles = async (req, res) => {
   const nombres = {
     admin: 'Administrador',
@@ -95,4 +235,4 @@ const listarRoles = async (req, res) => {
   res.json({ exito: true, datos: rolesBackoffice.map((rol) => ({ codigo: rol, nombre: nombres[rol] })) });
 };
 
-module.exports = { login, verificarMFA, refreshToken, logout, registro, perfil, listarUsuarios, listarRoles };
+module.exports = { login, verificarMFA, refreshToken, logout, registro, perfil, listarUsuarios, crearUsuario, actualizarUsuario, cambiarEstadoUsuario, listarRoles };

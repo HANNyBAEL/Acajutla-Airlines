@@ -109,9 +109,8 @@ const Usuario = {
   },
 
   listar: async (filtros = {}) => {
-    let sql = `SELECT u.id, u.username, u.email, u.role, u.status, u.mfa_enabled, u.created_at, u.last_login,
-                      e.first_names AS empleado_nombres, e.last_names AS empleado_apellidos
-               FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE 1=1`;
+    let sql = `SELECT u.id, u.username, u.email, u.role, u.status, u.mfa_enabled, u.mfa_required, u.created_at, u.last_login
+               FROM users u WHERE u.role <> 'customer'`;
     const valores = [];
     if (filtros.role) { sql += ' AND u.role = ?'; valores.push(filtros.role); }
     if (filtros.status) { sql += ' AND u.status = ?'; valores.push(filtros.status); }

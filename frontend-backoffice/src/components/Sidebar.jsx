@@ -53,7 +53,7 @@ const Sidebar = () => {
     {
       seccion: 'Administración',
       items: [
-        { page: 'empleados', path: '/empleados', icon: FiUsers, label: 'Empleados y accesos' },
+        { page: 'usuarios', path: '/usuarios', icon: FiUsers, label: 'Usuarios y accesos' },
       ],
     },
     {

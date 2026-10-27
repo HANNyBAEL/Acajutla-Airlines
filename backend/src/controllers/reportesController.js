@@ -39,7 +39,11 @@ const dashboard = async (req, res) => {
       "SELECT COUNT(*) AS total FROM dte_headers WHERE transmission_status IN ('contingency','transmitted') AND emission_date < (NOW() - INTERVAL 24 HOUR)"
     );
     const [reb] = await pool.query(
-      "SELECT COALESCE(SUM(status='refunded'),0) AS procesados, COUNT(*) AS solicitados FROM payments WHERE type = 'refund'"
+      `SELECT COALESCE(SUM(status = 'refunded'),0) AS procesados, COUNT(*) AS solicitados,
+              COALESCE(SUM(CASE WHEN status = 'refunded'
+                AND DATE(CONVERT_TZ(payment_date, 'UTC', 'America/El_Salvador')) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador'))
+                THEN amount ELSE 0 END), 0) AS montoHoy
+       FROM payments WHERE type = 'refund'`
     );
     res.json({
       exito: true,

@@ -1,5 +1,7 @@
 const pool = require('../config/db');
 const PaymentGateway = require('./paymentGateway');
+const FlightSegment = require('../models/FlightSegment');
+const { cancelarServiciosReserva } = require('./reservationInventoryService');
 const { centavos, normalizarImporte, saldoReembolsable: calcularSaldoReembolsable } = require('../utils/money');
 
 const procesarPago = async (datos, usuario) => {
@@ -133,7 +135,7 @@ const confirmarTransferencia = async (paymentId, usuario) => {
   }
 };
 
-const reembolsar = async (paymentId, monto, reason, usuario) => {
+const reembolsar = async (paymentId, monto, reason, usuario, metodoReembolso) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -145,6 +147,10 @@ const reembolsar = async (paymentId, monto, reason, usuario) => {
     const [rows] = await connection.query('SELECT * FROM payments WHERE id = ? AND status = ? AND type = ? FOR UPDATE', [paymentId, 'approved', 'payment']);
     if (rows.length === 0) throw new Error('Pago aprobado no encontrado');
     const pago = rows[0];
+    const metodoElegido = metodoReembolso || pago.method;
+    if (!['card', 'transfer', 'cash', 'paypal'].includes(metodoElegido)) {
+      throw new Error('Seleccione un método de reembolso válido');
+    }
     const montoRef = normalizarImporte(monto ?? pago.amount, 'El monto del reembolso');
     const [embarcados] = await connection.query("SELECT id FROM flight_segments WHERE reservation_id = ? AND checkin_status = 'boarded' LIMIT 1 FOR UPDATE", [pago.reservation_id]);
     if (embarcados.length) throw new Error('No se puede reembolsar una reserva con pasajeros embarcados');
@@ -158,35 +164,39 @@ const reembolsar = async (paymentId, monto, reason, usuario) => {
     if (montoRefCentavos <= 0 || montoRefCentavos > centavos(saldoDisponible)) {
       throw new Error('Monto de reembolso inválido; el saldo reembolsable del pago es $' + saldoDisponible.toFixed(2));
     }
-    const gateway = await PaymentGateway.reembolsar(pago.external_reference, montoRef, reason);
+    const gateway = await PaymentGateway.reembolsar(pago.external_reference, montoRef, reason, metodoElegido);
     if (!gateway.exito) throw new Error(gateway.mensaje || 'La pasarela rechazó el reembolso');
-    await connection.query(
+    const [refundInsert] = await connection.query(
       `INSERT INTO payments (reservation_id, original_payment_id, method, amount, currency, status, type, external_reference, reason, processed_by, payment_date)
        VALUES (?, ?, ?, ?, ?, 'refunded', 'refund', ?, ?, ?, NOW())`,
-      [pago.reservation_id, paymentId, pago.method, montoRef, pago.currency, gateway.refund_id, reason, usuario && usuario.id ? usuario.id : null]
+      [pago.reservation_id, paymentId, metodoElegido, montoRef, pago.currency, gateway.refund_id, reason, usuario && usuario.id ? usuario.id : null]
     );
     const reserva = res[0];
     const nuevoPagadoCentavos = Math.max(0, centavos(reserva.paid_total || 0) - montoRefCentavos);
     const nuevoPagado = nuevoPagadoCentavos / 100;
-    const nuevoStatus = (nuevoPagadoCentavos >= centavos(reserva.estimated_total)) ? 'paid' : (nuevoPagadoCentavos > 0 ? 'confirmed' : 'pending');
-    if (nuevoStatus !== 'paid') {
-      await connection.query("UPDATE flight_segments SET checkin_status = 'pending', checkin_at = NULL, boarding_pass_code = NULL WHERE reservation_id = ? AND checkin_status = 'checked_in'", [reserva.id]);
-    }
     // Un reembolso no debe revivir reservas canceladas, expiradas o completadas.
     const estadoTerminal = ['cancelled', 'expired', 'completed'].includes(reserva.status);
     if (estadoTerminal) {
       await connection.query('UPDATE reservations SET paid_total = ? WHERE id = ?', [nuevoPagado, reserva.id]);
-    } else if (nuevoStatus === 'pending') {
-      // Si vuelve a pendiente, renueva el límite para que no expire de inmediato.
-      await connection.query(
-        'UPDATE reservations SET paid_total = ?, status = ?, time_limit = DATE_ADD(NOW(), INTERVAL 30 MINUTE) WHERE id = ?',
-        [nuevoPagado, nuevoStatus, reserva.id]
-      );
     } else {
-      await connection.query('UPDATE reservations SET paid_total = ?, status = ? WHERE id = ?', [nuevoPagado, nuevoStatus, reserva.id]);
+      // Un reembolso cierra la reserva: no debe regresar a Cobros pendientes.
+      await connection.query(
+        "UPDATE reservations SET paid_total = ?, status = 'cancelled', cancellation_date = NOW(), cancellation_reason = ?, cancelled_by = ? WHERE id = ?",
+        [nuevoPagado, 'Reembolso: ' + reason, usuario && usuario.id ? usuario.id : null, reserva.id]
+      );
+      await connection.query(
+        "UPDATE payments SET status = 'cancelled' WHERE reservation_id = ? AND type = 'payment' AND status = 'pending_confirmation'",
+        [reserva.id]
+      );
+      await cancelarServiciosReserva(reserva.id, connection);
+      await FlightSegment.liberarPorReserva(reserva.id, connection);
     }
     await connection.commit();
-    return { refund_id: gateway.refund_id, amount: montoRef };
+    return {
+      refund_id: gateway.refund_id, refund_payment_id: refundInsert.insertId,
+      refund_method: metodoElegido, amount: montoRef,
+      reservation_status: estadoTerminal ? reserva.status : 'cancelled'
+    };
   } catch (e) {
     await connection.rollback();
     throw e;

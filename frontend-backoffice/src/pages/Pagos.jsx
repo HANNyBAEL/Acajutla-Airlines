@@ -14,6 +14,8 @@ const Pagos = () => {
   const [pagos, setPagos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [modal, setModal] = useState(null);
+  const [modalReembolso, setModalReembolso] = useState(null);
+  const [formReembolso, setFormReembolso] = useState({ amount: '', method: 'cash', reason: '' });
   const [form, setForm] = useState({ method: 'card', amount: '', numero: '', expiracion: '', cvv: '', referencia: '', tipo_dte: '01', receptor_nit: '', receptor_nrc: '', requiere_deduccion_fiscal: false });
   const [procesando, setProcesando] = useState(false);
   const [buscarPendientes, setBuscarPendientes] = useState('');
@@ -165,25 +167,45 @@ const Pagos = () => {
     } catch (e) { toast.error(e.response && e.response.data ? e.response.data.error : 'Error al confirmar'); }
   };
 
-  const reembolsar = async (p) => {
+  const abrirReembolso = (p) => {
     const saldoReembolsable = Number(p.refundable_balance ?? p.amount);
     if (!Number.isFinite(saldoReembolsable) || saldoReembolsable <= 0.009) {
       return toast.error('Este pago ya no tiene saldo reembolsable');
     }
-    const montoIngresado = window.prompt('Monto a reembolsar (máximo $' + saldoReembolsable.toFixed(2) + ' USD):', saldoReembolsable.toFixed(2));
-    if (montoIngresado === null) return;
-    const amount = Number(montoIngresado);
+    setFormReembolso({ amount: saldoReembolsable.toFixed(2), method: p.method || 'cash', reason: '' });
+    setModalReembolso(p);
+    setDrawerPago(null);
+  };
+
+  const reembolsar = async () => {
+    const p = modalReembolso;
+    if (!p) return;
+    const saldoReembolsable = Number(p.refundable_balance ?? p.amount);
+    const amount = Number(formReembolso.amount);
     if (!Number.isFinite(amount) || amount <= 0 || amount - saldoReembolsable > 0.009) {
       return toast.error('Indique un monto entre $0.01 y $' + saldoReembolsable.toFixed(2));
     }
-    const reason = window.prompt('Motivo del reembolso del pago #' + p.id + ' (PNR ' + p.pnr + '):');
-    if (!reason) return;
+    if (Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-8) return toast.error('El monto debe tener máximo dos decimales');
+    const reason = formReembolso.reason.trim();
+    if (!reason) return toast.error('Indique el motivo del reembolso');
+    if (!['card', 'transfer', 'cash', 'paypal'].includes(formReembolso.method)) return toast.error('Seleccione un método de reembolso válido');
+    setProcesando(true);
     try {
-      await api.post('/pagos/' + p.id + '/reembolsar', { amount, reason: reason });
-      toast.success('Reembolso procesado');
-      setDrawerPago(null);
+      const r = await api.post('/pagos/' + p.id + '/reembolsar', { amount, reason, refund_method: formReembolso.method });
+      const avisoReserva = r.data.datos.reservation_status === 'cancelled'
+        ? ' La reserva se canceló y salió de Cobros pendientes.'
+        : '';
+      if (r.data.correo?.enviado && r.data.correo?.simulado) {
+        toast.success('Reembolso procesado.' + avisoReserva + ' El correo quedó simulado porque el envío real no está configurado');
+      } else if (r.data.correo?.enviado) {
+        toast.success('Reembolso procesado y correo enviado al cliente.' + avisoReserva);
+      } else {
+        toast('Reembolso procesado.' + avisoReserva + ' No se pudo enviar el correo: ' + (r.data.correo?.motivo || 'sin destinatario'), { icon: '⚠️' });
+      }
+      setModalReembolso(null);
       cargar();
     } catch (e) { toast.error(e.response && e.response.data ? e.response.data.error : 'Error al reembolsar'); }
+    finally { setProcesando(false); }
   };
 
   const badge = (s) => ({
@@ -313,7 +335,7 @@ const Pagos = () => {
                       </button>
                     )}
                     {puedeGestionarPagos && p.status === 'approved' && p.type === 'payment' && Number(p.refundable_balance ?? p.amount) > 0.009 && (
-                      <button onClick={() => reembolsar(p)} className="text-red-600 hover:text-red-800 flex items-center space-x-1">
+                      <button onClick={() => abrirReembolso(p)} className="text-red-600 hover:text-red-800 flex items-center space-x-1">
                         <FiRefreshCw size={16} /><span className="text-sm">Reembolsar</span>
                       </button>
                     )}
@@ -433,7 +455,7 @@ const Pagos = () => {
                   </button>
                 )}
                 {puedeGestionarPagos && drawerPago.status === 'approved' && drawerPago.type === 'payment' && Number(drawerPago.refundable_balance ?? drawerPago.amount) > 0.009 && (
-                  <button onClick={() => reembolsar(drawerPago)} className="btn-danger flex items-center space-x-1.5 text-sm py-2 px-3">
+                  <button onClick={() => abrirReembolso(drawerPago)} className="btn-danger flex items-center space-x-1.5 text-sm py-2 px-3">
                     <FiRefreshCw size={16} /><span>Reembolsar</span>
                   </button>
                 )}
@@ -442,6 +464,48 @@ const Pagos = () => {
             </div>
           </div>
         </>
+      )}
+
+      {modalReembolso && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4" onMouseDown={(e) => { if (e.target === e.currentTarget && !procesando) setModalReembolso(null); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="titulo-reembolso">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 id="titulo-reembolso" className="text-xl font-bold text-gray-800">Reembolsar pago</h2>
+                <p className="text-sm text-gray-500 mt-1">Reserva {modalReembolso.pnr} · Pago #{modalReembolso.id}</p>
+              </div>
+              <button type="button" onClick={() => !procesando && setModalReembolso(null)} className="text-gray-500 hover:text-gray-700" aria-label="Cerrar"><FiX size={22} /></button>
+            </div>
+            <div className="space-y-4">
+              <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-sm text-gray-700">
+                <div className="flex justify-between gap-4"><span>Pago original</span><strong>{metodoLabel(modalReembolso.method)}</strong></div>
+                <div className="flex justify-between gap-4 mt-1"><span>Saldo reembolsable</span><strong>${Number(modalReembolso.refundable_balance ?? modalReembolso.amount).toFixed(2)} USD</strong></div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Método de devolución *</label>
+                <select className="input-field" value={formReembolso.method} onChange={(e) => setFormReembolso(Object.assign({}, formReembolso, { method: e.target.value }))}>
+                  <option value="card">Tarjeta</option>
+                  <option value="transfer">Transferencia bancaria</option>
+                  <option value="cash">Efectivo</option>
+                  <option value="paypal">PayPal</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Monto a devolver (USD) *</label>
+                <input type="number" min="0.01" max={Number(modalReembolso.refundable_balance ?? modalReembolso.amount)} step="0.01" inputMode="decimal" className="input-field" value={formReembolso.amount} onChange={(e) => setFormReembolso(Object.assign({}, formReembolso, { amount: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Motivo *</label>
+                <textarea rows="3" maxLength="500" className="input-field resize-y" value={formReembolso.reason} onChange={(e) => setFormReembolso(Object.assign({}, formReembolso, { reason: e.target.value }))} placeholder="Indique por qué se realiza el reembolso" />
+              </div>
+              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">El reembolso de esta aplicación es simulado. El método elegido se registra en el historial y se informa al cliente; no se ejecuta un movimiento bancario real.</p>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button type="button" className="btn-secondary" onClick={() => setModalReembolso(null)} disabled={procesando}>Cancelar</button>
+              <button type="button" className="btn-danger" onClick={reembolsar} disabled={procesando}>{procesando ? 'Procesando...' : 'Confirmar reembolso'}</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal de cobro - se mantiene exactamente igual */}

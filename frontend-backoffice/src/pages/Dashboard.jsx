@@ -72,7 +72,11 @@ const Dashboard = () => {
         </div>
         <div className="card p-5">
           <div className="flex items-center justify-between">
-            <div><p className="text-sm text-gray-500">Ventas brutas hoy</p><p className="text-3xl font-bold">${Number(datos.ventasTotal || 0).toFixed(2)}</p></div>
+            <div>
+              <p className="text-sm text-gray-500">Ventas brutas hoy</p>
+              <p className="text-3xl font-bold">${Number(datos.ventasTotal || 0).toFixed(2)}</p>
+              <p className="text-sm text-red-600 mt-1">Total reembolsado hoy: -${Number(reembolsos.montoHoy || 0).toFixed(2)}</p>
+            </div>
             <div className="bg-emerald-600 text-white p-3 rounded-lg"><FiDollarSign size={22} /></div>
           </div>
         </div>

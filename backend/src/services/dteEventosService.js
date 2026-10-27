@@ -287,7 +287,9 @@ const invalidarDTE = async (uuidDte, datos) => {
         numeroControl: doc.control_number, fecEmi: fechaSql(doc.emission_date),
         codigoGeneracionR: codigoReemplazo,
         tipoDocumento: doc.receiver_doc_type, numDocumento: doc.receiver_doc_number,
-        nombre: doc.receiver_name, telefono: null, correo: null
+        nombre: doc.receiver_name,
+        telefono: parseJsonDb(doc.full_json).receptor?.telefono || null,
+        correo: parseJsonDb(doc.full_json).receptor?.correo || null
       },
       motivo: {
         tipoAnulacion: tipoAnulacion, motivoAnulacion: datos.motivo.trim(),
@@ -295,6 +297,7 @@ const invalidarDTE = async (uuidDte, datos) => {
         nombreSolicita: datos.solicitante.nombre.trim(), tipDocSolicita: String(datos.solicitante.tipoDoc), numDocSolicita: datos.solicitante.numDoc.trim()
       }
     };
+    fiscalCompliance.firmar(evento);
 
     const [ev] = await conn.query(
       `INSERT INTO dte_invalidation_events (uuid, dte_id, tipo_invalidacion, motivo, responsable_nombre, responsable_tipo_doc, responsable_num_doc, solicitante_nombre, solicitante_tipo_doc, solicitante_num_doc, codigo_reemplazo, estado, full_json)
@@ -303,7 +306,9 @@ const invalidarDTE = async (uuidDte, datos) => {
        evento.motivo.nombreSolicita, evento.motivo.tipDocSolicita, evento.motivo.numDocSolicita, codigoReemplazo, JSON.stringify(evento)]
     );
     const sello = 'SELLO-' + crypto.randomBytes(12).toString('hex').toUpperCase();
+    fiscalCompliance.sellar(evento, sello);
     await conn.query('UPDATE dte_invalidation_events SET sello = ? WHERE id = ?', [sello, ev.insertId]);
+    await conn.query('UPDATE dte_invalidation_events SET full_json = ? WHERE id = ?', [JSON.stringify(evento), ev.insertId]);
     await conn.query("UPDATE dte_headers SET transmission_status = 'invalidated' WHERE id = ?", [doc.id]);
     await conn.commit();
     return { event_id: ev.insertId, uuid: uuid, sello: sello, evento: evento };
@@ -395,13 +400,12 @@ const repartirMonto = (montoCents, capacidades) => {
 
 const buildRetorno = (docs, allocaciones, motivo, ahora, uuid) => {
   const porId = new Map(allocaciones.map((x) => [Number(x.id), x.amount]));
-  let gravada = 0, compra = 0, impuesto = 0;
+  let gravada = 0, impuesto = 0;
   let numeroItem = 0;
   const cuerpo = docs.map((doc) => {
     const dte = parseJsonDb(doc.full_json);
     const amount = porId.get(Number(doc.id));
     if (amount == null) return null;
-    const esFSEE = String(doc.dte_type) === '14';
     const resumenOriginal = dte.resumen || {};
     const brutoOriginal = totalDocumento(doc);
     const tributosOriginales = Array.isArray(resumenOriginal.tributos) ? resumenOriginal.tributos : [];
@@ -409,32 +413,24 @@ const buildRetorno = (docs, allocaciones, motivo, ahora, uuid) => {
     const otrosOriginales = tributosOriginales.reduce((sum, t) => sum + (String(t.codigo) === '20' ? 0 : Number(t.valor || 0)), 0);
     const noGravadoOriginal = Number(resumenOriginal.totalNoGravado || 0);
     const factor = brutoOriginal > 0 ? amount / brutoOriginal : 0;
-    const retenidoOriginal = Number(resumenOriginal.reteRenta || 0);
-    const compraOriginal = Number(resumenOriginal.totalCompra || resumenOriginal.totalCompraExcluidos || resumenOriginal.subTotal || brutoOriginal);
-    const tasaRetencion = esFSEE && compraOriginal > 0 ? Math.min(0.99, retenidoOriginal / compraOriginal) : 0;
-    const compraItem = esFSEE && tasaRetencion > 0 ? money(amount / (1 - tasaRetencion)) : amount;
-    const retencionItem = esFSEE ? money(compraItem * tasaRetencion) : 0;
-    const impuestoItem = esFSEE ? 0 : money((ivaOriginal + otrosOriginales) * factor);
-    const noGravado = esFSEE ? 0 : money(noGravadoOriginal * factor);
-    const base = esFSEE ? 0 : money(Math.max(0, amount - impuestoItem - noGravado));
+    const impuestoItem = money((ivaOriginal + otrosOriginales) * factor);
+    const noGravado = money(noGravadoOriginal * factor);
+    const base = money(Math.max(0, amount - impuestoItem - noGravado));
     gravada = money(gravada + base);
-    compra = money(compra + (esFSEE ? compraItem : 0));
     impuesto = money(impuesto + impuestoItem);
     return {
       numItem: ++numeroItem,
       numeroDocumento: doc.uuid_generation, tipoItem: 1,
       cantidad: 1, codigo: null, uniMedida: 59,
       descripcion: String(motivo || 'Retorno / reembolso').slice(0, 1000),
-      precioUni: esFSEE ? compraItem : base, montoDescu: 0,
+      precioUni: base, montoDescu: 0,
       ventaNoSuj: 0, ventaExenta: 0, ventaGravada: base,
-      compra: esFSEE ? compraItem : 0,
       tributos: impuestoItem > 0 ? ['20'] : null,
-      ivaRete: 0, reteRenta: retencionItem, seguro: 0, flete: 0, noGravado: noGravado
+      ivaRete: 0, noGravado
     };
   }).filter(Boolean);
   const noGravado = money(cuerpo.reduce((sum, item) => sum + Number(item.noGravado || 0), 0));
-  const retencion = money(cuerpo.reduce((sum, item) => sum + Number(item.reteRenta || 0), 0));
-  const subtotal = money(gravada + compra);
+  const subtotal = money(gravada);
   const total = money(subtotal + impuesto + noGravado);
   const primerDte = parseJsonDb(docs[0].full_json);
   const evento = {
@@ -455,12 +451,10 @@ const buildRetorno = (docs, allocaciones, motivo, ahora, uuid) => {
     cuerpoDocumento: cuerpo,
     resumen: {
       totalNoSuj: 0, totalExenta: 0, totalGravada: gravada,
-      totalCompraExcluidos: compra, subTotalVentas: subtotal,
-      totalNoGravado: noGravado, totalSeguro: 0, totalFlete: 0,
+      subTotalVentas: subtotal, totalNoGravado: noGravado,
       montoTotalOperacion: money(subtotal + impuesto), ivaRetenido: 0,
-      reteRenta: retencion,
       tributos: impuesto > 0 ? [{ codigo: '20', descripcion: 'Impuesto al Valor Agregado', valor: impuesto }] : null,
-      totalPagar: money(total - retencion), totalLetras: null, totalNoOnerosas: 0,
+      totalPagar: total, totalLetras: null, totalNoOnerosas: 0,
       totaliva: impuesto, saldoFavor: 0
     },
     apendice: null
@@ -488,7 +482,7 @@ const retornarDTEs = async (uuids, datos = {}) => {
     const byUuid = new Map(rows.map((d) => [d.uuid_generation, d]));
     const docs = uuids.map((u) => byUuid.get(u));
     if (docs.some((doc) => doc.transmission_status !== 'accepted' || !doc.reception_seal)) throw new Error('Todos los DTE deben estar aceptados y tener sello de recepción');
-    if (docs.some((doc) => !['01', '11', '14'].includes(String(doc.dte_type)))) throw new Error('El retorno solo aplica a FE (01), FEXE (11) o FSEE (14)');
+    if (docs.some((doc) => String(doc.dte_type) !== '01')) throw new Error('El Evento de Retorno solo aplica a Facturas Electrónicas (FE)');
     if (new Set(docs.map((d) => String(d.dte_type))).size !== 1) throw new Error('Todos los DTE deben ser del mismo tipo');
     const identidad = identidadRetorno(docs[0]);
     if (docs.some((d) => {
@@ -505,12 +499,10 @@ const retornarDTEs = async (uuids, datos = {}) => {
       const generacion = parseFechaHoraLocal(doc.emission_date);
       if (!sello || !generacion) throw new Error(`El DTE ${doc.uuid_generation} tiene fechas inválidas`);
       const limiteSello = sumarMesesFinDeMes(sello, 3);
-      // El manual admite hasta 2 años para FE/FEXE de determinadas
-      // actividades; los demás tipos y actividades conservan el plazo de 3 meses.
+      // El plazo especial del manual también aplica a FE para estas actividades.
       const emisor = parseJsonDb(doc.full_json).emisor || {};
       const actividad = String(emisor.codActividad || '');
-      const plazoMeses = ['01', '11'].includes(String(doc.dte_type))
-        && ['01282', '21001', '46484', '47721'].includes(actividad) ? 24 : 3;
+      const plazoMeses = ['01282', '21001', '46484', '47721'].includes(actividad) ? 24 : 3;
       const limiteGeneracion = sumarMesesFinDeMes(generacion, plazoMeses);
       if (generacion > ahora) throw new Error(`El DTE ${doc.uuid_generation} tiene fecha de generación futura`);
       if (ahora > limiteSello || ahora > limiteGeneracion) throw new Error(`El DTE ${doc.uuid_generation} está fuera del plazo permitido para retorno`);

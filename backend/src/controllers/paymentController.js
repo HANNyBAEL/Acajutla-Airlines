@@ -48,10 +48,21 @@ const confirmarTransferencia = async (req, res) => {
 
 const reembolsar = async (req, res) => {
   try {
-    const { amount, reason } = req.body;
-    if (!reason) return res.status(400).json({ error: 'Indique el motivo del reembolso' });
-    const resultado = await PaymentService.reembolsar(parseInt(req.params.id, 10), amount, reason, req.usuario);
-    res.json({ exito: true, datos: resultado });
+    const { amount, reason, refund_method } = req.body;
+    const motivo = typeof reason === 'string' ? reason.trim() : '';
+    if (!motivo) return res.status(400).json({ error: 'Indique el motivo del reembolso' });
+    if (motivo.length > 500) return res.status(400).json({ error: 'El motivo no puede superar 500 caracteres' });
+    const resultado = await PaymentService.reembolsar(parseInt(req.params.id, 10), amount, motivo, req.usuario, refund_method);
+    // El reembolso ya está confirmado en la pasarela y en la base de datos.
+    // Un fallo de correo no debe convertir una operación exitosa en un error.
+    let correo = null;
+    try {
+      correo = await mailerService.enviarReembolso(resultado.refund_payment_id);
+    } catch (e) {
+      correo = { enviado: false, motivo: e.message };
+      console.error('Error enviando confirmación de reembolso:', e);
+    }
+    res.json({ exito: true, datos: resultado, correo });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -99,6 +110,10 @@ const reservasPendientes = async (req, res) => {
        FROM reservations r
        LEFT JOIN customers c ON c.id = r.customer_id
        WHERE r.status IN ('pending','confirmed') AND (r.estimated_total - r.paid_total) > 0.009
+         AND NOT EXISTS (
+           SELECT 1 FROM payments rf
+           WHERE rf.reservation_id = r.id AND rf.type = 'refund' AND rf.status = 'refunded'
+         )
        ORDER BY r.time_limit ASC`
     );
     res.json({ exito: true, total: rows.length, datos: rows });

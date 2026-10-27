@@ -16,7 +16,7 @@ import DTE from './pages/DTE';
 import NotasCredito from './pages/NotasCredito';
 import ContingenciaDTE from './pages/ContingenciaDTE';
 import Aeronaves from './pages/Aeronaves';
-import Empleados from './pages/Empleados';
+import Usuarios from './pages/Usuarios';
 import Reportes from './pages/Reportes';
 import Auditoria from './pages/Auditoria';
 import Notificaciones from './pages/Notificaciones';
@@ -56,7 +56,8 @@ function App() {
             <Route path="notas" element={<RutaProtegida pagina="notas"><NotasCredito /></RutaProtegida>} />
             <Route path="contingencia" element={<RutaProtegida pagina="contingencia"><ContingenciaDTE /></RutaProtegida>} />
             <Route path="aeronaves" element={<RutaProtegida pagina="aeronaves"><Aeronaves /></RutaProtegida>} />
-            <Route path="empleados" element={<RutaProtegida pagina="empleados"><Empleados /></RutaProtegida>} />
+            <Route path="usuarios" element={<RutaProtegida pagina="usuarios"><Usuarios /></RutaProtegida>} />
+            <Route path="empleados" element={<Navigate to="/usuarios" replace />} />
             <Route path="reportes" element={<RutaProtegida pagina="reportes"><Reportes /></RutaProtegida>} />
             <Route path="comercial" element={<RutaProtegida pagina="comercial"><Comercial /></RutaProtegida>} />
             <Route path="auditoria" element={<RutaProtegida pagina="auditoria"><Auditoria /></RutaProtegida>} />

@@ -57,6 +57,12 @@ const Correos = () => {
     failed: ['Fallido', 'bg-red-100 text-red-700'],
   }[s] || [s, 'bg-gray-100 text-gray-700']);
 
+  const plantillaLabel = (id) => ({
+    evento_retorno_adjuntos: 'Evento de Retorno · PDF + JSON',
+    evento_retorno: 'Evento de Retorno · PDF + JSON',
+    evento_invalidacion_adjuntos: 'Evento de Invalidación · PDF + JSON'
+  }[id] || id);
+
   const lista = correos.filter((c) => JSON.stringify(c).toLowerCase().includes(filtro.toLowerCase()));
 
   return (
@@ -97,7 +103,7 @@ const Correos = () => {
             ) : lista.map((c) => (
               <tr key={c.id} onClick={() => abrirDetalle(c)} className="cursor-pointer hover:bg-gray-50">
                 <td className="px-6 py-4 text-sm text-gray-600">{formatearFechaHoraDb(c.created_at)}</td>
-                <td className="px-6 py-4 text-sm">{c.template}</td>
+                <td className="px-6 py-4 text-sm">{plantillaLabel(c.template)}</td>
                 <td className="px-6 py-4 text-sm">{c.to_email}</td>
                 <td className="px-6 py-4 text-sm">{c.subject}</td>
                 <td className="px-6 py-4 text-sm text-gray-500">{c.ref_type || '-'} {c.ref_id || ''}</td>
@@ -146,7 +152,7 @@ const Correos = () => {
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Información del correo</h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                       <div><p className="text-xs text-gray-500">Destinatario</p><p className="font-medium break-all">{detalleCorreo.to_email || '—'}</p></div>
-                      <div><p className="text-xs text-gray-500">Plantilla</p><p className="font-medium break-all">{detalleCorreo.template || '—'}</p></div>
+                      <div><p className="text-xs text-gray-500">Plantilla</p><p className="font-medium break-all">{detalleCorreo.template ? plantillaLabel(detalleCorreo.template) : '—'}</p></div>
                       <div className="sm:col-span-2"><p className="text-xs text-gray-500">Asunto</p><p className="font-medium break-words">{detalleCorreo.subject || '—'}</p></div>
                       <div><p className="text-xs text-gray-500">Referencia</p><p>{detalleCorreo.ref_type || '—'}{detalleCorreo.ref_id ? ' · ' + detalleCorreo.ref_id : ''}</p></div>
                       <div><p className="text-xs text-gray-500">Creado</p><p>{detalleCorreo.created_at ? formatearFechaHoraDb(detalleCorreo.created_at) : '—'}</p></div>

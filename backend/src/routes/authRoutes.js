@@ -13,5 +13,8 @@ router.get('/roles', controller.listarRoles);
 router.get('/perfil', verificarToken, controller.perfil);
 router.post('/logout', verificarToken, controller.logout);
 router.get('/usuarios', verificarToken, verificarRol('admin'), controller.listarUsuarios);
+router.post('/usuarios', verificarToken, verificarRol('admin'), controller.crearUsuario);
+router.put('/usuarios/:id', verificarToken, verificarRol('admin'), controller.actualizarUsuario);
+router.patch('/usuarios/:id/status', verificarToken, verificarRol('admin'), controller.cambiarEstadoUsuario);
 
 module.exports = router;

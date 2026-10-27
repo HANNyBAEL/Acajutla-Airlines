@@ -18,6 +18,19 @@ const CAT024 = [
 ];
 const CAT022 = [ { c: '13', d: 'DUI' }, { c: '36', d: 'NIT' }, { c: '3', d: 'Pasaporte' } ];
 const TIPOS_DTE = { '01': 'FE', '03': 'CCFE', '04': 'NRE', '05': 'NCE', '06': 'NDE', '07': 'CRE', '08': 'CLE', '09': 'DCLE', '11': 'FEXE', '14': 'FSEE', '15': 'CDE' };
+const leerJsonDte = (dte) => {
+  try { return typeof dte?.full_json === 'string' ? JSON.parse(dte.full_json) : (dte?.full_json || {}); }
+  catch (_) { return {}; }
+};
+const mostrarValor = (valor) => valor === null || valor === undefined || valor === '' ? '—' : typeof valor === 'object' ? JSON.stringify(valor) : String(valor);
+const montoDte = (valor) => Number.isFinite(Number(valor)) ? '$' + Number(valor).toFixed(2) : '—';
+
+const DatoDetalleDte = ({ etiqueta, valor, mono = false }) => (
+  <div className="min-w-0 rounded-lg bg-gray-50 px-3 py-2">
+    <dt className="text-xs text-gray-500">{etiqueta}</dt>
+    <dd className={'mt-0.5 text-sm text-gray-800 break-words ' + (mono ? 'font-mono text-xs' : '')}>{mostrarValor(valor)}</dd>
+  </div>
+);
 
 const ContingenciaDTE = () => {
   const [pendientes, setPendientes] = useState([]);
@@ -27,6 +40,8 @@ const ContingenciaDTE = () => {
   const [mh, setMh] = useState(null);
   const [modalEvento, setModalEvento] = useState(false);
   const [modalInvalidar, setModalInvalidar] = useState(null);
+  const [detalleDte, setDetalleDte] = useState(null);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [modalEmitir, setModalEmitir] = useState(false);
   const [procesando, setProcesando] = useState(false);
   const [formEvento, setFormEvento] = useState({ fInicio: '', hInicio: '', fFin: '', hFin: '', tipoContingencia: 1, motivoContingencia: '', responsable: { nombre: '', tipoDoc: '13', numDoc: '' } });
@@ -57,6 +72,23 @@ const ContingenciaDTE = () => {
   };
 
   useEffect(() => { cargar(); }, []);
+
+  const abrirDetalle = async (dte) => {
+    setDetalleDte(dte);
+    setCargandoDetalle(true);
+    try {
+      const r = await api.get('/dte/' + encodeURIComponent(dte.uuid_generation));
+      setDetalleDte(r.data.datos || dte);
+    } catch (_) {
+      toast.error('No se pudo cargar el detalle completo del DTE');
+    } finally { setCargandoDetalle(false); }
+  };
+
+  const abrirInvalidacion = (event, dte) => {
+    event.stopPropagation();
+    setModalInvalidar(dte);
+    setFormInv({ tipoAnulacion: 1, motivo: '', codigoReemplazo: '', responsable: { nombre: '', tipoDoc: '13', numDoc: '' }, solicitante: { nombre: '', tipoDoc: '13', numDoc: '' } });
+  };
 
   const cambiarEstadoMH = async (operativo) => {
     setProcesando(true);
@@ -90,7 +122,14 @@ const ContingenciaDTE = () => {
     setProcesando(true);
     try {
       const r = await api.post('/dte-eventos/invalidar/' + modalInvalidar.uuid_generation, formInv);
-      toast.success('DTE invalidado. Sello: ' + r.data.datos.sello);
+      const correo = r.data.datos.correo;
+      if (correo?.enviado && correo?.simulado) {
+        toast.success('DTE invalidado. PDF y JSON guardados en modo simulado. Sello: ' + r.data.datos.sello);
+      } else if (correo?.enviado) {
+        toast.success('DTE invalidado; correo enviado con PDF y JSON. Sello: ' + r.data.datos.sello);
+      } else {
+        toast('DTE invalidado, pero no se pudieron enviar los archivos: ' + (correo?.motivo || 'sin correo'), { icon: '⚠️' });
+      }
       setModalInvalidar(null);
       cargar();
     } catch (e) { toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al invalidar'); }
@@ -183,13 +222,13 @@ const ContingenciaDTE = () => {
             {aceptados.length === 0 ? (
               <tr><td colSpan="5" className="text-center py-8 text-gray-500">Sin DTEs aceptados</td></tr>
             ) : aceptados.map((d) => (
-              <tr key={d.id} className="hover:bg-gray-50">
+              <tr key={d.id} className="hover:bg-primary-50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" onClick={() => abrirDetalle(d)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirDetalle(d); } }} tabIndex={0} aria-label={'Ver detalle del DTE ' + d.control_number}>
                 <td className="px-6 py-4"><code className="text-xs font-mono">{d.control_number}</code></td>
                 <td className="px-6 py-4 text-sm">{TIPOS_DTE[d.dte_type] || `DTE ${d.dte_type}`}</td>
                 <td className="px-6 py-4 text-sm">{d.receiver_name}</td>
                 <td className="px-6 py-4 text-xs text-gray-500">{d.reception_seal || '-'}</td>
                 <td className="px-6 py-4">
-                  <button onClick={() => { setModalInvalidar(d); setFormInv({ tipoAnulacion: 1, motivo: '', codigoReemplazo: '', responsable: { nombre: '', tipoDoc: '13', numDoc: '' }, solicitante: { nombre: '', tipoDoc: '13', numDoc: '' } }); }} className="text-red-600 hover:text-red-800 flex items-center space-x-1">
+                  <button onClick={(e) => abrirInvalidacion(e, d)} className="text-red-600 hover:text-red-800 flex items-center space-x-1">
                     <FiXCircle size={16} /><span className="text-sm">Invalidar</span>
                   </button>
                 </td>
@@ -280,6 +319,129 @@ const ContingenciaDTE = () => {
           </div>
         </div>
       )}
+
+      {detalleDte && (() => {
+        const json = leerJsonDte(detalleDte);
+        const identificacion = json.identificacion || {};
+        const emisor = json.emisor || {};
+        const receptor = json.receptor || {};
+        const resumen = json.resumen || {};
+        const items = Array.isArray(json.cuerpoDocumento) ? json.cuerpoDocumento : (detalleDte.items || []);
+        const pagos = Array.isArray(resumen.pagos) ? resumen.pagos : [];
+        const fechaEmision = [detalleDte.emission_date || identificacion.fecEmi, detalleDte.emission_time || identificacion.horEmi].filter(Boolean).join(' ');
+        const tipo = String(detalleDte.dte_type || identificacion.tipoDte || '').padStart(2, '0');
+        const valoresResumen = [
+          ['No sujetas', resumen.totalNoSuj], ['Exentas', resumen.totalExenta], ['Gravadas', resumen.totalGravada],
+          ['Subtotal', resumen.subTotal], ['IVA', resumen.totalIva ?? resumen.totalIVA ?? resumen.totaliva],
+          ['Operación', resumen.montoTotalOperacion], ['Retenciones', resumen.ivaRete ?? resumen.reteRenta],
+          ['Total a pagar', resumen.totalPagar ?? detalleDte.total_to_pay],
+        ].filter(([, valor]) => valor !== null && valor !== undefined);
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4" onClick={() => setDetalleDte(null)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="px-6 py-4 border-b border-gray-200 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h2 className="text-xl font-bold text-gray-800">Detalle del DTE</h2>
+                  <p className="text-sm text-gray-500 mt-1">{TIPOS_DTE[tipo] || 'DTE ' + tipo} · {detalleDte.control_number || identificacion.numeroControl || 'Sin número de control'}</p>
+                </div>
+                <button type="button" onClick={() => setDetalleDte(null)} className="text-gray-500 hover:text-gray-800" aria-label="Cerrar detalle"><FiX size={22} /></button>
+              </div>
+              <div className="overflow-y-auto p-6 space-y-5">
+                {cargandoDetalle ? <p className="text-sm text-gray-500">Cargando información completa...</p> : <>
+                  <section>
+                    <h3 className="font-semibold text-gray-800 mb-2">Estado y emisión</h3>
+                    <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                      <DatoDetalleDte etiqueta="Estado" valor={detalleDte.transmission_status} />
+                      <DatoDetalleDte etiqueta="Fecha y hora" valor={fechaEmision} />
+                      <DatoDetalleDte etiqueta="PNR / reserva" valor={detalleDte.pnr || detalleDte.reservation_id} />
+                      <DatoDetalleDte etiqueta="Total" valor={montoDte(detalleDte.total_to_pay ?? resumen.totalPagar)} />
+                      <DatoDetalleDte etiqueta="UUID de generación" valor={detalleDte.uuid_generation || identificacion.codigoGeneracion} mono />
+                      <DatoDetalleDte etiqueta="Sello de recepción" valor={detalleDte.reception_seal} mono />
+                      <DatoDetalleDte etiqueta="Ambiente" valor={identificacion.ambiente} />
+                      <DatoDetalleDte etiqueta="Moneda" valor={identificacion.tipoMoneda} />
+                    </dl>
+                  </section>
+
+                  <section>
+                    <h3 className="font-semibold text-gray-800 mb-2">Emisor</h3>
+                    <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      <DatoDetalleDte etiqueta="Nombre" valor={emisor.nombre || detalleDte.issuer_name} />
+                      <DatoDetalleDte etiqueta="NIT" valor={emisor.nit || detalleDte.issuer_nit} />
+                      <DatoDetalleDte etiqueta="NRC" valor={emisor.nrc} />
+                      <DatoDetalleDte etiqueta="Actividad económica" valor={[emisor.codActividad, emisor.descActividad].filter(Boolean).join(' · ')} />
+                      <DatoDetalleDte etiqueta="Correo" valor={emisor.correo} />
+                      <DatoDetalleDte etiqueta="Teléfono" valor={emisor.telefono} />
+                      <DatoDetalleDte etiqueta="Dirección" valor={emisor.direccion} />
+                    </dl>
+                  </section>
+
+                  <section>
+                    <h3 className="font-semibold text-gray-800 mb-2">Receptor</h3>
+                    <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      <DatoDetalleDte etiqueta="Nombre" valor={receptor.nombre || detalleDte.receiver_name} />
+                      <DatoDetalleDte etiqueta="Documento" valor={[receptor.tipoDocumento || detalleDte.receiver_doc_type, receptor.numDocumento || detalleDte.receiver_doc_number].filter(Boolean).join(' · ')} />
+                      <DatoDetalleDte etiqueta="NIT / NRC" valor={[receptor.nit, receptor.nrc].filter(Boolean).join(' · ')} />
+                      <DatoDetalleDte etiqueta="Correo" valor={receptor.correo} />
+                      <DatoDetalleDte etiqueta="Teléfono" valor={receptor.telefono} />
+                      <DatoDetalleDte etiqueta="Dirección" valor={receptor.direccion} />
+                    </dl>
+                  </section>
+
+                  <section>
+                    <h3 className="font-semibold text-gray-800 mb-2">Conceptos</h3>
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                      <table className="w-full min-w-[650px]">
+                        <thead className="bg-gray-50"><tr>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Descripción</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Cantidad</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Precio unitario</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Gravado / compra</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Exento</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">IVA</th>
+                        </tr></thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {items.length === 0 ? <tr><td colSpan="6" className="px-3 py-4 text-center text-sm text-gray-500">Sin conceptos detallados</td></tr> : items.map((item, i) => (
+                            <tr key={item.numItem || item.id || i}>
+                              <td className="px-3 py-2 text-sm text-gray-800">{item.descripcion || item.name || '—'}</td>
+                              <td className="px-3 py-2 text-sm text-right">{mostrarValor(item.cantidad)}</td>
+                              <td className="px-3 py-2 text-sm text-right">{montoDte(item.precioUni ?? item.unit_price)}</td>
+                              <td className="px-3 py-2 text-sm text-right">{montoDte(item.ventaGravada ?? item.compra ?? item.taxable_amount)}</td>
+                              <td className="px-3 py-2 text-sm text-right">{montoDte(item.ventaExenta ?? item.exempt_amount)}</td>
+                              <td className="px-3 py-2 text-sm text-right">{montoDte(item.ivaItem ?? item.vat_amount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+
+                  <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div>
+                      <h3 className="font-semibold text-gray-800 mb-2">Resumen fiscal</h3>
+                      <dl className="grid grid-cols-2 gap-2">
+                        {valoresResumen.map(([etiqueta, valor]) => <DatoDetalleDte key={etiqueta} etiqueta={etiqueta} valor={montoDte(valor)} />)}
+                      </dl>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-800 mb-2">Forma(s) de pago</h3>
+                      {pagos.length ? <div className="space-y-2">{pagos.map((pago, i) => (
+                        <div key={i} className="rounded-lg bg-gray-50 px-3 py-2 text-sm flex justify-between gap-3">
+                          <span>{pago.codigo || 'Pago'}{pago.referencia ? ' · ' + pago.referencia : ''}</span><strong>{montoDte(pago.montoPago)}</strong>
+                        </div>
+                      ))}</div> : <p className="text-sm text-gray-500">Sin pagos detallados.</p>}
+                    </div>
+                  </section>
+
+                  <details className="rounded-lg border border-gray-200">
+                    <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-primary-700">Ver JSON completo del DTE</summary>
+                    <pre className="max-h-80 overflow-auto bg-gray-900 text-green-300 p-4 text-xs whitespace-pre-wrap break-all">{JSON.stringify(json, null, 2)}</pre>
+                  </details>
+                </>}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {modalInvalidar && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

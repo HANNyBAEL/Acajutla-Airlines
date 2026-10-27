@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const axios = require('axios');
 const pagoDteService = require('./pagoDteService');
+const eventoEntregaService = require('./eventoEntregaService');
 
 const CONFIG = {
   apiKey: process.env.BREVO_API_KEY || '',
@@ -32,6 +33,20 @@ async function dispatch(outboxId) {
   const [rows] = await pool.query('SELECT * FROM email_outbox WHERE id = ?', [outboxId]);
   if (!rows.length) return { enviado: false, motivo: 'Registro no encontrado' };
   const m = rows[0];
+  if (['evento_retorno_adjuntos', 'evento_invalidacion_adjuntos', 'evento_retorno'].includes(m.template)) {
+    let r;
+    try {
+      r = await eventoEntregaService.reenviarAdjuntos(m.template, m.ref_id, m.to_email, m.subject, m.html);
+    } catch (e) {
+      r = { enviado: false, motivo: e.message };
+    }
+    const status = r.enviado ? (r.simulado ? 'simulado' : 'sent') : 'failed';
+    await pool.query(
+      'UPDATE email_outbox SET status = ?, brevo_message_id = ?, error_msg = ?, sent_at = IF(? IN (\'sent\', \'simulado\'), NOW(), sent_at) WHERE id = ?',
+      [status, r.messageId || null, r.enviado ? null : r.motivo, status, outboxId]
+    );
+    return Object.assign({}, r, { outbox_id: outboxId });
+  }
   // El registro de auditoría del DTE no almacena binarios. Por eso, al
   // reenviarlo se regeneran el PDF y el ZIP con el JSON antes de enviarlo.
   if (m.template === 'dte_entrega_adjuntos' && m.ref_type === 'dte' && m.ref_id) {
@@ -114,6 +129,117 @@ async function enviarComprobantePago(pago) {
     '<tr><td>Fecha</td><td>' + new Date(row.payment_date).toLocaleString('es-SV') + '</td></tr></table>' +
     '<p class="note">Conserve este comprobante. Su factura electrónica (FE) o comprobante de crédito fiscal (CCFE) será emitido y enviado según normativa DTE.</p>';
   return queue('comprobante_pago', row.email, 'Comprobante de pago - Reserva ' + row.pnr, wrap('Comprobante de Pago', cuerpo), 'pago', pagoId);
+}
+
+async function enviarReembolso(reembolso) {
+  const reembolsoId = typeof reembolso === 'object' && reembolso !== null
+    ? (reembolso.id || reembolso.refund_payment_id)
+    : reembolso;
+  const [p] = await pool.query(
+    `SELECT rf.*, original.id AS original_payment_id, original.method AS original_method,
+            original.external_reference AS original_reference,
+            r.pnr, r.paid_total, r.status AS reservation_status,
+            c.first_names, c.last_names,
+            COALESCE(c.email, (
+              SELECT JSON_UNQUOTE(JSON_EXTRACT(h.full_json, '$.receptor.correo'))
+              FROM dte_headers h WHERE h.reservation_id = r.id
+              ORDER BY h.created_at DESC LIMIT 1
+            )) AS email
+     FROM payments rf
+     JOIN payments original ON original.id = rf.original_payment_id
+     JOIN reservations r ON r.id = rf.reservation_id
+     LEFT JOIN customers c ON c.id = r.customer_id
+     WHERE rf.id = ? AND rf.type = 'refund' AND rf.status = 'refunded'`, [reembolsoId]);
+  if (!p.length) return { enviado: false, motivo: 'Reembolso no encontrado' };
+  const row = p[0];
+  const cuerpo =
+    '<p>Estimado/a ' + escaparHtml((row.first_names || '') + ' ' + (row.last_names || '')) +
+    ', confirmamos que se procesó la devolución de su pago.</p>' +
+    '<table class="kv"><tr><td>Reserva (PNR)</td><td class="total">' + escaparHtml(row.pnr) + '</td></tr>' +
+    '<tr><td>Monto reembolsado</td><td class="total">$' + Number(row.amount).toFixed(2) + ' ' + escaparHtml(row.currency) + '</td></tr>' +
+    '<tr><td>Método de devolución</td><td>' + escaparHtml(({ card: 'Tarjeta', transfer: 'Transferencia bancaria', cash: 'Efectivo', paypal: 'PayPal' })[row.method] || row.method) + '</td></tr>' +
+    '<tr><td>Método del pago original</td><td>' + escaparHtml(({ card: 'Tarjeta', transfer: 'Transferencia bancaria', cash: 'Efectivo', paypal: 'PayPal' })[row.original_method] || row.original_method) + '</td></tr>' +
+    '<tr><td>Referencia de reembolso</td><td>' + escaparHtml(row.external_reference || '-') + '</td></tr>' +
+    '<tr><td>Pago original</td><td>#' + escaparHtml(row.original_payment_id) + ' · ' + escaparHtml(row.original_reference || '-') + '</td></tr>' +
+    '<tr><td>Motivo</td><td>' + escaparHtml(row.reason || '-') + '</td></tr>' +
+    '<tr><td>Fecha</td><td>' + escaparHtml(new Date(row.payment_date).toLocaleString('es-SV')) + '</td></tr></table>' +
+    '<p>El tiempo para que el monto se refleje depende del medio de pago y de la entidad que lo procesa.</p>';
+  return queue('reembolso', row.email, 'Confirmación de reembolso - Reserva ' + row.pnr, wrap('Confirmación de Reembolso', cuerpo), 'pago', reembolsoId);
+}
+
+async function enviarEventoRetorno(uuid) {
+  const [rows] = await pool.query(
+    `SELECT e.uuid, e.sello, e.motivo, e.returned_amount, e.full_json,
+            h.uuid_generation, h.control_number, h.dte_type, h.reservation_id,
+            r.pnr, c.first_names, c.last_names, c.email
+     FROM dte_return_events e
+     JOIN dte_headers h ON h.id = e.dte_id
+     LEFT JOIN reservations r ON r.id = h.reservation_id
+     LEFT JOIN customers c ON c.id = r.customer_id
+     WHERE e.uuid = ? ORDER BY e.id`, [uuid]);
+  if (!rows.length) return { enviado: false, motivo: 'Evento de retorno no encontrado' };
+  const evento = typeof rows[0].full_json === 'string' ? JSON.parse(rows[0].full_json) : rows[0].full_json;
+  let dteOriginal = {};
+  if (rows[0].uuid_generation) {
+    const [dteRows] = await pool.query('SELECT full_json FROM dte_headers WHERE uuid_generation = ?', [rows[0].uuid_generation]);
+    if (dteRows.length) dteOriginal = typeof dteRows[0].full_json === 'string' ? JSON.parse(dteRows[0].full_json) : (dteRows[0].full_json || {});
+  }
+  const receptor = evento?.receptor || dteOriginal.receptor || {};
+  const destinatario = receptor.correo || rows[0].email;
+  const nombre = receptor.nombre || [rows[0].first_names, rows[0].last_names].filter(Boolean).join(' ') || 'cliente';
+  const filas = rows.map((row) => '<tr><td>' + escaparHtml(row.control_number || row.uuid_generation) + '</td><td>' +
+    escaparHtml(String(row.dte_type) === '01' ? 'FE' : row.dte_type) + '</td><td>$' +
+    Number(row.returned_amount).toFixed(2) + '</td></tr>').join('');
+  const resumen = evento?.resumen || {};
+  const total = Number(resumen.totalPagar ?? resumen.montoTotalOperacion ?? rows.reduce((sum, row) => sum + Number(row.returned_amount || 0), 0));
+  const cuerpo =
+    '<p>Estimado/a ' + escaparHtml(nombre) + ', se registró un Evento de Retorno relacionado con su documento tributario.</p>' +
+    '<table class="kv"><tr><td>Reserva (PNR)</td><td>' + escaparHtml(rows[0].pnr || '-') + '</td></tr>' +
+    '<tr><td>Evento</td><td>' + escaparHtml(rows[0].uuid) + '</td></tr>' +
+    '<tr><td>Sello</td><td>' + escaparHtml(rows[0].sello || '-') + '</td></tr>' +
+    '<tr><td>Descripción</td><td>' + escaparHtml(rows[0].motivo || '-') + '</td></tr>' +
+    '<tr><td>Total consignado en el evento</td><td class="total">$' + total.toFixed(2) + ' USD</td></tr></table>' +
+    '<h3 style="font-size:13px;margin:12px 0 4px">Documentos relacionados</h3>' +
+    '<table class="kv"><tr><td>N° de control</td><td>Tipo</td><td>Monto aplicado</td></tr>' + filas + '</table>' +
+    '<p>Adjuntamos el archivo JSON del evento y su representación gráfica en PDF.</p>' +
+    '<p class="note">Este correo confirma el registro del evento fiscal. La devolución efectiva del pago se procesa por separado y se confirma en otro correo.</p>';
+  return queue('evento_retorno_adjuntos', destinatario, 'Evento de Retorno - ' + (rows[0].pnr || rows[0].uuid), wrap('Notificación de Evento de Retorno', cuerpo), 'dte_evento', uuid);
+}
+
+async function enviarEventoInvalidacion(uuid) {
+  const [rows] = await pool.query(
+    `SELECT i.uuid, i.sello, i.tipo_invalidacion, i.motivo, i.full_json,
+            h.uuid_generation, h.control_number, h.dte_type, h.full_json AS dte_json,
+            r.pnr, c.first_names, c.last_names, c.email
+     FROM dte_invalidation_events i
+     JOIN dte_headers h ON h.id = i.dte_id
+     LEFT JOIN reservations r ON r.id = h.reservation_id
+     LEFT JOIN customers c ON c.id = r.customer_id
+     WHERE i.uuid = ? LIMIT 1`, [uuid]);
+  if (!rows.length) return { enviado: false, motivo: 'Evento de invalidación no encontrado' };
+  const row = rows[0];
+  const evento = typeof row.full_json === 'string' ? JSON.parse(row.full_json) : (row.full_json || {});
+  const dte = typeof row.dte_json === 'string' ? JSON.parse(row.dte_json) : (row.dte_json || {});
+  const destinatario = evento.documento?.correo || dte.receptor?.correo || row.email;
+  const responsable = evento.motivo || {};
+  const documento = evento.documento || {};
+  const tipoMotivo = ({
+    1: 'Error en la información del DTE',
+    2: 'Rescindir de la operación realizada',
+    3: 'Otro'
+  })[String(row.tipo_invalidacion)] || String(row.tipo_invalidacion);
+  const cuerpo =
+    '<p>Se registró un Evento de Invalidación relacionado con el documento que recibió.</p>' +
+    '<table class="kv"><tr><td>Reserva (PNR)</td><td>' + escaparHtml(row.pnr || '-') + '</td></tr>' +
+    '<tr><td>Documento invalidado</td><td>' + escaparHtml(row.control_number || row.uuid_generation) + ' · ' + escaparHtml(row.dte_type) + '</td></tr>' +
+    '<tr><td>Código del evento</td><td>' + escaparHtml(row.uuid) + '</td></tr>' +
+    '<tr><td>Sello de recepción</td><td>' + escaparHtml(row.sello || '-') + '</td></tr>' +
+    '<tr><td>Tipo de invalidación</td><td>' + escaparHtml(tipoMotivo) + '</td></tr>' +
+    '<tr><td>Motivo</td><td>' + escaparHtml(responsable.motivoAnulacion || row.motivo || '-') + '</td></tr>' +
+    '<tr><td>DTE de reemplazo</td><td>' + escaparHtml(documento.codigoGeneracionR || 'No aplica') + '</td></tr></table>' +
+    '<p>Adjuntamos el archivo JSON del evento y su representación gráfica en PDF.</p>' +
+    '<p class="note">Documento de práctica generado en el entorno simulado; no fue transmitido al Ministerio de Hacienda.</p>';
+  return queue('evento_invalidacion_adjuntos', destinatario, 'Evento de Invalidación - ' + (row.pnr || row.uuid), wrap('Notificación de Evento de Invalidación', cuerpo), 'dte_invalidacion', uuid);
 }
 
 async function enviarReciboVenta(pago) {
@@ -206,8 +332,11 @@ module.exports = {
   dispatch: dispatch,
   enviarConfirmacionReserva: enviarConfirmacionReserva,
   enviarComprobantePago: enviarComprobantePago,
+  enviarReembolso: enviarReembolso,
   enviarReciboVenta: enviarReciboVenta,
   enviarDTE: enviarDTE,
+  enviarEventoRetorno: enviarEventoRetorno,
+  enviarEventoInvalidacion: enviarEventoInvalidacion,
   enviarCancelacionVuelo: enviarCancelacionVuelo,
   listar: listar,
   obtener: obtener
