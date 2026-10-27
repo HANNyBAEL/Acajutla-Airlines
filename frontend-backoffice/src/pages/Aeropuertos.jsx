@@ -11,7 +11,7 @@ const Aeropuertos = () => {
   const [filtro, setFiltro] = useState('');
   const [modal, setModal] = useState(false);
   const [guardando, setGuardando] = useState(false);
-  const [form, setForm] = useState({ code: '', icao_code: '', name: '', city: '', country_id: '' });
+  const [form, setForm] = useState({ code: '', icao_code: '', name: '', city: '', country_id: '', gate_code: '' });
   const [aeropuertoEditando, setAeropuertoEditando] = useState(null);
   // Drawer state
   const [drawerAeropuerto, setDrawerAeropuerto] = useState(null);
@@ -27,7 +27,7 @@ const Aeropuertos = () => {
 
   const abrirModal = () => {
     setAeropuertoEditando(null);
-    setForm({ code: '', icao_code: '', name: '', city: '', country_id: '' });
+    setForm({ code: '', icao_code: '', name: '', city: '', country_id: '', gate_code: '' });
     setModal(true);
   };
 
@@ -39,6 +39,7 @@ const Aeropuertos = () => {
       name: a.name || '',
       city: a.city || '',
       country_id: a.country_id || '',
+      gate_code: '',
     });
     setModal(true);
   };
@@ -47,6 +48,7 @@ const Aeropuertos = () => {
 
   const guardar = async () => {
     if (!form.code || !form.name || !form.city || !form.country_id) return toast.error('Completa código, nombre, ciudad y país');
+    if (!aeropuertoEditando && !form.gate_code.trim()) return toast.error('Indica el código de la primera puerta de embarque');
     setGuardando(true);
     try {
       if (aeropuertoEditando) {
@@ -54,7 +56,7 @@ const Aeropuertos = () => {
         toast.success('Aeropuerto actualizado');
       } else {
         await api.post('/aeropuertos', form);
-        toast.success('Aeropuerto registrado');
+        toast.success('Aeropuerto registrado con su primera puerta de embarque');
       }
       setModal(false);
       setAeropuertoEditando(null);
@@ -250,6 +252,13 @@ const Aeropuertos = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">País *</label>
                 <select className="input-field" value={form.country_id} onChange={(e) => setCampo('country_id', e.target.value)}><option value="">Seleccionar país</option>{paises.filter((p) => p.active).map((p) => <option key={p.id} value={p.id}>{p.name} ({p.code})</option>)}</select>
               </div>
+              {!aeropuertoEditando && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Código de la primera puerta de embarque *</label>
+                  <input className="input-field" maxLength={20} value={form.gate_code} onChange={(e) => setCampo('gate_code', e.target.value.toUpperCase())} placeholder="G1" />
+                  <p className="mt-1 text-xs text-gray-500">Cada aeropuerto activo debe conservar al menos una puerta activa para poder programar vuelos.</p>
+                </div>
+              )}
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button className="btn-secondary" onClick={() => setModal(false)}>Cancelar</button>

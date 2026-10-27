@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: skymanager-api
+    name: acajutla-airlines-api
     runtime: node
     rootDir: backend
     plan: free
@@ -39,7 +39,7 @@ services:
       - key: CORS_ORIGIN
         sync: false
   - type: static
-    name: skymanager-backoffice
+    name: acajutla-airlines-backoffice
     rootDir: frontend-backoffice
     buildCommand: npm install && npm run build
     staticPublishPath: dist

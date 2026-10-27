@@ -2,7 +2,7 @@ export const descargarExcelTablas = async (filename, sheets) => {
   const excelModule = await import('exceljs');
   const ExcelJS = excelModule.default || excelModule;
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'SkyManager';
+  workbook.creator = 'Acajutla Airlines';
   workbook.created = new Date();
   workbook.subject = 'Reportes del sistema';
 

@@ -10,7 +10,7 @@ const BREVO_KEY = process.env.BREVO_API_KEY || '';
 const BREVO_URL = 'https://api.brevo.com/v3/smtp/email';
 const SENDER = {
   email: process.env.BREVO_SENDER_EMAIL || process.env.BREVO_FROM_EMAIL || 'facturacion@acajutlaairlines.com',
-  name: process.env.BREVO_SENDER_NAME || process.env.BREVO_FROM_NAME || 'Acajutla Airlines - SkyManager'
+  name: process.env.BREVO_SENDER_NAME || process.env.BREVO_FROM_NAME || 'Acajutla Airlines'
 };
 const STORAGE = path.join(__dirname, '..', '..', 'storage', 'correos');
 

@@ -1,4 +1,4 @@
-# SkyManager
+# Acajutla Airlines
 
 Sistema de gestión de vuelos con una API Node.js y un backoffice React.
 

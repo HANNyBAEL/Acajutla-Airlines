@@ -4,7 +4,7 @@ const pool = require('../../config/db');
 // Se usa una clave global porque también hay documentos relacionados y reemisiones.
 async function serializarEmision(emitir) {
   const conn = await pool.getConnection();
-  const key = 'skymanager:school:dte';
+  const key = 'acajutla-airlines:school:dte';
   let locked = false;
   try {
     const [rows] = await conn.query('SELECT GET_LOCK(?, 15) AS acquired', [key]);

@@ -40,7 +40,7 @@ const Login = () => {
           <div className="w-16 h-16 bg-gradient-to-br from-primary-600 to-primary-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <FiSend className="text-white" size={32} />
           </div>
-          <h1 className="text-2xl font-bold text-gray-800">SkyManager</h1>
+          <h1 className="text-2xl font-bold text-gray-800">Acajutla Airlines</h1>
           <p className="text-gray-500 text-sm mt-1">Panel Administrativo - Acajutla Airlines</p>
         </div>
         {!requiereMFA ? (

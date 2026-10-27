@@ -18,8 +18,9 @@ const Vuelos = () => {
   const [modal, setModal] = useState(false);
   const [aeropuertos, setAeropuertos] = useState([]);
   const [aeronaves, setAeronaves] = useState([]);
+  const [instalaciones, setInstalaciones] = useState([]);
   const [guardando, setGuardando] = useState(false);
-  const [form, setForm] = useState({ flight_number: '', origen_iata: '', destino_iata: '', aircraft_id: '', departure_datetime: '', arrival_datetime: '', base_price: '', gate: '' });
+  const [form, setForm] = useState({ flight_number: '', origen_iata: '', destino_iata: '', aircraft_id: '', departure_datetime: '', arrival_datetime: '', base_price: '', gate_facility_id: '' });
   const [errorValidacion, setErrorValidacion] = useState('');
   const [modalReprog, setModalReprog] = useState(null);
   const [formReprog, setFormReprog] = useState({ departure_datetime: '', arrival_datetime: '', aircraft_id: '', gate: '' });
@@ -49,13 +50,14 @@ const Vuelos = () => {
   };
 
   const abrirModal = async () => {
-    setForm({ flight_number: '', origen_iata: '', destino_iata: '', aircraft_id: '', departure_datetime: '', arrival_datetime: '', base_price: '', gate: '' });
+    setForm({ flight_number: '', origen_iata: '', destino_iata: '', aircraft_id: '', departure_datetime: '', arrival_datetime: '', base_price: '', gate_facility_id: '' });
     setErrorValidacion('');
     setModal(true);
     try {
-      const res = await Promise.all([api.get('/aeropuertos?activos=1'), api.get('/vuelos/aeronaves')]);
+      const res = await Promise.all([api.get('/aeropuertos?activos=1'), api.get('/vuelos/aeronaves'), api.get('/operaciones/infraestructura')]);
       setAeropuertos(res[0].data.datos || []);
       setAeronaves(res[1].data.datos || []);
+      setInstalaciones(res[2].data.datos || []);
     } catch (e) {
       toast.error('Error al cargar catálogos');
     }
@@ -73,11 +75,19 @@ const Vuelos = () => {
 
   const setCampo = (campo, valor) => {
     const nuevoForm = Object.assign({}, form, { [campo]: valor });
+    if (campo === 'origen_iata') nuevoForm.gate_facility_id = '';
     setForm(nuevoForm);
     if (campo === 'origen_iata' || campo === 'destino_iata' || campo === 'base_price') {
       setErrorValidacion(mensajeErrorForm(nuevoForm));
     }
   };
+
+  const puertasOrigen = instalaciones.filter((instalacion) => {
+    const aeropuertoOrigen = aeropuertos.find((a) => a.code === form.origen_iata);
+    return Number(instalacion.airport_id) === Number(aeropuertoOrigen?.id)
+      && instalacion.type === 'gate'
+      && Number(instalacion.active) === 1;
+  });
 
   const guardar = async () => {
     if (!form.flight_number || !form.aircraft_id || !form.origen_iata || !form.destino_iata || !form.departure_datetime || !form.arrival_datetime || !form.base_price) {
@@ -88,6 +98,9 @@ const Vuelos = () => {
     }
     if (Number(form.base_price) <= 0) {
       return toast.error('El precio base debe ser mayor a 0 USD.');
+    }
+    if (!form.gate_facility_id) {
+      return toast.error('Selecciona una puerta de embarque activa del aeropuerto de origen.');
     }
     setGuardando(true);
     try {
@@ -394,8 +407,16 @@ const Vuelos = () => {
                 <input type="datetime-local" className="input-field" value={form.arrival_datetime} onChange={(e) => setCampo('arrival_datetime', e.target.value)} /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Precio base (USD) *</label>
                 <input type="number" min="0.01" step="0.01" className="input-field" value={form.base_price} onChange={(e) => setCampo('base_price', e.target.value)} placeholder="250" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Puerta de embarque</label>
-                <input className="input-field" value={form.gate} onChange={(e) => setCampo('gate', e.target.value)} placeholder="A12" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Puerta de embarque *</label>
+                <SearchableSelect
+                  options={puertasOrigen.map((instalacion) => ({ value: instalacion.id, label: instalacion.code + ' · ' + form.origen_iata, searchText: instalacion.code + ' ' + form.origen_iata }))}
+                  value={form.gate_facility_id}
+                  onChange={(valor) => setCampo('gate_facility_id', valor)}
+                  placeholder={form.origen_iata ? 'Selecciona una puerta activa...' : 'Selecciona primero el aeropuerto de origen'}
+                  emptyText={form.origen_iata ? 'No hay puertas activas. Registra una en Operaciones → Infraestructura.' : 'Selecciona primero el aeropuerto de origen'}
+                />
+                {form.origen_iata && puertasOrigen.length === 0 && <p className="mt-1 text-xs text-amber-700">Agrega una instalación de tipo Puerta de embarque para {form.origen_iata} en Operaciones → Infraestructura.</p>}
+              </div>
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button className="btn-secondary" onClick={() => setModal(false)}>Cancelar</button>

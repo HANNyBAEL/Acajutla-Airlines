@@ -81,7 +81,7 @@ const Sidebar = () => {
           <FiSend className="text-white" size={18} />
         </div>
         <div className="ml-2">
-          <h1 className="font-bold text-gray-800 text-sm">SkyManager</h1>
+          <h1 className="font-bold text-gray-800 text-sm">Acajutla Airlines</h1>
           <p className="text-xs text-gray-500">Backoffice</p>
         </div>
       </div>

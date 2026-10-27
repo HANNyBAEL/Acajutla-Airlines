@@ -1,8 +1,8 @@
 {
-  "name": "skymanager-system",
+  "name": "acajutla-airlines-system",
   "version": "1.0.0",
   "private": true,
-  "description": "Comandos unificados para probar y compilar SkyManager",
+  "description": "Comandos unificados para probar y compilar Acajutla Airlines",
   "scripts": {
     "test": "npm run check:backend && npm run test:backend && npm run test:logic && npm run lint:backoffice && npm run build:backoffice",
     "check:backend": "node scripts/check-backend-syntax.js",

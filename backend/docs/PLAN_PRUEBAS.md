@@ -1,4 +1,4 @@
-# PLAN DE PRUEBAS — SkyManager (Acajutla Airlines)
+# PLAN DE PRUEBAS — Acajutla Airlines
 Versión 1.0 · Fecha: 2026-09-09 · Responsable: QA (M. Canales / D. Ramírez)
 
 ## 1. Alcance y metodología

@@ -19,7 +19,7 @@ async function test(id, nombre, fn) {
   console.log((r.ok ? 'PASS' : 'FAIL') + ' | ' + id + ' | ' + nombre + ' | HTTP ' + r.status);
 }
 (async () => {
-  console.log('=== SMOKE TEST SKYMANAGER ===');
+  console.log('=== SMOKE TEST ACAJUTLA AIRLINES ===');
   await test('PF-01', 'Login admin', async () => {
     const r = await call('POST', '/auth/login', { usuario: USER, password: PASS });
     if (r.data && r.data.datos && r.data.datos.accessToken) token = r.data.datos.accessToken;

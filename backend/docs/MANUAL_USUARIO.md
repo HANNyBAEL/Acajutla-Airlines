@@ -1,4 +1,4 @@
-# MANUAL DE USUARIO — Backoffice SkyManager
+# MANUAL DE USUARIO — Backoffice Acajutla Airlines
 Acajutla Airlines · v1.0 · 2026-09-09
 
 ## Ingreso

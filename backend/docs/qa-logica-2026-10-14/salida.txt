@@ -1,5 +1,5 @@
 
-> skymanager-system@1.0.0 test:logic
+> acajutla-airlines-system@1.0.0 test:logic
 > node backend/pruebas/logica-negocio-2026-10-14.cjs
 
 PASS ROUND-100-adult-2 El total coincide con la suma de importes guardados

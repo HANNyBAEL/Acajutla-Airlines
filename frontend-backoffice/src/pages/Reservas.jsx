@@ -39,8 +39,9 @@ const Reservas = () => {
   useEffect(() => { cargar(); }, []);
 
   const nombreDe = (r) =>
-    ((r?.first_names || r?.customer_first || r?.nombres || '') + ' ' + (r?.last_names || r?.customer_last || r?.apellidos || '')).trim();
-  const docDe = (r) => r?.document_number || r?.customer_doc || r?.documento || '';
+    ((r?.first_names || r?.customer_first || r?.customer_first_names || r?.nombres || '') + ' ' +
+      (r?.last_names || r?.customer_last || r?.customer_last_names || r?.apellidos || '')).trim();
+  const docDe = (r) => r?.document_number || r?.customer_doc || r?.customer_document_number || r?.documento || '';
 
   const filtradas = useMemo(() => {
     const q = texto.trim().toLowerCase();

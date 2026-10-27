@@ -6,7 +6,7 @@ const CONFIG = {
   apiKey: process.env.BREVO_API_KEY || '',
   // Acepta ambas convenciones usadas por los módulos de correo del proyecto.
   senderEmail: process.env.BREVO_SENDER_EMAIL || process.env.BREVO_FROM_EMAIL || 'facturacion@acajutlaairlines.com',
-  senderName: process.env.BREVO_SENDER_NAME || process.env.BREVO_FROM_NAME || 'Acajutla Airlines - SkyManager'
+  senderName: process.env.BREVO_SENDER_NAME || process.env.BREVO_FROM_NAME || 'Acajutla Airlines'
 };
 
 const estilos = 'body{font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;margin:0;padding:24px}' +
@@ -20,7 +20,7 @@ const estilos = 'body{font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;
 
 const wrap = (titulo, cuerpo) =>
   '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' + estilos + '</style></head><body><div class="card">' +
-  '<div class="head"><h1>ACAJUTLA AIRLINES</h1><p>SkyManager - Sistema Integral de Gestión</p></div>' +
+  '<div class="head"><h1>ACAJUTLA AIRLINES</h1><p>Sistema Integral de Gestión</p></div>' +
   '<div class="body"><h2 style="margin:0 0 12px;font-size:16px;color:#1d4ed8">' + titulo + '</h2>' + cuerpo + '</div>' +
   '<div class="foot">Correo transaccional automático. Ambiente de pruebas (CAT-001: 00). Representación gráfica disponible en el backoffice.</div></div></body></html>';
 

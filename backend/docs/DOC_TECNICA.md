@@ -1,4 +1,4 @@
-# DOCUMENTACIÓN TÉCNICA — SkyManager
+# DOCUMENTACIÓN TÉCNICA — Acajutla Airlines
 v1.0 · 2026-09-09
 
 ## Arquitectura

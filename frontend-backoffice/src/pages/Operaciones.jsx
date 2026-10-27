@@ -500,6 +500,7 @@ const Operaciones = () => {
             <div>
               <h2 className="text-lg font-bold">Infraestructura</h2>
               <p className="text-sm text-gray-500">Controla puertas de embarque, terminales y puntos de atención.</p>
+              <p className="mt-1 text-xs text-blue-700">Cada aeropuerto activo debe conservar al menos una puerta de embarque activa.</p>
             </div>
             <div className="flex justify-end gap-2">
               <button className="btn-primary flex items-center gap-2" onClick={() => setModalNuevaInstalacion(true)}>
@@ -525,7 +526,7 @@ const Operaciones = () => {
                     <td className="px-4 py-2 text-sm">
                       <button type="button" className={f.active ? 'text-green-700' : 'text-red-700'} onClick={(e) => { 
                         e.stopPropagation(); 
-                        api.put('/operaciones/infraestructura/' + f.id, { active: !f.active }).then(cargarBase).catch(() => toast.error('Error al cambiar estado')); 
+                        api.put('/operaciones/infraestructura/' + f.id, { active: !f.active }).then(cargarBase).catch((e) => toast.error(e.response?.data?.error || 'Error al cambiar estado'));
                       }}>
                         {f.active ? <FiToggleRight size={22}/> : <FiToggleLeft size={22}/>}
                       </button>

@@ -1,18 +1,18 @@
 
-> skymanager-system@1.0.0 test
+> acajutla-airlines-system@1.0.0 test
 > npm run check:backend && npm run test:backend && npm run test:logic && npm run lint:backoffice && npm run build:backoffice
 
 
-> skymanager-system@1.0.0 check:backend
+> acajutla-airlines-system@1.0.0 check:backend
 > node scripts/check-backend-syntax.js
 
 Sintaxis correcta en 141 archivos JavaScript del backend.
 
-> skymanager-system@1.0.0 test:backend
+> acajutla-airlines-system@1.0.0 test:backend
 > npm --prefix backend test
 
 
-> skymanager-backend@1.0.0 test
+> acajutla-airlines-backend@1.0.0 test
 > node pruebas/core-logic-regression.js && node pruebas/eventos-dte-regression.js && node pruebas/web-checkout-auth-regression.js && node pruebas/payment-workflow-regression.js && node pruebas/qr-dte-regression.js && node pruebas/simulation-boundary-regression.js
 
 PASS | FE bajo $25,000 permite comprador natural sin documento si no pide deducción
@@ -64,7 +64,7 @@ PASS | el workflow comparte pago, espera confirmación y conserva el error DTE s
 PASS | el QR de prueba identifica el DTE simulado y no incluye URLs de Hacienda
 PASS | límite de simulación: ambiente 00 y ningún destino fiscal externo
 
-> skymanager-system@1.0.0 test:logic
+> acajutla-airlines-system@1.0.0 test:logic
 > node backend/pruebas/logica-negocio-2026-10-14.cjs
 
 PASS ROUND-100-adult-2 El total coincide con la suma de importes guardados
@@ -123,19 +123,19 @@ PASS UI-REFRESH-CONCURRENTE Dos respuestas 401 comparten una renovacion
 PASS UI-LOGIN-401 Una clave de acceso incorrecta no dispara refresh
 RESULTADO 51/51 PASS; 0 FAIL
 
-> skymanager-system@1.0.0 lint:backoffice
+> acajutla-airlines-system@1.0.0 lint:backoffice
 > npm --prefix frontend-backoffice run lint
 
 
-> skymanager-backoffice@1.0.0 lint
+> acajutla-airlines-backoffice@1.0.0 lint
 > eslint src --quiet --rule no-unused-vars:off --rule react-hooks/set-state-in-effect:off --rule react-hooks/static-components:off --rule react-hooks/immutability:off --rule react-refresh/only-export-components:off --rule react-hooks/exhaustive-deps:off --rule react-hooks/preserve-manual-memoization:off
 
 
-> skymanager-system@1.0.0 build:backoffice
+> acajutla-airlines-system@1.0.0 build:backoffice
 > npm --prefix frontend-backoffice run build
 
 
-> skymanager-backoffice@1.0.0 build
+> acajutla-airlines-backoffice@1.0.0 build
 > vite build
 
 vite v5.4.21 building for production...

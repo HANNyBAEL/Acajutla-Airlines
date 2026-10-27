@@ -228,8 +228,10 @@ const listarFacilities = async (req, res) => {
     const [rows] = await pool.query(
       `SELECT af.*, a.iata_code,
               (SELECT COUNT(*) FROM flights fl
-               WHERE (af.type = 'gate' AND BINARY LOWER(fl.gate) = BINARY LOWER(af.code))
-                  OR (af.type = 'terminal' AND BINARY LOWER(fl.terminal) = BINARY LOWER(af.code))) AS history_count
+               JOIN routes fr ON fr.id = fl.route_id
+               WHERE fr.origin_id = af.airport_id AND (
+                 (af.type = 'gate' AND BINARY LOWER(fl.gate) = BINARY LOWER(af.code))
+                 OR (af.type = 'terminal' AND BINARY LOWER(fl.terminal) = BINARY LOWER(af.code)))) AS history_count
        FROM airport_facilities af JOIN airports a ON a.id = af.airport_id
        WHERE ? IS NULL OR af.airport_id = ? ORDER BY a.iata_code, af.code`,
       [airport_id || null, airport_id || null]
@@ -239,12 +241,44 @@ const listarFacilities = async (req, res) => {
 };
 
 const crearFacility = async (req, res) => {
+  let connection;
   try {
-    const { airport_id, type, code } = req.body;
+    const { airport_id, type, code } = req.body || {};
     if (!airport_id || !type || !code) return res.status(400).json({ error: 'Aeropuerto, tipo y código son obligatorios' });
-    const [r] = await pool.query('INSERT INTO airport_facilities (airport_id, type, code) VALUES (?,?,?)', [airport_id, type, code.toUpperCase()]);
-    res.status(201).json({ exito: true, datos: { id: r.insertId } });
-  } catch (e) { res.status(500).json({ error: 'Error interno' }); }
+    const airportId = Number(airport_id);
+    const facilityType = String(type);
+    const facilityCode = String(code).trim().toUpperCase();
+    if (!Number.isInteger(airportId) || airportId <= 0) return res.status(400).json({ error: 'Aeropuerto inválido' });
+    if (!['terminal', 'gate', 'checkin_point'].includes(facilityType)) return res.status(400).json({ error: 'Tipo de instalación inválido' });
+    if (!/^[A-Z0-9][A-Z0-9-]{0,19}$/.test(facilityCode)) return res.status(400).json({ error: 'El código debe tener máximo 20 letras, números o guiones' });
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [airport] = await connection.query('SELECT id FROM airports WHERE id = ? FOR UPDATE', [airportId]);
+    if (!airport.length) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Aeropuerto no encontrado' });
+    }
+    const [duplicadas] = await connection.query(
+      'SELECT id FROM airport_facilities WHERE airport_id = ? AND type = ? AND code = ? LIMIT 1',
+      [airportId, facilityType, facilityCode]
+    );
+    if (duplicadas.length) {
+      await connection.rollback();
+      return res.status(409).json({ error: 'Ya existe una instalación con ese tipo y código en este aeropuerto' });
+    }
+    const [result] = await connection.query(
+      'INSERT INTO airport_facilities (airport_id, type, code, active) VALUES (?,?,?,1)',
+      [airportId, facilityType, facilityCode]
+    );
+    await connection.commit();
+    res.status(201).json({ exito: true, datos: { id: result.insertId } });
+  } catch (e) {
+    if (connection) await connection.rollback();
+    console.error('Error crear instalación:', e);
+    res.status(500).json({ error: 'Error interno' });
+  } finally {
+    if (connection) connection.release();
+  }
 };
 
 const actualizarFacility = async (req, res) => {
@@ -252,45 +286,106 @@ const actualizarFacility = async (req, res) => {
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id inválido' });
   const { active } = req.body || {};
   if (active === undefined || active === null) return res.status(400).json({ error: 'Debe indicar el estado de la instalación' });
+  let connection;
   try {
-    const [resultado] = await pool.query('UPDATE airport_facilities SET active = ? WHERE id = ?', [active ? 1 : 0, id]);
-    if (!resultado.affectedRows) {
-      const [existe] = await pool.query('SELECT id FROM airport_facilities WHERE id = ?', [id]);
-      if (!existe.length) return res.status(404).json({ error: 'Instalación no encontrada' });
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [referencias] = await connection.query('SELECT airport_id FROM airport_facilities WHERE id = ?', [id]);
+    if (!referencias.length) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Instalación no encontrada' });
     }
-    res.json({ exito: true, datos: { id, active: active ? 1 : 0 } });
+    const airportId = referencias[0].airport_id;
+    const [aeropuerto] = await connection.query('SELECT iata_code, active FROM airports WHERE id = ? FOR UPDATE', [airportId]);
+    const [instalaciones] = await connection.query('SELECT id, type, active FROM airport_facilities WHERE id = ? FOR UPDATE', [id]);
+    if (!instalaciones.length) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Instalación no encontrada' });
+    }
+    const nuevaActividad = active ? 1 : 0;
+    if (instalaciones[0].type === 'gate' && Number(instalaciones[0].active) === 1 && nuevaActividad === 0 && Number(aeropuerto[0]?.active) === 1) {
+      const [puertas] = await connection.query(
+        "SELECT COUNT(*) AS total FROM airport_facilities WHERE airport_id = ? AND type = 'gate' AND active = 1",
+        [airportId]
+      );
+      if (Number(puertas[0].total) <= 1) {
+        await connection.rollback();
+        return res.status(409).json({ error: `No se puede desactivar la última puerta activa de ${aeropuerto[0].iata_code}. Crea y activa otra puerta primero; todo aeropuerto activo debe conservar al menos una.` });
+      }
+    }
+    await connection.query('UPDATE airport_facilities SET active = ? WHERE id = ?', [nuevaActividad, id]);
+    await connection.commit();
+    res.json({ exito: true, datos: { id, active: nuevaActividad } });
   } catch (e) {
+    if (connection) await connection.rollback();
     console.error('Error actualizar infraestructura:', e);
     res.status(500).json({ error: 'Error interno' });
+  } finally {
+    if (connection) connection.release();
   }
 };
 
 const eliminarFacility = async (req, res) => {
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'id inválido' });
+  let connection;
   try {
-    const [existe] = await pool.query(
-      `SELECT af.id, af.type, af.code,
-              (SELECT COUNT(*) FROM flights fl
-               WHERE (af.type = 'gate' AND BINARY LOWER(fl.gate) = BINARY LOWER(af.code))
-                  OR (af.type = 'terminal' AND BINARY LOWER(fl.terminal) = BINARY LOWER(af.code))) AS history_count
-       FROM airport_facilities af WHERE af.id = ?`, [id]
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [referencias] = await connection.query('SELECT airport_id FROM airport_facilities WHERE id = ?', [id]);
+    if (!referencias.length) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Instalación no encontrada' });
+    }
+    const airportId = referencias[0].airport_id;
+    const [aeropuerto] = await connection.query('SELECT iata_code, active FROM airports WHERE id = ? FOR UPDATE', [airportId]);
+    const [instalaciones] = await connection.query('SELECT id, type, code, active FROM airport_facilities WHERE id = ? FOR UPDATE', [id]);
+    if (!instalaciones.length) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Instalación no encontrada' });
+    }
+    const instalacion = instalaciones[0];
+    const [historialRows] = await connection.query(
+      `SELECT COUNT(*) AS history_count FROM flights fl
+       JOIN routes fr ON fr.id = fl.route_id
+       WHERE fr.origin_id = ? AND (
+         (? = 'gate' AND BINARY LOWER(fl.gate) = BINARY LOWER(?))
+         OR (? = 'terminal' AND BINARY LOWER(fl.terminal) = BINARY LOWER(?))
+       )`,
+      [airportId, instalacion.type, instalacion.code, instalacion.type, instalacion.code]
     );
-    if (!existe.length) return res.status(404).json({ error: 'Instalación no encontrada' });
-    const historial = Number(existe[0].history_count);
+    const historial = Number(historialRows[0].history_count);
     if (historial > 0) {
+      await connection.rollback();
       return res.status(409).json({
         error: 'No se puede eliminar: la instalación aparece en el historial de vuelos',
         historial: { vuelos: historial }
       });
     }
-    const [resultado] = await pool.query('DELETE FROM airport_facilities WHERE id = ?', [id]);
-    if (!resultado.affectedRows) return res.status(404).json({ error: 'Instalación no encontrada' });
+    if (instalacion.type === 'gate' && Number(instalacion.active) === 1 && Number(aeropuerto[0]?.active) === 1) {
+      const [puertas] = await connection.query(
+        "SELECT COUNT(*) AS total FROM airport_facilities WHERE airport_id = ? AND type = 'gate' AND active = 1",
+        [airportId]
+      );
+      if (Number(puertas[0].total) <= 1) {
+        await connection.rollback();
+        return res.status(409).json({ error: `No se puede eliminar la última puerta activa de ${aeropuerto[0].iata_code}. Crea y activa otra puerta primero; todo aeropuerto activo debe conservar al menos una.` });
+      }
+    }
+    const [resultado] = await connection.query('DELETE FROM airport_facilities WHERE id = ?', [id]);
+    if (!resultado.affectedRows) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Instalación no encontrada' });
+    }
+    await connection.commit();
     res.json({ exito: true, mensaje: 'Instalación eliminada' });
   } catch (e) {
+    if (connection) await connection.rollback();
     if (e.code === 'ER_ROW_IS_REFERENCED_2') return res.status(409).json({ error: 'No se puede eliminar: existen registros relacionados' });
     console.error('Error eliminar infraestructura:', e);
     res.status(500).json({ error: 'Error interno' });
+  } finally {
+    if (connection) connection.release();
   }
 };
 

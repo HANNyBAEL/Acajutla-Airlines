@@ -47,14 +47,14 @@ const cabecera = (titulo) => `
   <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
     <div style="background:#1d4ed8;color:#fff;padding:20px;text-align:center">
       <h1 style="margin:0;font-size:20px">✈ Acajutla Airlines</h1>
-      <p style="margin:4px 0 0;font-size:12px;opacity:.85">SkyManager · Sistema Integral de Gestión</p>
+      <p style="margin:4px 0 0;font-size:12px;opacity:.85">Sistema Integral de Gestión</p>
     </div>
     <div style="padding:24px">
       <h2 style="margin:0 0 16px;font-size:18px;color:#111827">${titulo}</h2>`;
 
 const pie = `</div>
     <div style="background:#f3f4f6;padding:12px;text-align:center;font-size:11px;color:#6b7280">
-      Este es un correo transaccional generado automáticamente por SkyManager.
+      Este es un correo transaccional generado automáticamente por Acajutla Airlines.
     </div>
   </div>`;
 

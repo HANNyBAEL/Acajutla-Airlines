@@ -1,5 +1,5 @@
 {
-  "name": "skymanager-backend",
+  "name": "acajutla-airlines-backend",
   "version": "1.0.0",
   "description": "Backend del Sistema Integral de Gestión para Acajutla Airlines",
   "main": "src/app.js",

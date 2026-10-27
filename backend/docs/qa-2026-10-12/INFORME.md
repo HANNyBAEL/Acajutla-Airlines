@@ -1,4 +1,4 @@
-**Informe de pruebas y revisión lógica — SkyManager / Acajutla Airlines**
+**Informe de pruebas y revisión lógica — Acajutla Airlines**
 
 Fecha: 12 de octubre de 2026, zona America/El_Salvador.
 

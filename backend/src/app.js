@@ -40,9 +40,9 @@ app.use(enmascararDatosSensibles);
 
 // Ruta de prueba
 app.get('/', (req, res) => {
-  res.json({ nombre: 'SkyManager API - Acajutla Airlines', version: '1.0.0', estado: 'âœ… Operativo', timestamp: new Date().toISOString() });
+  res.json({ nombre: 'Acajutla Airlines API', version: '1.0.0', estado: 'âœ… Operativo', timestamp: new Date().toISOString() });
 });
-app.get('/health', (req, res) => res.json({ ok: true, service: 'skymanager-api' }));
+app.get('/health', (req, res) => res.json({ ok: true, service: 'acajutla-airlines-api' }));
 
 
 const { auditarCambios } = require('./middleware/audit');
@@ -89,7 +89,7 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor SkyManager corriendo en http://localhost:${PORT}`);
+  console.log(`🚀 Servidor Acajutla Airlines corriendo en http://localhost:${PORT}`);
   console.log(`📡 Ambiente: ${process.env.NODE_ENV || 'development'}`);
   require('./services/expiracionService').iniciarJobExpiracion();
 });

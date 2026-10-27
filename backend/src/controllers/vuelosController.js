@@ -96,10 +96,11 @@ const listarAeronaves = async (req, res) => {
 
 const crearVuelo = async (req, res) => {
   try {
-    const { origen_iata, destino_iata, aircraft_id, flight_number, departure_datetime, arrival_datetime, base_price, gate } = req.body;
+    const { origen_iata, destino_iata, aircraft_id, flight_number, departure_datetime, arrival_datetime, base_price, gate_facility_id } = req.body;
     if (!origen_iata || !destino_iata || !aircraft_id || !flight_number || !departure_datetime || !arrival_datetime || !base_price) {
       return res.status(400).json({ error: 'Faltan campos obligatorios' });
     }
+    if (!gate_facility_id) return res.status(400).json({ error: 'La puerta de embarque es obligatoria' });
     const [aeronaves] = await pool.query('SELECT id, registration, status FROM aircraft WHERE id = ?', [aircraft_id]);
     if (!aeronaves.length) return res.status(400).json({ error: 'La aeronave seleccionada no existe' });
     if (!['available', 'in_flight'].includes(aeronaves[0].status)) {
@@ -130,6 +131,12 @@ const crearVuelo = async (req, res) => {
     const [origen] = await pool.query('SELECT id FROM airports WHERE iata_code = ? AND active = 1', [origen_iata.toUpperCase()]);
     const [destino] = await pool.query('SELECT id FROM airports WHERE iata_code = ? AND active = 1', [destino_iata.toUpperCase()]);
     if (origen.length === 0 || destino.length === 0) return res.status(400).json({ error: 'Aeropuerto inválido o inactivo' });
+    const [puertas] = await pool.query(
+      "SELECT code FROM airport_facilities WHERE id = ? AND airport_id = ? AND type = 'gate' AND active = 1",
+      [gate_facility_id, origen[0].id]
+    );
+    if (puertas.length === 0) return res.status(400).json({ error: 'La puerta seleccionada no está activa o no pertenece al aeropuerto de origen' });
+    const gateCode = puertas[0].code;
 
     // ===== RN-OP-02: turnaround mínimo de aeronave entre vuelos =====
     const tmin = await obtenerTurnaroundMinimo();
@@ -157,7 +164,7 @@ const crearVuelo = async (req, res) => {
       await connection.beginTransaction();
       [result] = await connection.query(
       'INSERT INTO flights (route_id, aircraft_id, flight_number, departure_datetime, arrival_datetime, status, base_price, gate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [routeId, aircraft_id, flight_number.toUpperCase(), departure_datetime, arrival_datetime, 'scheduled', precioBase, gate || null]
+      [routeId, aircraft_id, flight_number.toUpperCase(), departure_datetime, arrival_datetime, 'scheduled', precioBase, gateCode]
       );
       // Cada clase activa recibe su tarifa inicial = precio base × multiplicador
       // de la clase (editable desde Operaciones → Clases Tarifarias).

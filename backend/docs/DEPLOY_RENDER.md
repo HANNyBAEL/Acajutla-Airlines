@@ -1,4 +1,4 @@
-# DESPLIEGUE EN RENDER — SkyManager
+# DESPLIEGUE EN RENDER — Acajutla Airlines
 
 ## Pre-requisitos
 - Repo GitHub con backend/ y frontend-backoffice/.
