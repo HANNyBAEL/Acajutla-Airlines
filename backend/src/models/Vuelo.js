@@ -50,7 +50,8 @@ const Vuelo = {
     const [rows] = await pool.query(`
       SELECT f.*, ao.iata_code AS origin, ad.iata_code AS destination, at.model AS aircraft,
              CASE
-               WHEN f.departure_datetime <= CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador') AND f.status IN ('scheduled', 'confirmed', 'delayed') THEN 'deployed'
+               WHEN f.arrival_datetime <= CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador') AND f.status IN ('scheduled', 'confirmed', 'delayed', 'in_progress') THEN 'completed'
+               WHEN f.departure_datetime <= CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador') AND f.status IN ('scheduled', 'confirmed', 'delayed', 'in_progress') THEN 'deployed'
                ELSE f.status
              END AS display_status
       FROM flights f

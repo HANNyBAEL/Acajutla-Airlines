@@ -21,6 +21,39 @@ const Pagos = () => {
   // Drawer state
   const [drawerPago, setDrawerPago] = useState(null);
 
+  const extraerDigitos = (valor, maximo) => valor.replace(/\D/g, '').slice(0, maximo);
+  const formatearExpiracion = (valor) => {
+    const digitos = extraerDigitos(valor, 4);
+    return digitos.length > 2 ? digitos.slice(0, 2) + '/' + digitos.slice(2) : digitos;
+  };
+  const tarjetaPasaLuhn = (numero) => {
+    if (!/^\d{13,19}$/.test(numero)) return false;
+    let suma = 0;
+    let duplicar = false;
+    for (let i = numero.length - 1; i >= 0; i--) {
+      let digito = Number(numero[i]);
+      if (duplicar) {
+        digito *= 2;
+        if (digito > 9) digito -= 9;
+      }
+      suma += digito;
+      duplicar = !duplicar;
+    }
+    return suma % 10 === 0;
+  };
+  const expiracionValida = (valor) => {
+    const match = valor.match(/^(0[1-9]|1[0-2])\/(\d{2})$/);
+    if (!match) return false;
+    const anio = 2000 + Number(match[2]);
+    const mes = Number(match[1]);
+    const ahora = new Date();
+    return anio > ahora.getFullYear() || (anio === ahora.getFullYear() && mes >= ahora.getMonth() + 1);
+  };
+  const cerrarCobro = () => {
+    setModal(null);
+    setForm((actual) => ({ ...actual, numero: '', expiracion: '', cvv: '' }));
+  };
+
   const cargar = () => {
     Promise.all([api.get('/pagos/reservas-pendientes'), api.get('/pagos')])
       .then((res) => {
@@ -38,12 +71,25 @@ const Pagos = () => {
   };
 
   const procesar = async () => {
-    if (!form.amount || parseFloat(form.amount) <= 0) return toast.error('Indique un monto válido');
-    if (form.tipo_dte === '03' && !form.receptor_nit) return toast.error('Para CCFE el NIT del receptor es obligatorio (RN-FIS-02)');
+    const monto = Number(form.amount);
+    const saldo = Number(modal.balance);
+    if (!Number.isFinite(monto) || monto <= 0) return toast.error('Indique un monto válido');
+    if (monto > saldo) return toast.error('El monto no puede superar el saldo pendiente de la reserva');
+    if (Math.abs(monto * 100 - Math.round(monto * 100)) > 1e-8) return toast.error('El monto debe tener máximo dos decimales');
+    if (form.method === 'card') {
+      if (!tarjetaPasaLuhn(form.numero)) return toast.error('Ingrese un número de tarjeta válido de 13 a 19 dígitos');
+      if (!expiracionValida(form.expiracion)) return toast.error('Ingrese una expiración válida en formato MM/AA y que no esté vencida');
+      if (!/^\d{3,4}$/.test(form.cvv)) return toast.error('El CVV debe tener 3 o 4 dígitos');
+    }
+    if (form.method === 'transfer' && (!form.referencia.trim() || form.referencia.length > 100)) return toast.error('La referencia debe tener entre 1 y 100 caracteres');
+    if (form.tipo_dte === '03') {
+      if (!/^\d{9,14}$/.test(form.receptor_nit)) return toast.error('El NIT del receptor debe contener entre 9 y 14 dígitos');
+      if (!/^\d{1,8}$/.test(form.receptor_nrc)) return toast.error('El NRC del receptor debe contener entre 1 y 8 dígitos');
+    }
     setProcesando(true);
     try {
       const payload = {
-        reservation_id: modal.id, method: form.method, amount: parseFloat(form.amount),
+        reservation_id: modal.id, method: form.method, amount: monto,
         tipo_dte: form.tipo_dte,
         receptor: form.tipo_dte === '03' ? { nit: form.receptor_nit, nrc: form.receptor_nrc || null } : undefined,
         requiere_deduccion_fiscal: form.tipo_dte === '01' && form.requiere_deduccion_fiscal
@@ -71,7 +117,7 @@ const Pagos = () => {
       } else {
         toast.error('Pago rechazado por la pasarela');
       }
-      setModal(null);
+      cerrarCobro();
       cargar();
     } catch (e) {
       toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al procesar el pago');
@@ -388,7 +434,7 @@ const Pagos = () => {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-800">Cobrar reserva {modal.pnr}</h2>
-              <button onClick={() => setModal(null)} className="text-gray-500"><FiX size={22} /></button>
+              <button onClick={cerrarCobro} className="text-gray-500"><FiX size={22} /></button>
             </div>
             <div className="space-y-3">
               <div>
@@ -401,7 +447,7 @@ const Pagos = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Monto (USD) *</label>
-                <input type="number" step="0.01" className="input-field" value={form.amount} onChange={(e) => setForm(Object.assign({}, form, { amount: e.target.value }))} />
+                <input type="number" min="0.01" max={Number(modal.balance)} step="0.01" inputMode="decimal" className="input-field" value={form.amount} onKeyDown={(e) => { if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault(); }} onChange={(e) => setForm(Object.assign({}, form, { amount: e.target.value }))} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de DTE a emitir *</label>
@@ -414,11 +460,11 @@ const Pagos = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">NIT receptor *</label>
-                    <input className="input-field" value={form.receptor_nit} onChange={(e) => setForm(Object.assign({}, form, { receptor_nit: e.target.value }))} placeholder="06149999999999" />
+                    <input type="text" inputMode="numeric" maxLength={14} pattern="[0-9]{9,14}" className="input-field" value={form.receptor_nit} onChange={(e) => setForm(Object.assign({}, form, { receptor_nit: extraerDigitos(e.target.value, 14) }))} placeholder="06149999999999" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">NRC receptor</label>
-                    <input className="input-field" value={form.receptor_nrc} onChange={(e) => setForm(Object.assign({}, form, { receptor_nrc: e.target.value }))} placeholder="9000000" />
+                    <input type="text" inputMode="numeric" maxLength={8} pattern="[0-9]{1,8}" className="input-field" value={form.receptor_nrc} onChange={(e) => setForm(Object.assign({}, form, { receptor_nrc: extraerDigitos(e.target.value, 8) }))} placeholder="9000000" />
                   </div>
                 </div>
               )}
@@ -432,22 +478,22 @@ const Pagos = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Número de tarjeta</label>
-                    <input className="input-field" placeholder="4111111111111111" value={form.numero} onChange={(e) => setForm(Object.assign({}, form, { numero: e.target.value }))} />
+                    <input type="text" inputMode="numeric" autoComplete="cc-number" maxLength={19} pattern="[0-9]{13,19}" className="input-field" placeholder="4111111111111111" value={form.numero} onChange={(e) => setForm(Object.assign({}, form, { numero: extraerDigitos(e.target.value, 19) }))} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Expiración (MM/AA)</label>
-                    <input className="input-field" placeholder="12/29" value={form.expiracion} onChange={(e) => setForm(Object.assign({}, form, { expiracion: e.target.value }))} />
+                    <input type="text" inputMode="numeric" autoComplete="cc-exp" maxLength={5} pattern="(0[1-9]|1[0-2])/[0-9]{2}" className="input-field" placeholder="12/29" value={form.expiracion} onChange={(e) => setForm(Object.assign({}, form, { expiracion: formatearExpiracion(e.target.value) }))} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">CVV</label>
-                    <input className="input-field" placeholder="123" value={form.cvv} onChange={(e) => setForm(Object.assign({}, form, { cvv: e.target.value }))} />
+                    <input type="password" inputMode="numeric" autoComplete="cc-csc" maxLength={4} pattern="[0-9]{3,4}" className="input-field" placeholder="CVV" value={form.cvv} onChange={(e) => setForm(Object.assign({}, form, { cvv: extraerDigitos(e.target.value, 4) }))} />
                   </div>
                 </div>
               )}
               {form.method === 'transfer' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Referencia de transferencia</label>
-                  <input className="input-field" placeholder="TRF-000123" value={form.referencia} onChange={(e) => setForm(Object.assign({}, form, { referencia: e.target.value }))} />
+                  <input type="text" maxLength={100} className="input-field" placeholder="TRF-000123" value={form.referencia} onChange={(e) => setForm(Object.assign({}, form, { referencia: e.target.value.slice(0, 100) }))} />
                 </div>
               )}
               <div className="bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-lg p-3">
@@ -456,7 +502,7 @@ const Pagos = () => {
               </div>
             </div>
             <div className="flex justify-end space-x-2 mt-6">
-              <button className="btn-secondary" onClick={() => setModal(null)}>Cancelar</button>
+              <button className="btn-secondary" onClick={cerrarCobro}>Cancelar</button>
               <button className="btn-primary" onClick={procesar} disabled={procesando}>{procesando ? 'Procesando...' : 'Procesar pago'}</button>
             </div>
           </div>
