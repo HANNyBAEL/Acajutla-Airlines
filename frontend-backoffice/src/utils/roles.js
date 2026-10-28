@@ -35,22 +35,22 @@ export const ROLE_ORDER = ['admin', 'operations', 'cashier', 'airport_staff', 'c
 
 const ACCESS_BY_ROLE = {
   admin: ['*'],
-  operations: ['dashboard', 'vuelos', 'aeropuertos', 'reservas', 'aeronaves', 'comercial', 'operaciones', 'fiscalidad', 'notificaciones', 'checkin'],
-  cashier: ['dashboard', 'clientes', 'nueva-reserva', 'reservas', 'pagos', 'dte', 'notas', 'contingencia', 'comercial', 'cumplimiento', 'correos', 'notificaciones', 'checkin'],
+  operations: ['vuelos', 'aeropuertos', 'reservas', 'aeronaves', 'comercial', 'operaciones', 'fiscalidad', 'notificaciones', 'checkin'],
+  cashier: ['clientes', 'nueva-reserva', 'reservas', 'pagos', 'dte', 'notas', 'contingencia', 'comercial', 'cumplimiento', 'correos', 'notificaciones', 'checkin'],
   airport_staff: ['checkin', 'notificaciones'],
   corporate_agent: ['comercial', 'notificaciones'],
-  auditor: ['dashboard', 'clientes', 'vuelos', 'reservas', 'pagos', 'dte', 'reportes', 'auditoria', 'cumplimiento', 'correos', 'notificaciones'],
+  auditor: ['clientes', 'vuelos', 'reservas', 'pagos', 'dte', 'reportes', 'auditoria', 'cumplimiento', 'correos', 'notificaciones'],
 };
 
 export const BACKOFFICE_ROLES = ROLE_ORDER;
 export const STAFF_ROLE_ORDER = ROLE_ORDER;
 export const DEFAULT_PAGE_BY_ROLE = {
   admin: '/dashboard',
-  operations: '/dashboard',
-  cashier: '/dashboard',
+  operations: '/vuelos',
+  cashier: '/reservas',
   airport_staff: '/checkin',
   corporate_agent: '/comercial',
-  auditor: '/dashboard',
+  auditor: '/reportes',
 };
 
 export const roleOf = (user) => user?.role || user?.rol || '';
