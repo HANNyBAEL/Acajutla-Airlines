@@ -3,15 +3,19 @@ import api, { dteAPI, reservasAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { roleOf } from '../utils/roles';
 import SearchableSelect from '../components/SearchableSelect';
-import { FiFileText, FiCheckCircle, FiXCircle, FiClock, FiPlus, FiEye, FiX } from 'react-icons/fi';
+import Paginacion, { paginar } from '../components/Paginacion';
+import { FiFileText, FiCheckCircle, FiXCircle, FiClock, FiPlus, FiEye, FiX, FiSearch } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const ETIQUETAS_DTE = { '01': 'FE', '03': 'CCFE', '05': 'NCE', '06': 'NDE', '11': 'FEXE', '14': 'FSEE' };
+const normalizarBusqueda = (valor) => String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
 
 const DTE = () => {
   const { usuario } = useAuth();
   const puedeEmitir = ['admin', 'cashier'].includes(roleOf(usuario));
   const [dtes, setDtes] = useState([]);
+  const [busqueda, setBusqueda] = useState('');
+  const [pagina, setPagina] = useState(1);
   const [facturables, setFacturables] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [modal, setModal] = useState(false);
@@ -77,6 +81,16 @@ const DTE = () => {
   const aceptados = dtes.filter((d) => d.transmission_status === 'accepted').length;
   const rechazados = dtes.filter((d) => d.transmission_status === 'rejected').length;
   const pendientes = dtes.filter((d) => d.transmission_status === 'transmitted' || d.transmission_status === 'contingency').length;
+  const dtesFiltrados = dtes.filter((dte) => normalizarBusqueda([
+    dte.control_number,
+    dte.dte_type,
+    ETIQUETAS_DTE[String(dte.dte_type).padStart(2, '0')],
+    dte.pnr,
+    dte.receiver_name,
+    dte.total_to_pay,
+    dte.transmission_status
+  ].join(' ')).includes(normalizarBusqueda(busqueda.trim())));
+  const dtesPagina = paginar(dtesFiltrados, pagina);
 
   return (
     <div className="space-y-6">
@@ -110,6 +124,12 @@ const DTE = () => {
       </div>
 
       <div className="card overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex justify-end">
+          <label className="relative block w-full sm:w-96">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+            <input type="search" className="input-field pl-9" placeholder="Buscar control, tipo, PNR, receptor o estado..." aria-label="Buscar DTE" value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setPagina(1); }} />
+          </label>
+        </div>
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
@@ -127,7 +147,9 @@ const DTE = () => {
               <tr><td colSpan="7" className="text-center py-8 text-gray-500">Cargando...</td></tr>
             ) : dtes.length === 0 ? (
               <tr><td colSpan="7" className="text-center py-8 text-gray-500">Aún no hay DTEs emitidos</td></tr>
-            ) : dtes.map((d) => (
+            ) : dtesFiltrados.length === 0 ? (
+              <tr><td colSpan="7" className="text-center py-8 text-gray-500">No hay DTEs que coincidan con la búsqueda.</td></tr>
+            ) : dtesPagina.map((d) => (
               <tr key={d.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4"><code className="text-xs font-mono text-gray-700">{d.control_number}</code></td>
                 <td className="px-6 py-4"><span className="px-2 py-1 bg-primary-100 text-primary-700 rounded text-xs font-medium">{ETIQUETAS_DTE[String(d.dte_type).padStart(2, '0')] || `DTE ${d.dte_type}`}</span></td>
@@ -144,6 +166,7 @@ const DTE = () => {
             ))}
           </tbody>
         </table>
+        {!cargando && <Paginacion total={dtesFiltrados.length} pagina={pagina} onCambiar={setPagina} />}
       </div>
 
       {modal && (

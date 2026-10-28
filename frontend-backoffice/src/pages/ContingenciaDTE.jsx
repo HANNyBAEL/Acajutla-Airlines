@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api, { reservasAPI } from '../services/api';
 import SearchableSelect from '../components/SearchableSelect';
+import Paginacion, { paginar } from '../components/Paginacion';
 import { FiAlertTriangle, FiXCircle, FiRefreshCw, FiPlus, FiX, FiSearch } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -35,9 +36,16 @@ const DatoDetalleDte = ({ etiqueta, valor, mono = false }) => (
 
 const ContingenciaDTE = () => {
   const [pendientes, setPendientes] = useState([]);
+  const [busquedaPendientes, setBusquedaPendientes] = useState('');
+  const [paginaPendientes, setPaginaPendientes] = useState(1);
   const [eventos, setEventos] = useState({ contingencia: [], invalidacion: [] });
   const [aceptados, setAceptados] = useState([]);
   const [busquedaAceptados, setBusquedaAceptados] = useState('');
+  const [paginaAceptados, setPaginaAceptados] = useState(1);
+  const [busquedaEventosContingencia, setBusquedaEventosContingencia] = useState('');
+  const [paginaEventosContingencia, setPaginaEventosContingencia] = useState(1);
+  const [busquedaEventosInvalidacion, setBusquedaEventosInvalidacion] = useState('');
+  const [paginaEventosInvalidacion, setPaginaEventosInvalidacion] = useState(1);
   const [facturables, setFacturables] = useState([]);
   const [mh, setMh] = useState(null);
   const [modalEvento, setModalEvento] = useState(false);
@@ -63,6 +71,28 @@ const ContingenciaDTE = () => {
       dte.pnr
     ].join(' ')).includes(consulta);
   });
+  const pendientesFiltrados = pendientes.filter((dte) => {
+    const consulta = normalizarBusqueda(busquedaPendientes.trim());
+    if (!consulta) return true;
+    return normalizarBusqueda([
+      dte.control_number,
+      dte.dte_type,
+      TIPOS_DTE[dte.dte_type],
+      dte.pnr,
+      dte.total_to_pay,
+      dte.transmission_status
+    ].join(' ')).includes(consulta);
+  });
+  const contingenciasFiltradas = eventos.contingencia.filter((evento) => !normalizarBusqueda(busquedaEventosContingencia.trim()) || normalizarBusqueda([
+    evento.uuid, evento.fecha_inicio, evento.fecha_fin, evento.documentos_count, evento.estado, evento.sello
+  ].join(' ')).includes(normalizarBusqueda(busquedaEventosContingencia.trim())));
+  const invalidacionesFiltradas = eventos.invalidacion.filter((evento) => !normalizarBusqueda(busquedaEventosInvalidacion.trim()) || normalizarBusqueda([
+    evento.control_number, TIPOS_DTE[evento.dte_type], evento.dte_type, evento.motivo, evento.estado, evento.uuid, evento.sello
+  ].join(' ')).includes(normalizarBusqueda(busquedaEventosInvalidacion.trim())));
+  const pendientesPagina = paginar(pendientesFiltrados, paginaPendientes);
+  const aceptadosPagina = paginar(aceptadosFiltrados, paginaAceptados);
+  const contingenciasPagina = paginar(contingenciasFiltradas, paginaEventosContingencia);
+  const invalidacionesPagina = paginar(invalidacionesFiltradas, paginaEventosInvalidacion);
 
   const cargar = () => {
     // Cada petición es independiente: si una falla no borra el resto de la pantalla
@@ -199,7 +229,20 @@ const ContingenciaDTE = () => {
       )}
 
       <div className="card overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100"><h2 className="text-lg font-semibold text-gray-800">DTEs en contingencia (pendientes)</h2></div>
+        <div className="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <h2 className="text-lg font-semibold text-gray-800">DTEs en contingencia (pendientes)</h2>
+          <label className="relative block w-full sm:w-80">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+            <input
+              type="search"
+              className="input-field pl-9"
+              placeholder="Buscar por control, tipo o PNR..."
+              aria-label="Buscar DTEs en contingencia pendientes"
+              value={busquedaPendientes}
+              onChange={(e) => { setBusquedaPendientes(e.target.value); setPaginaPendientes(1); }}
+            />
+          </label>
+        </div>
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200"><tr>
             <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">N° Control</th>
@@ -211,7 +254,9 @@ const ContingenciaDTE = () => {
           <tbody className="divide-y divide-gray-100">
             {pendientes.length === 0 ? (
               <tr><td colSpan="5" className="text-center py-8 text-gray-500">Sin DTEs en contingencia</td></tr>
-            ) : pendientes.map((d) => (
+            ) : pendientesFiltrados.length === 0 ? (
+              <tr><td colSpan="5" className="text-center py-8 text-gray-500">No hay DTEs que coincidan con la búsqueda.</td></tr>
+            ) : pendientesPagina.map((d) => (
               <tr key={d.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4"><code className="text-xs font-mono">{d.control_number}</code></td>
                 <td className="px-6 py-4 text-sm">{TIPOS_DTE[d.dte_type] || `DTE ${d.dte_type}`}</td>
@@ -222,6 +267,7 @@ const ContingenciaDTE = () => {
             ))}
           </tbody>
         </table>
+        <Paginacion total={pendientesFiltrados.length} pagina={paginaPendientes} onCambiar={setPaginaPendientes} />
       </div>
 
       <div className="card overflow-hidden">
@@ -235,7 +281,7 @@ const ContingenciaDTE = () => {
               placeholder="Buscar por control, tipo, receptor o sello..."
               aria-label="Buscar DTEs aceptados"
               value={busquedaAceptados}
-              onChange={(e) => setBusquedaAceptados(e.target.value)}
+              onChange={(e) => { setBusquedaAceptados(e.target.value); setPaginaAceptados(1); }}
             />
           </label>
         </div>
@@ -252,7 +298,7 @@ const ContingenciaDTE = () => {
               <tr><td colSpan="5" className="text-center py-8 text-gray-500">Sin DTEs aceptados</td></tr>
             ) : aceptadosFiltrados.length === 0 ? (
               <tr><td colSpan="5" className="text-center py-8 text-gray-500">No hay DTEs que coincidan con la búsqueda.</td></tr>
-            ) : aceptadosFiltrados.map((d) => (
+            ) : aceptadosPagina.map((d) => (
               <tr key={d.id} className="hover:bg-primary-50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" onClick={() => abrirDetalle(d)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirDetalle(d); } }} tabIndex={0} aria-label={'Ver detalle del DTE ' + d.control_number}>
                 <td className="px-6 py-4"><code className="text-xs font-mono">{d.control_number}</code></td>
                 <td className="px-6 py-4 text-sm">{TIPOS_DTE[d.dte_type] || `DTE ${d.dte_type}`}</td>
@@ -267,11 +313,18 @@ const ContingenciaDTE = () => {
             ))}
           </tbody>
         </table>
+        <Paginacion total={aceptadosFiltrados.length} pagina={paginaAceptados} onCambiar={setPaginaAceptados} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="card overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100"><h2 className="text-lg font-semibold text-gray-800">Eventos de contingencia</h2></div>
+          <div className="px-4 py-4 border-b border-gray-100 space-y-3">
+            <h2 className="text-lg font-semibold text-gray-800">Eventos de contingencia</h2>
+            <label className="relative block">
+              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+              <input type="search" className="input-field pl-9" placeholder="Buscar UUID, período, estado o sello..." aria-label="Buscar eventos de contingencia" value={busquedaEventosContingencia} onChange={(e) => { setBusquedaEventosContingencia(e.target.value); setPaginaEventosContingencia(1); }} />
+            </label>
+          </div>
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200"><tr>
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">UUID</th>
@@ -282,7 +335,9 @@ const ContingenciaDTE = () => {
             <tbody className="divide-y divide-gray-100">
               {eventos.contingencia.length === 0 ? (
                 <tr><td colSpan="4" className="text-center py-6 text-gray-500">Sin eventos</td></tr>
-              ) : eventos.contingencia.map((e) => (
+              ) : contingenciasFiltradas.length === 0 ? (
+                <tr><td colSpan="4" className="text-center py-6 text-gray-500">No hay eventos que coincidan con la búsqueda.</td></tr>
+              ) : contingenciasPagina.map((e) => (
                 <tr key={e.id}>
                   <td className="px-4 py-2 text-xs font-mono">{e.uuid.slice(0, 13)}...</td>
                   <td className="px-4 py-2 text-xs">{e.fecha_inicio} → {e.fecha_fin}</td>
@@ -292,9 +347,16 @@ const ContingenciaDTE = () => {
               ))}
             </tbody>
           </table>
+          <Paginacion total={contingenciasFiltradas.length} pagina={paginaEventosContingencia} onCambiar={setPaginaEventosContingencia} />
         </div>
         <div className="card overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100"><h2 className="text-lg font-semibold text-gray-800">Eventos de invalidación</h2></div>
+          <div className="px-4 py-4 border-b border-gray-100 space-y-3">
+            <h2 className="text-lg font-semibold text-gray-800">Eventos de invalidación</h2>
+            <label className="relative block">
+              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+              <input type="search" className="input-field pl-9" placeholder="Buscar DTE, motivo, estado o sello..." aria-label="Buscar eventos de invalidación" value={busquedaEventosInvalidacion} onChange={(e) => { setBusquedaEventosInvalidacion(e.target.value); setPaginaEventosInvalidacion(1); }} />
+            </label>
+          </div>
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200"><tr>
               <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">DTE</th>
@@ -304,7 +366,9 @@ const ContingenciaDTE = () => {
             <tbody className="divide-y divide-gray-100">
               {eventos.invalidacion.length === 0 ? (
                 <tr><td colSpan="3" className="text-center py-6 text-gray-500">Sin eventos</td></tr>
-              ) : eventos.invalidacion.map((e) => (
+              ) : invalidacionesFiltradas.length === 0 ? (
+                <tr><td colSpan="3" className="text-center py-6 text-gray-500">No hay eventos que coincidan con la búsqueda.</td></tr>
+              ) : invalidacionesPagina.map((e) => (
                 <tr key={e.id}>
                   <td className="px-4 py-2 text-xs font-mono">{e.control_number}</td>
                   <td className="px-4 py-2 text-xs">{e.motivo}</td>
@@ -313,6 +377,7 @@ const ContingenciaDTE = () => {
               ))}
             </tbody>
           </table>
+          <Paginacion total={invalidacionesFiltradas.length} pagina={paginaEventosInvalidacion} onCambiar={setPaginaEventosInvalidacion} />
         </div>
       </div>
 
@@ -491,10 +556,17 @@ const ContingenciaDTE = () => {
                 const requiereReemplazo = [1, 3].includes(Number(formInv.tipoAnulacion)) && !['05', '08'].includes(String(modalInvalidar.dte_type));
                 const opcionesReemplazo = aceptados.filter((d) => String(d.dte_type) === String(modalInvalidar.dte_type) && d.uuid_generation !== modalInvalidar.uuid_generation);
                 return <div className="col-span-2"><label className="block text-xs font-medium text-gray-700 mb-1">DTE de reemplazo {requiereReemplazo ? '*' : '(no requerido)'}</label>
-                  {requiereReemplazo ? <select className="input-field" value={formInv.codigoReemplazo} onChange={(e) => setFormInv(Object.assign({}, formInv, { codigoReemplazo: e.target.value }))}>
-                    <option value="">-- Seleccione un DTE aceptado del mismo tipo --</option>
-                    {opcionesReemplazo.map((d) => <option key={d.uuid_generation} value={d.uuid_generation}>{d.control_number} · {d.uuid_generation}</option>)}
-                  </select> : <p className="text-sm text-gray-500">No se requiere reemplazo para este tipo de invalidación o documento.</p>}
+                  {requiereReemplazo ? <SearchableSelect
+                    options={opcionesReemplazo.map((d) => ({
+                      value: d.uuid_generation,
+                      label: `${d.control_number} · ${d.uuid_generation}`,
+                      searchText: `${d.control_number} ${d.uuid_generation} ${d.receiver_name || ''}`
+                    }))}
+                    value={formInv.codigoReemplazo}
+                    onChange={(value) => setFormInv(Object.assign({}, formInv, { codigoReemplazo: value }))}
+                    placeholder="Escribe el número de control o UUID..."
+                    emptyText="No hay DTEs aceptados que coincidan"
+                  /> : <p className="text-sm text-gray-500">No se requiere reemplazo para este tipo de invalidación o documento.</p>}
                   {requiereReemplazo && opcionesReemplazo.length === 0 && <p className="mt-1 text-xs text-amber-700">No hay DTEs aceptados de este tipo para reemplazarlo.</p>}
                 </div>;
               })()}

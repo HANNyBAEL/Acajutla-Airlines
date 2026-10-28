@@ -27,7 +27,7 @@ export const ROLE_DEFINITIONS = {
   auditor: {
     label: 'Auditor',
     responsibility: 'Consulta registros, indicadores y cumplimiento para labores de revisión.',
-    access: 'Reportes, auditoría, QA y consultas de reservas, vuelos, pagos y DTE',
+    access: 'Reportes, auditoría y consultas de reservas, vuelos, pagos y DTE',
   },
 };
 
@@ -39,7 +39,7 @@ const ACCESS_BY_ROLE = {
   cashier: ['dashboard', 'clientes', 'nueva-reserva', 'reservas', 'pagos', 'dte', 'notas', 'contingencia', 'comercial', 'cumplimiento', 'correos', 'notificaciones', 'checkin'],
   airport_staff: ['checkin', 'notificaciones'],
   corporate_agent: ['comercial', 'notificaciones'],
-  auditor: ['dashboard', 'clientes', 'vuelos', 'reservas', 'pagos', 'dte', 'reportes', 'auditoria', 'cierre-qa', 'cumplimiento', 'correos', 'notificaciones'],
+  auditor: ['dashboard', 'clientes', 'vuelos', 'reservas', 'pagos', 'dte', 'reportes', 'auditoria', 'cumplimiento', 'correos', 'notificaciones'],
 };
 
 export const BACKOFFICE_ROLES = ROLE_ORDER;

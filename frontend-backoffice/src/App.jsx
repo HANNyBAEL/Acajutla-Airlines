@@ -20,7 +20,6 @@ import Usuarios from './pages/Usuarios';
 import Reportes from './pages/Reportes';
 import Auditoria from './pages/Auditoria';
 import Notificaciones from './pages/Notificaciones';
-import CierreQA from './pages/CierreQA';
 import Operaciones from './pages/Operaciones';
 import CumplimientoFiscal from './pages/CumplimientoFiscal';
 import Comercial from './pages/Comercial';
@@ -62,7 +61,6 @@ function App() {
             <Route path="comercial" element={<RutaProtegida pagina="comercial"><Comercial /></RutaProtegida>} />
             <Route path="auditoria" element={<RutaProtegida pagina="auditoria"><Auditoria /></RutaProtegida>} />
             <Route path="notificaciones" element={<RutaProtegida pagina="notificaciones"><Notificaciones /></RutaProtegida>} />
-            <Route path="cierre-qa" element={<RutaProtegida pagina="cierre-qa"><CierreQA /></RutaProtegida>} />
             <Route path="operaciones" element={<RutaProtegida pagina="operaciones"><Operaciones /></RutaProtegida>} />
             <Route path="cumplimiento" element={<RutaProtegida pagina="cumplimiento"><CumplimientoFiscal /></RutaProtegida>} />
             <Route path="fiscalidad" element={<RutaProtegida pagina="fiscalidad"><FiscalidadTasas /></RutaProtegida>} />

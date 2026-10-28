@@ -4,7 +4,7 @@ import {
   FiHome, FiSend, FiCalendar, FiFileText, FiFileMinus, FiCpu, FiUsers,
   FiBarChart2, FiLogOut, FiUserPlus, FiMap, FiUser, FiShield, FiCreditCard,
   FiAlertTriangle, FiUserCheck, FiMail, FiShoppingBag, FiSettings,
-  FiCheckSquare, FiBell,
+  FiBell,
 } from 'react-icons/fi';
 import { canAccessPage, roleOf, ROLE_DEFINITIONS } from '../utils/roles';
 
@@ -63,7 +63,6 @@ const Sidebar = () => {
         { page: 'correos', path: '/correos', icon: FiMail, label: 'Correos' },
         { page: 'notificaciones', path: '/notificaciones', icon: FiBell, label: 'Notificaciones' },
         { page: 'auditoria', path: '/auditoria', icon: FiShield, label: 'Auditoría' },
-        { page: 'cierre-qa', path: '/cierre-qa', icon: FiCheckSquare, label: 'Cierre QA' },
       ],
     },
   ];

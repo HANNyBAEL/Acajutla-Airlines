@@ -39,7 +39,7 @@ const listar = async (req, res) => {
     const vals = [];
     if (req.query.tipo) { sql += ' AND h.dte_type = ?'; vals.push(req.query.tipo); }
     if (req.query.estado) { sql += ' AND h.transmission_status = ?'; vals.push(req.query.estado); }
-    sql += ' ORDER BY h.id DESC LIMIT 200';
+    sql += ' ORDER BY h.id DESC';
     const [rows] = await pool.query(sql, vals);
     res.json({ exito: true, total: rows.length, datos: rows });
   } catch (e) {
