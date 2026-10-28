@@ -29,34 +29,6 @@ class AuthService {
 
     await Usuario.resetearIntentosFallidos(usuario.id);
 
-    if (usuario.mfa_required || usuario.mfa_enabled) {
-      const codigoMFA = await Usuario.generarCodigoMFA(usuario.id);
-      try {
-        await enviarCorreo(usuario.email, 'Código de verificación - Acajutla Airlines',
-          `<div><h2>Código de Verificación</h2><p>Hola ${usuario.username},</p><p>Tu código: <strong style="font-size:32px;letter-spacing:8px;">${codigoMFA}</strong></p><p>Expira en 5 minutos.</p></div>`);
-      } catch (error) {
-        if (process.env.NODE_ENV !== 'production' && String(error.message).includes('SIMULATION_NETWORK_BLOCKED')) {
-          console.warn('MFA local simulado: el envío externo está bloqueado por el entorno escolar.');
-          return {
-            requiereMFA: true,
-            usuarioId: usuario.id,
-            mensaje: 'Código MFA de simulación local',
-            codigoMfaSimulado: codigoMFA
-          };
-        }
-        const proveedor = error.response?.body || {};
-        const diagnostico = {
-          status: error.status || error.response?.status || null,
-          code: proveedor.code || error.code || null,
-          message: proveedor.message || error.message || 'Error desconocido del proveedor'
-        };
-        const textoLog = JSON.stringify(diagnostico).replaceAll(usuario.email, '[correo oculto]');
-        console.error('Brevo rechazó el envío del código MFA:', textoLog);
-        throw new Error('No se pudo enviar el código MFA. Revisa la configuración del correo e inténtalo de nuevo.');
-      }
-      return { requiereMFA: true, usuarioId: usuario.id, mensaje: 'Código MFA enviado al correo' };
-    }
-
     const tokens = await AuthService.generarTokens(usuario);
     await Usuario.actualizarUltimoLogin(usuario.id);
     return { requiereMFA: false, ...tokens, usuario: AuthService.sanitizarUsuario(usuario) };
