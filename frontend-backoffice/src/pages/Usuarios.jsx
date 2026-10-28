@@ -91,6 +91,7 @@ const Usuarios = () => {
   const [modal, setModal] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [mostrarPassword, setMostrarPassword] = useState(false);
+  const [cuentaClienteExistenteId, setCuentaClienteExistenteId] = useState(null);
   const [form, setForm] = useState({ username: '', email: '', role: '', password: '' });
 
   const cargar = async () => {
@@ -108,6 +109,7 @@ const Usuarios = () => {
 
   const abrirNuevo = () => {
     setEditandoId(null);
+    setCuentaClienteExistenteId(null);
     setForm({ username: '', email: '', role: '', password: '' });
     setMostrarPassword(false);
     setModal(true);
@@ -115,12 +117,16 @@ const Usuarios = () => {
 
   const abrirEditar = (cuenta) => {
     setEditandoId(cuenta.id);
+    setCuentaClienteExistenteId(null);
     setForm({ username: cuenta.username || '', email: cuenta.email || '', role: cuenta.role || '', password: '' });
     setMostrarPassword(false);
     setModal(true);
   };
 
-  const cambiarCampo = (campo, valor) => setForm((actual) => ({ ...actual, [campo]: valor }));
+  const cambiarCampo = (campo, valor) => {
+    setCuentaClienteExistenteId(null);
+    setForm((actual) => ({ ...actual, [campo]: valor }));
+  };
 
   const guardar = async () => {
     const username = form.username.trim();
@@ -144,7 +150,37 @@ const Usuarios = () => {
       setModal(false);
       await cargar();
     } catch (error) {
+      const conversionId = error.response?.data?.conversion?.user_id;
+      if (conversionId) setCuentaClienteExistenteId(conversionId);
       toast.error(error.response?.data?.error || 'No se pudo guardar el usuario');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const convertirCuentaCliente = async () => {
+    if (!cuentaClienteExistenteId) return;
+    const confirmado = await confirmarAccion({
+      title: 'Convertir cuenta de cliente',
+      text: `La cuenta existente pasará a tener el rol ${ROLE_DEFINITIONS[form.role]?.label || form.role}. Se actualizarán el nombre de usuario y la contraseña con los datos de este formulario.`,
+      confirmText: 'Convertir cuenta',
+      isDanger: false,
+    });
+    if (!confirmado) return;
+    setGuardando(true);
+    try {
+      await usuariosAPI.actualizar(cuentaClienteExistenteId, {
+        username: form.username.trim(),
+        email: form.email.trim(),
+        role: form.role,
+        password: form.password,
+      });
+      toast.success('Cuenta convertida a usuario de backoffice');
+      setCuentaClienteExistenteId(null);
+      setModal(false);
+      await cargar();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'No se pudo convertir la cuenta');
     } finally {
       setGuardando(false);
     }
@@ -280,9 +316,10 @@ const Usuarios = () => {
                 <div className="relative"><input type={mostrarPassword ? 'text' : 'password'} autoComplete={editandoId ? 'new-password' : 'new-password'} className="input-field pr-11" value={form.password} onChange={(event) => cambiarCampo('password', event.target.value)} placeholder={editandoId ? 'Déjala vacía para conservarla' : 'Mínimo 6 caracteres'} /><button type="button" onClick={() => setMostrarPassword((actual) => !actual)} className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400" aria-label={mostrarPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}>{mostrarPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}</button></div>
               </div>
               <p className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">Esta pantalla administra únicamente cuentas de acceso y roles; los datos de empleados y tripulación se gestionan por separado.</p>
+              {cuentaClienteExistenteId && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">El correo ya tiene una cuenta de cliente. Puedes convertirla para conservar el correo; dejará de tener rol de cliente y usará el rol, nombre de usuario y contraseña indicados aquí.</p>}
             </div>
 
-            <div className="mt-6 flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={() => setModal(false)}>Cancelar</button><button type="button" className="btn-primary" disabled={guardando} onClick={guardar}>{guardando ? 'Guardando...' : editandoId ? 'Guardar cambios' : 'Crear usuario'}</button></div>
+            <div className="mt-6 flex flex-wrap justify-end gap-2"><button type="button" className="btn-secondary" onClick={() => setModal(false)}>Cancelar</button>{cuentaClienteExistenteId && <button type="button" className="btn-secondary" disabled={guardando} onClick={convertirCuentaCliente}>{guardando ? 'Convirtiendo...' : 'Convertir cuenta existente'}</button>}<button type="button" className="btn-primary" disabled={guardando} onClick={guardar}>{guardando ? 'Guardando...' : editandoId ? 'Guardar cambios' : 'Crear usuario'}</button></div>
           </div>
         </div>
       )}

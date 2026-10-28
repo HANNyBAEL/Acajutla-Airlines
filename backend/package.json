@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "node --watch src/app.js",
-    "test": "node pruebas/operations-permissions-regression.js && node pruebas/core-logic-regression.js && node pruebas/eventos-dte-regression.js && node pruebas/web-checkout-auth-regression.js && node pruebas/payment-workflow-regression.js && node pruebas/qr-dte-regression.js && node pruebas/simulation-boundary-regression.js",
+    "test": "node pruebas/reserva-asientos-correo-regression.js && node pruebas/seat-concurrency-regression.js && node pruebas/operations-permissions-regression.js && node pruebas/core-logic-regression.js && node pruebas/eventos-dte-regression.js && node pruebas/web-checkout-auth-regression.js && node pruebas/payment-workflow-regression.js && node pruebas/qr-dte-regression.js && node pruebas/simulation-boundary-regression.js",
     "migrate:features": "node migracion-bloque-c.js && node migracion-bloque-e.js",
     "migrate:commercial": "node migracion-comercial.js",
     "migrate:mh": "node migracion-mh-simulado.js",

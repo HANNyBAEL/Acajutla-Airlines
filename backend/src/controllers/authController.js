@@ -5,6 +5,33 @@ const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 
 const ROLES_BACKOFFICE = ROLES_VALIDOS.filter((role) => role !== 'customer');
+const buscarDuplicadoCuenta = async ({ username, email }) => {
+  const [rows] = await pool.query(
+    `SELECT id, username, email, role, status,
+            LOWER(TRIM(username)) = LOWER(?) AS coincide_usuario,
+            LOWER(TRIM(email)) = LOWER(?) AS coincide_correo
+     FROM users
+     WHERE LOWER(TRIM(username)) = LOWER(?) OR LOWER(TRIM(email)) = LOWER(?)
+     LIMIT 2`,
+    [username, email, username, email]
+  );
+  return rows;
+};
+const mensajeDuplicadoCuenta = (rows) => {
+  const usuario = rows.find((row) => Number(row.coincide_usuario));
+  const correo = rows.find((row) => Number(row.coincide_correo));
+  if (correo?.role === 'customer') return 'Este correo ya pertenece a una cuenta de cliente. Las cuentas de clientes no aparecen en Usuarios y accesos.';
+  if (usuario && correo) return 'El nombre de usuario y el correo ya pertenecen a una cuenta existente.';
+  if (correo) return 'Este correo ya pertenece a una cuenta existente.';
+  if (usuario) return 'Este nombre de usuario ya está registrado.';
+  return 'El usuario o correo ya están registrados.';
+};
+const cuentaClienteConvertible = (rows) => {
+  const cliente = rows.find((row) => Number(row.coincide_correo) && row.role === 'customer');
+  const usuarioOcupado = rows.some((row) => Number(row.coincide_usuario) && Number(row.id) !== Number(cliente?.id));
+  return cliente && !usuarioOcupado ? cliente : null;
+};
+
 const validarCuenta = ({ username, email, role, password }, incluirPassword) => {
   if (typeof username !== 'string' || !/^[a-zA-Z0-9._-]{3,40}$/.test(username.trim())) return 'El usuario debe tener entre 3 y 40 caracteres (letras, números, punto, guion o guion bajo)';
   if (typeof email !== 'string' || email.trim().length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return 'Ingrese un correo electrónico válido';
@@ -105,8 +132,15 @@ const crearUsuario = async (req, res) => {
   if (errorValidacion) return res.status(400).json({ error: errorValidacion });
 
   try {
-    const [existentes] = await pool.query('SELECT id FROM users WHERE username = ? OR email = ?', [datos.username, datos.email]);
-    if (existentes.length) return res.status(409).json({ error: 'El usuario o correo ya están registrados' });
+    const existentes = await buscarDuplicadoCuenta(datos);
+    if (existentes.length) {
+      const cliente = cuentaClienteConvertible(existentes);
+      if (cliente) return res.status(409).json({
+        error: 'Este correo ya pertenece a una cuenta de cliente. Puedes convertir esa cuenta al rol de backoffice seleccionado.',
+        conversion: { user_id: cliente.id }
+      });
+      return res.status(409).json({ error: mensajeDuplicadoCuenta(existentes) });
+    }
     const passwordHash = await bcrypt.hash(datos.password, 12);
     const mfaRequerido = ['admin', 'cashier'].includes(datos.role) ? 1 : 0;
     const [result] = await pool.query(
@@ -116,7 +150,15 @@ const crearUsuario = async (req, res) => {
     );
     res.status(201).json({ exito: true, datos: { id: result.insertId } });
   } catch (error) {
-    if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'El usuario o correo ya están registrados' });
+    if (error.code === 'ER_DUP_ENTRY') {
+      const existentes = await buscarDuplicadoCuenta(datos);
+      const cliente = cuentaClienteConvertible(existentes);
+      if (cliente) return res.status(409).json({
+        error: 'Este correo ya pertenece a una cuenta de cliente. Puedes convertir esa cuenta al rol de backoffice seleccionado.',
+        conversion: { user_id: cliente.id }
+      });
+      return res.status(409).json({ error: mensajeDuplicadoCuenta(existentes) });
+    }
     console.error('Error crear usuario de sistema:', error);
     res.status(500).json({ error: 'No se pudo crear el usuario' });
   }

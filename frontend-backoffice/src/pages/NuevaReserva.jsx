@@ -9,7 +9,7 @@ const nacionalidades = ['SV', 'US', 'GT', 'HN', 'NI', 'CR', 'PA', 'MX'];
 const MAP_DOC = { DUI: '13', NIT: '36', Passport: '3', '13': '13', '36': '36', '3': '3' };
 const pasajeroVacio = () => ({
   passenger_type: 'adult', first_names: '', last_names: '',
-  document_type: '13', document_number: '', birth_date: '', nationality: 'SV',
+  document_type: '13', document_number: '', birth_date: '', nationality: 'SV', asientos: {},
 });
 const tipoPorEdad = (birth) => {
   const text = String(birth || '').slice(0, 10);
@@ -23,6 +23,14 @@ const tipoPorEdad = (birth) => {
   if (e < 2) return 'infant';
   if (e < 12) return 'child';
   return 'adult';
+};
+const puedeOcuparSalida = (pasajero) => {
+  const nacimiento = String(pasajero.birth_date || '').slice(0, 10);
+  const hoy = fechaActualSV();
+  if (pasajero.passenger_type !== 'adult' || !/^\d{4}-\d{2}-\d{2}$/.test(nacimiento) || nacimiento > hoy) return false;
+  const [y, m, d] = nacimiento.split('-').map(Number);
+  const [hy, hm, hd] = hoy.split('-').map(Number);
+  return hy - y - (hm < m || (hm === m && hd < d) ? 1 : 0) >= 15;
 };
 const fechaMinima = () => {
   const ahora = new Date();
@@ -56,6 +64,11 @@ const NuevaReserva = () => {
   const [ancillariesPorVuelo, setAncillariesPorVuelo] = useState({});
   const [ancillariesCargando, setAncillariesCargando] = useState(false);
   const [ancillariesSeleccionados, setAncillariesSeleccionados] = useState([]);
+  const [mapasAsientos, setMapasAsientos] = useState({});
+  const [asientosCargando, setAsientosCargando] = useState(false);
+  const [asientosError, setAsientosError] = useState(false);
+  const [revisionAsientos, setRevisionAsientos] = useState(0);
+  const [estadoCorreo, setEstadoCorreo] = useState(null);
 
   useEffect(() => {
     api.get('/aeropuertos?activos=1')
@@ -95,6 +108,31 @@ const NuevaReserva = () => {
 
     return () => { vigente = false; };
   }, [claveVuelosSeleccionados]);
+
+  useEffect(() => {
+    let vigente = true;
+    const ids = claveVuelosSeleccionados ? claveVuelosSeleccionados.split(',') : [];
+    if (!ids.length) {
+      setMapasAsientos({});
+      setAsientosError(false);
+      setAsientosCargando(false);
+      return () => { vigente = false; };
+    }
+    setAsientosCargando(true);
+    setAsientosError(false);
+    Promise.all(ids.map((id) => api.get('/reservas/asientos/' + encodeURIComponent(id))
+      .then((r) => [id, r.data.datos])))
+      .then((mapas) => { if (vigente) setMapasAsientos(Object.fromEntries(mapas)); })
+      .catch(() => { if (vigente) { setMapasAsientos({}); setAsientosError(true); } })
+      .finally(() => { if (vigente) setAsientosCargando(false); });
+    return () => { vigente = false; };
+  }, [claveVuelosSeleccionados, revisionAsientos]);
+
+  const seleccionarAsiento = (indice, flightId, asiento) => {
+    setPasajeros((actuales) => actuales.map((pasajero, i) => i === indice
+      ? { ...pasajero, asientos: { ...pasajero.asientos, [String(flightId)]: asiento } }
+      : pasajero));
+  };
 
   const actualizarTrayecto = (indice, campo, valor) => {
     const vueloAnterior = trayectos[indice]?.vueloId;
@@ -233,7 +271,7 @@ const NuevaReserva = () => {
   }, 0) / 100;
   const totalAncillariesCentavos = ancillariesSeleccionados.reduce((total, linea) => {
     const servicio = (ancillariesPorVuelo[String(linea.flight_id)] || []).find((item) => String(item.ancillary_id) === String(linea.ancillary_id));
-    return total + Math.round(Number(servicio?.precio_final || 0) * 100) * Number(linea.quantity || 0);
+    return total + Math.round(Number(servicio?.precio_con_impuestos ?? servicio?.precio_final ?? 0) * 100) * Number(linea.quantity || 0);
   }, 0);
   const totalEstimadoConAncillaries = totalEstimado + totalAncillariesCentavos / 100;
 
@@ -241,6 +279,17 @@ const NuevaReserva = () => {
     if (!clienteId || !clienteSel || Number(clienteSel.id) !== Number(clienteId)) return toast.error('Selecciona un cliente o agrega uno nuevo');
     if (trayectos.some((t) => !t.vueloId)) return toast.error('Selecciona un vuelo para cada trayecto');
     if (ancillariesCargando) return toast.error('Espera a que termine de cargar la disponibilidad de servicios');
+    if (asientosCargando) return toast.error('Espera a que termine de cargar la disponibilidad de asientos');
+    if (asientosError) return toast.error('No se pudo consultar la disponibilidad de asientos. Intenta de nuevo.');
+    for (const vuelo of vuelosSeleccionados) {
+      const mapa = mapasAsientos[String(vuelo.id)];
+      if (!mapa) return toast.error('No se pudo consultar la disponibilidad de asientos del vuelo ' + vuelo.flight_number);
+      const elegidos = pasajeros.map((p) => p.asientos?.[String(vuelo.id)]).filter(Boolean);
+      if (new Set(elegidos).size !== elegidos.length || elegidos.some((asiento) => mapa.ocupados.includes(asiento)))
+        return toast.error('Hay asientos ocupados o repetidos en el vuelo ' + vuelo.flight_number + '. Selecciona otros.');
+      if (pasajeros.some((p) => p.asientos?.[String(vuelo.id)] && (mapa.filasSalida || []).includes(parseInt(p.asientos[String(vuelo.id)], 10)) && !puedeOcuparSalida(p)))
+        return toast.error('Las filas de salida requieren un adulto de al menos 15 años.');
+    }
     const vueloSinCupo = vuelosSeleccionados.find((vuelo) => pasajeros.length > Number(vuelo.available_seats || 0));
     if (vueloSinCupo) {
       return toast.error(`No se puede completar la compra: el vuelo ${vueloSinCupo.flight_number} tiene ${Number(vueloSinCupo.available_seats || 0)} asientos disponibles y se solicitaron ${pasajeros.length} boletos.`, { duration: 8000 });
@@ -260,17 +309,25 @@ const NuevaReserva = () => {
       const cid = clienteId;
       const r = await api.post('/reservas', {
         customer_id: Number(cid),
-        vuelos: trayectos.map((t) => ({ flight_id: t.vueloId, fare_class: clase })),
-        pasajeros: pasajeros,
+        vuelos: trayectos.map((t) => ({ flight_id: t.vueloId, fare_class: clase, asientos: pasajeros.map((p) => p.asientos?.[String(t.vueloId)] || null) })),
+        pasajeros: pasajeros.map(({ asientos, ...p }) => p),
         ancillaries: ancillariesSeleccionados,
         time_limit_minutes: 30,
       });
+      setEstadoCorreo({ tipo: 'enviando' });
       setPnrCreado(r.data.datos.pnr);
-      api.post('/correos/confirmacion-reserva', { reservation_id: r.data.datos.reservation_id }).catch(() => {});
       toast.success('Reserva creada');
+      try {
+        const respuestaCorreo = await api.post('/correos/confirmacion-reserva', { reservation_id: r.data.datos.reservation_id });
+        const correo = respuestaCorreo.data.datos || {};
+        setEstadoCorreo({ tipo: !correo.enviado ? 'error' : correo.simulado ? 'simulado' : 'enviado', motivo: correo.motivo });
+      } catch {
+        setEstadoCorreo({ tipo: 'error' });
+      }
     } catch (e) {
       const mensaje = e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al crear la reserva';
       toast.error(mensaje + (e.response && e.response.data && e.response.data.detalle ? ' → ' + e.response.data.detalle : ''));
+      if (e.response?.status === 409) setRevisionAsientos((actual) => actual + 1);
     } finally { setGuardando(false); }
   };
 
@@ -285,6 +342,9 @@ const NuevaReserva = () => {
           <p className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-6">
             Reserva en estado PENDIENTE con time limit de 30 minutos (RN-COM-01). Sigue al módulo de Pagos.
           </p>
+          {estadoCorreo && <p role="status" className={'mt-4 rounded-lg border p-3 text-sm ' + (estadoCorreo.tipo === 'enviado' ? 'border-green-200 bg-green-50 text-green-800' : estadoCorreo.tipo === 'enviando' ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-amber-200 bg-amber-50 text-amber-800')}>
+            {estadoCorreo.tipo === 'enviando' ? 'Enviando confirmación por correo...' : estadoCorreo.tipo === 'enviado' ? 'Confirmación enviada por correo.' : estadoCorreo.tipo === 'simulado' ? 'La confirmación quedó en modo simulado; no se envió un correo real.' : `La reserva se creó, pero no se pudo enviar la confirmación${estadoCorreo.motivo ? ': ' + estadoCorreo.motivo : '.'}`}
+          </p>}
           {ancillariesSeleccionados.length > 0 && (
             <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4 text-left">
               <h2 className="font-semibold text-blue-900">Servicios incluidos en la reserva</h2>
@@ -298,7 +358,7 @@ const NuevaReserva = () => {
               <p className="mt-2 text-xs text-blue-700">Se cobrarán junto con la reserva y se incluirán en el DTE emitido al completar el pago.</p>
             </div>
           )}
-          <button className="btn-primary mt-6" onClick={() => { setPnrCreado(null); setPasajeros([pasajeroVacio()]); setTrayectos([{ origen: 'SAL', destino: 'MIA', fecha: '', vuelos: [], vueloId: null, buscando: false }]); setAncillariesSeleccionados([]); setClienteId(''); setClienteSel(null); setTipoViaje('ida'); setClase('economy'); }}>
+          <button className="btn-primary mt-6" disabled={guardando} onClick={() => { setPnrCreado(null); setEstadoCorreo(null); setPasajeros([pasajeroVacio()]); setTrayectos([{ origen: 'SAL', destino: 'MIA', fecha: '', vuelos: [], vueloId: null, buscando: false }]); setAncillariesSeleccionados([]); setClienteId(''); setClienteSel(null); setTipoViaje('ida'); setClase('economy'); }}>
             Crear otra reserva
           </button>
         </div>
@@ -433,9 +493,49 @@ const NuevaReserva = () => {
         </div>
 
         <div className="card p-6">
+          <h2 className="text-lg font-semibold text-gray-800 mb-2">4. Asientos (opcional)</h2>
+          <p className="text-sm text-gray-500 mb-4">Puedes elegir un asiento para cada pasajero en cada vuelo. Los asientos seleccionados se confirman al crear la reserva.</p>
+          {asientosCargando ? <p className="text-sm text-gray-500">Consultando disponibilidad...</p> : asientosError ? (
+            <div role="alert" className="text-sm text-red-700">No se pudo consultar la disponibilidad. <button type="button" className="underline font-medium" onClick={() => setRevisionAsientos((actual) => actual + 1)}>Reintentar</button></div>
+          ) : vuelosSeleccionados.length === 0 ? <p className="text-sm text-gray-500">Selecciona primero los vuelos.</p> : (
+            <div className="space-y-4">
+              {vuelosSeleccionados.map((vuelo) => {
+                const mapa = mapasAsientos[String(vuelo.id)];
+                if (!mapa) return <p key={vuelo.id} className="text-sm text-gray-500">Cargando asientos para {vuelo.flight_number}...</p>;
+                return <div key={vuelo.id} className="rounded-lg border border-gray-200 p-4">
+                  <h3 className="font-semibold text-gray-800">{vuelo.flight_number} · {vuelo.origin_iata} → {vuelo.destination_iata}</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                    {pasajeros.map((p, i) => {
+                      const elegido = p.asientos?.[String(vuelo.id)] || '';
+                      const repetidos = pasajeros.some((otro, j) => j !== i && otro.asientos?.[String(vuelo.id)] === elegido && elegido);
+                      const ocupado = elegido && (mapa.ocupados || []).includes(elegido);
+                      const salidaNoPermitida = elegido && (mapa.filasSalida || []).includes(parseInt(elegido, 10)) && !puedeOcuparSalida(p);
+                      return <label key={i} className="block text-sm font-medium text-gray-700">
+                        {p.first_names || p.last_names ? `${p.first_names} ${p.last_names}`.trim() : `Pasajero ${i + 1}`}
+                        <select className="input-field mt-1" value={elegido} onChange={(e) => seleccionarAsiento(i, vuelo.id, e.target.value)}>
+                          <option value="">Sin asignar</option>
+                          {(mapa.asientos || []).map((asiento) => {
+                            const ocupadoOtro = (mapa.ocupados || []).includes(asiento) || pasajeros.some((otro, j) => j !== i && otro.asientos?.[String(vuelo.id)] === asiento);
+                            const salidaRestringida = (mapa.filasSalida || []).includes(parseInt(asiento, 10)) && !puedeOcuparSalida(p);
+                            return <option key={asiento} value={asiento} disabled={(ocupadoOtro || salidaRestringida) && asiento !== elegido}>{asiento}{ocupadoOtro ? ' · ocupado' : salidaRestringida ? ' · salida restringida' : ''}</option>;
+                          })}
+                        </select>
+                        {(ocupado || repetidos) && <span role="alert" className="block text-xs text-red-600 mt-1">Este asiento ya no está disponible. Elige otro.</span>}
+                        {salidaNoPermitida && <span role="alert" className="block text-xs text-red-600 mt-1">Este pasajero no puede ocupar una fila de salida. Elige otro asiento.</span>}
+                      </label>;
+                    })}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-3">Las filas de salida de emergencia requieren un adulto de al menos 15 años.</p>
+                </div>;
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="card p-6">
           <div className="flex items-center gap-3 mb-2">
             <FiShoppingBag className="text-primary-600" size={21} />
-            <h2 className="text-lg font-semibold text-gray-800">4. Servicios adicionales (opcional)</h2>
+            <h2 className="text-lg font-semibold text-gray-800">5. Servicios adicionales (opcional)</h2>
           </div>
           <p className="text-sm text-gray-500 mb-4">Elige los servicios disponibles para cada vuelo. Se sumarán al total de la reserva y aparecerán como conceptos en la misma factura.</p>
           {ancillariesCargando ? (
@@ -465,7 +565,7 @@ const NuevaReserva = () => {
                                 <input type="checkbox" className="mt-1" checked={Boolean(linea)} disabled={agotado} onChange={(e) => cambiarAncillarySeleccionado(vuelo.id, servicio, e.target.checked)} />
                                 <span className="min-w-0">
                                   <span className="block font-medium text-gray-800">{servicio.code} · {servicio.name}</span>
-                                  <span className="block text-xs text-gray-500">${Number(servicio.precio_final).toFixed(2)} cada uno · {agotado ? 'Agotado' : `${servicio.stock} disponibles`}</span>
+                                  <span className="block text-xs text-gray-500">${Number(servicio.precio_con_impuestos ?? servicio.precio_final).toFixed(2)} cada uno, impuestos incluidos · {agotado ? 'Agotado' : `${servicio.stock} disponibles`}</span>
                                 </span>
                               </label>
                               {linea && (
@@ -498,7 +598,7 @@ const NuevaReserva = () => {
             {ancillariesSeleccionados.length > 0 && (
               <div className="border-t pt-2 space-y-1">
                 <div className="flex justify-between"><span className="text-gray-500">Servicios adicionales</span><span className="font-medium">{ancillariesSeleccionados.reduce((total, linea) => total + Number(linea.quantity || 0), 0)} unidad(es)</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Subtotal servicios</span><span className="font-medium">${(totalAncillariesCentavos / 100).toFixed(2)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Servicios con impuestos</span><span className="font-medium">${(totalAncillariesCentavos / 100).toFixed(2)}</span></div>
               </div>
             )}
             <div className="border-t pt-2 mt-2 flex justify-between text-base">

@@ -3,7 +3,7 @@ const Pasajero = require('../models/Pasajero');
 const FlightSegment = require('../models/FlightSegment');
 const { generarPNRUnico } = require('../utils/pnrGenerator');
 const pool = require('../config/db');
-const { obtenerImpuestos } = require('../services/taxService');
+const { obtenerImpuestos, calcularPrecioServicio } = require('../services/taxService');
 const { resolverClase } = require('../utils/fareClass');
 const { centavos } = require('../utils/money');
 const { tipoPorNacimiento } = require('../utils/passengerAge');
@@ -45,8 +45,14 @@ const crearReserva = async (req, res) => {
       }
     }
 
-    // Validar disponibilidad de cada vuelo
-    for (const vuelo of vuelos) {
+    // Bloquear los vuelos siempre en el mismo orden para serializar ventas y
+    // evitar interbloqueos entre itinerarios con varios tramos.
+    const idsVuelos = vuelos.map(v => Number(v.flight_id));
+    if (idsVuelos.some(id => !Number.isInteger(id) || id <= 0) || new Set(idsVuelos).size !== idsVuelos.length) {
+      throw Object.assign(new Error('Los vuelos seleccionados deben ser válidos y no repetirse'), { statusCode: 400 });
+    }
+    const asientosPorVuelo = new Map();
+    for (const vuelo of [...vuelos].sort((a, b) => Number(a.flight_id) - Number(b.flight_id))) {
       const disponibilidad = await FlightSegment.validarDisponibilidad(vuelo.flight_id, vuelo.fare_class || 'economy', connection);
       if (!disponibilidad.disponible) {
         await connection.rollback();
@@ -66,12 +72,31 @@ const crearReserva = async (req, res) => {
           requeridos: pasajeros.length
         });
       }
-      if (vuelo.seat) {
-        for (const pax of pasajeros) {
-          const error = errorAsientoPasajero(vuelo.seat, disponibilidad.total_capacity, pax.passenger_type || 'adult', pax.birth_date);
-          if (error) { await connection.rollback(); return res.status(400).json({ error }); }
+      if (vuelo.asientos !== undefined && (!Array.isArray(vuelo.asientos) || vuelo.asientos.length !== pasajeros.length)) {
+        throw Object.assign(new Error('Indique un asiento por pasajero para cada vuelo'), { statusCode: 400 });
+      }
+      if (vuelo.seat && (pasajeros.length !== 1 || vuelo.asientos !== undefined)) {
+        throw Object.assign(new Error('Indique los asientos por pasajero para cada vuelo'), { statusCode: 400 });
+      }
+      const asientos = (vuelo.asientos || [vuelo.seat || null]).map(seat => {
+        if (seat == null || seat === '') return null;
+        if (typeof seat !== 'string') throw Object.assign(new Error('Asiento inválido'), { statusCode: 400 });
+        return seat.trim().toUpperCase();
+      });
+      const seleccionados = new Set();
+      for (let i = 0; i < asientos.length; i++) {
+        const seat = asientos[i];
+        if (!seat) continue;
+        const pax = pasajeros[i];
+        const error = errorAsientoPasajero(seat, disponibilidad.total_capacity, pax.passenger_type || 'adult', pax.birth_date);
+        if (error) throw Object.assign(new Error(error), { statusCode: 400 });
+        if (seleccionados.has(seat)) throw Object.assign(new Error(`El asiento ${seat} está asignado a más de un pasajero`), { statusCode: 409 });
+        seleccionados.add(seat);
+        if (await FlightSegment.validarAsiento(vuelo.flight_id, seat, connection)) {
+          throw Object.assign(new Error(`El asiento ${seat} ya está ocupado en este vuelo`), { statusCode: 409 });
         }
       }
+      asientosPorVuelo.set(String(vuelo.flight_id), asientos);
     }
 
     // Resolver y bloquear la tarifa neta vigente de cada vuelo/clase. El total
@@ -133,7 +158,7 @@ const crearReserva = async (req, res) => {
       serviciosDuplicados.add(clave);
 
       const [disponibilidad] = await connection.query(
-        `SELECT fa.id, fa.stock, fa.price_override, a.base_price
+        `SELECT fa.id, fa.stock, fa.price_override, a.base_price, a.iva_incluido
          FROM flight_ancillaries fa JOIN ancillaries a ON a.id = fa.ancillary_id
          WHERE fa.flight_id = ? AND fa.ancillary_id = ? AND fa.active = 1 AND a.active = 1
          FOR UPDATE`,
@@ -145,7 +170,9 @@ const crearReserva = async (req, res) => {
       if (Number(disponibilidad[0].stock) < cantidad) {
         throw Object.assign(new Error('No hay inventario suficiente para uno de los servicios seleccionados'), { statusCode: 409 });
       }
-      const precioCentavos = centavos(disponibilidad[0].price_override ?? disponibilidad[0].base_price);
+      const precioBase = disponibilidad[0].price_override ?? disponibilidad[0].base_price;
+      const importe = await calcularPrecioServicio(flightId, precioBase, Number(disponibilidad[0].iva_incluido) === 1, connection);
+      const precioCentavos = centavos(importe.precioFinal);
       if (precioCentavos < 0) throw Object.assign(new Error('El precio del servicio no es válido'), { statusCode: 409 });
       totalAncillariesCentavos += precioCentavos * cantidad;
       serviciosReservados.push({
@@ -153,6 +180,7 @@ const crearReserva = async (req, res) => {
         ancillary_id: ancillaryId,
         cantidad,
         precio: precioCentavos / 100,
+        iva: centavos(importe.iva) / 100,
         inventario_id: disponibilidad[0].id
       });
     }
@@ -203,7 +231,7 @@ const crearReserva = async (req, res) => {
     }
 
     // Asignar segmentos de vuelo
-    for (const pax of pasajerosCreados) {
+    for (const [indicePax, pax] of pasajerosCreados.entries()) {
       for (const vuelo of vuelos) {
         const tarifa = tarifasPorVuelo.get(String(vuelo.flight_id));
         const importes = importesPasajero(tarifa, pax.passenger_type || 'adult');
@@ -213,7 +241,7 @@ const crearReserva = async (req, res) => {
           passenger_id: pax.id,
           flight_id: vuelo.flight_id,
           fare_class: tarifa.clase,
-          seat: vuelo.seat || null,
+          seat: asientosPorVuelo.get(String(vuelo.flight_id))[indicePax] || null,
           fare_id: tarifa.id,
           unit_price: precioUnitario,
           total_price: precioUnitario
@@ -241,8 +269,8 @@ const crearReserva = async (req, res) => {
       }
       for (let unidad = 0; unidad < servicio.cantidad; unidad++) {
         await connection.query(
-          "INSERT INTO reservation_ancillaries (reservation_id, passenger_id, flight_id, ancillary_id, price, status) VALUES (?, NULL, ?, ?, ?, 'active')",
-          [reservation_id, servicio.flight_id, servicio.ancillary_id, servicio.precio]
+          "INSERT INTO reservation_ancillaries (reservation_id, passenger_id, flight_id, ancillary_id, price, iva_amount, status) VALUES (?, NULL, ?, ?, ?, ?, 'active')",
+          [reservation_id, servicio.flight_id, servicio.ancillary_id, servicio.precio, servicio.iva]
         );
       }
     }
@@ -262,9 +290,8 @@ const crearReserva = async (req, res) => {
     });
   } catch (error) {
     if (connection) await connection.rollback();
-    console.error('Error al crear reserva:', error);
-
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    console.error('Error al crear reserva:', error);
     
     // Mensajes de error específicos
     if (error.code === 'ER_DUP_ENTRY') {

@@ -34,7 +34,17 @@ class AuthService {
       try {
         await enviarCorreo(usuario.email, 'Código de verificación - Acajutla Airlines',
           `<div><h2>Código de Verificación</h2><p>Hola ${usuario.username},</p><p>Tu código: <strong style="font-size:32px;letter-spacing:8px;">${codigoMFA}</strong></p><p>Expira en 5 minutos.</p></div>`);
-      } catch (error) { console.error('Error al enviar MFA:', error.message); throw new Error('No se pudo enviar el código MFA. Intenta nuevamente.'); }
+      } catch (error) {
+        const proveedor = error.response?.body || {};
+        const diagnostico = {
+          status: error.status || error.response?.status || null,
+          code: proveedor.code || error.code || null,
+          message: proveedor.message || error.message || 'Error desconocido del proveedor'
+        };
+        const textoLog = JSON.stringify(diagnostico).replaceAll(usuario.email, '[correo oculto]');
+        console.error('Brevo rechazó el envío del código MFA:', textoLog);
+        throw new Error('No se pudo enviar el código MFA. Revisa la configuración del correo e inténtalo de nuevo.');
+      }
       return { requiereMFA: true, usuarioId: usuario.id, mensaje: 'Código MFA enviado al correo' };
     }
 

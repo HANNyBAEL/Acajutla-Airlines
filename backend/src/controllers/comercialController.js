@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { fechaElSalvador } = require('../utils/fechaElSalvador');
+const { calcularPrecioServicio } = require('../services/taxService');
 
 // ---------- WAITLIST ----------
 const listarWaitlist = async (req, res) => {
@@ -87,12 +88,22 @@ const crearAncillary = async (req, res) => {
   try {
     const { code, name, type, description, base_price } = req.body;
     const defaultStock = Number(req.body.default_stock ?? 0);
-    if (!code || !name || !type || base_price === undefined) return res.status(400).json({ error: 'code, name, type y base_price son obligatorios' });
+    const codigo = typeof code === 'string' ? code.trim().toUpperCase() : '';
+    const nombre = typeof name === 'string' ? name.trim() : '';
+    const tiposPermitidos = ['baggage', 'seat', 'meal', 'priority', 'other'];
+    if (!codigo || !nombre || !type || base_price === undefined) return res.status(400).json({ error: 'Código, nombre, tipo y precio son obligatorios' });
+    if (!/^[A-Z0-9_-]{2,20}$/.test(codigo)) return res.status(400).json({ error: 'El código debe tener 2 a 20 caracteres: letras, números, guion o guion bajo' });
+    if (nombre.length > 100) return res.status(400).json({ error: 'El nombre no puede superar 100 caracteres' });
+    if (!tiposPermitidos.includes(type)) return res.status(400).json({ error: 'Tipo de servicio inválido' });
+    if (description != null && String(description).length > 250) return res.status(400).json({ error: 'La descripción no puede superar 250 caracteres' });
+    if (!Number.isFinite(Number(base_price)) || Number(base_price) <= 0 || Math.round(Number(base_price) * 100) !== Number(base_price) * 100) return res.status(400).json({ error: 'El precio debe ser mayor que cero y tener como máximo dos decimales' });
     if (!Number.isInteger(defaultStock) || defaultStock < 0 || defaultStock > 100000) return res.status(400).json({ error: 'La cantidad predeterminada debe ser un entero entre 0 y 100000' });
+    if (![true, false, 0, 1, '0', '1'].includes(req.body.iva_incluido ?? false)) return res.status(400).json({ error: 'Selecciona un tratamiento de IVA válido' });
     connection = await pool.getConnection();
     await connection.beginTransaction();
-    const [r] = await connection.query('INSERT INTO ancillaries (code, name, type, description, base_price, default_stock) VALUES (?,?,?,?,?,?)',
-      [code.toUpperCase(), name, type, description || null, base_price, defaultStock]);
+    const ivaIncluido = req.body.iva_incluido === true || req.body.iva_incluido === 1 || req.body.iva_incluido === '1';
+    const [r] = await connection.query('INSERT INTO ancillaries (code, name, type, description, base_price, default_stock, iva_incluido) VALUES (?,?,?,?,?,?,?)',
+      [codigo, nombre, type, description ? String(description).trim() : null, Number(base_price), defaultStock, ivaIncluido ? 1 : 0]);
     await sincronizarInventarioPredeterminado(r.insertId, connection);
     await connection.commit();
     res.status(201).json({ exito: true, datos: { id: r.insertId } });
@@ -107,13 +118,17 @@ const crearAncillary = async (req, res) => {
 const actualizarAncillary = async (req, res) => {
   let connection;
   try {
-    const allowed = ['code', 'name', 'type', 'description', 'base_price', 'active', 'default_stock'];
+    const allowed = ['code', 'name', 'type', 'description', 'base_price', 'active', 'default_stock', 'iva_incluido'];
     const entries = Object.entries(req.body).filter(([key]) => allowed.includes(key));
     if (!entries.length) return res.status(400).json({ error: 'No hay campos para actualizar' });
     for (const [key, value] of entries) {
-      if (['code', 'name', 'type'].includes(key) && (typeof value !== 'string' || !value.trim())) return res.status(400).json({ error: 'Texto obligatorio: ' + key });
-      if (key === 'base_price' && (!Number.isFinite(Number(value)) || Number(value) < 0)) return res.status(400).json({ error: 'Precio inválido' });
+      if (key === 'code' && (typeof value !== 'string' || !/^[A-Z0-9_-]{2,20}$/i.test(value.trim()))) return res.status(400).json({ error: 'El código debe tener 2 a 20 caracteres: letras, números, guion o guion bajo' });
+      if (key === 'name' && (typeof value !== 'string' || !value.trim() || value.trim().length > 100)) return res.status(400).json({ error: 'El nombre es obligatorio y no puede superar 100 caracteres' });
+      if (key === 'type' && !['baggage', 'seat', 'meal', 'priority', 'other'].includes(value)) return res.status(400).json({ error: 'Tipo de servicio inválido' });
+      if (key === 'description' && value != null && String(value).length > 250) return res.status(400).json({ error: 'La descripción no puede superar 250 caracteres' });
+      if (key === 'base_price' && (!Number.isFinite(Number(value)) || Number(value) <= 0 || Math.round(Number(value) * 100) !== Number(value) * 100)) return res.status(400).json({ error: 'El precio debe ser mayor que cero y tener como máximo dos decimales' });
       if (key === 'active' && ![true, false, 0, 1].includes(value)) return res.status(400).json({ error: 'active debe ser booleano' });
+      if (key === 'iva_incluido' && ![true, false, 0, 1, '0', '1'].includes(value)) return res.status(400).json({ error: 'iva_incluido debe ser booleano' });
       if (key === 'default_stock' && (!Number.isInteger(Number(value)) || Number(value) < 0 || Number(value) > 100000)) return res.status(400).json({ error: 'La cantidad predeterminada debe ser un entero entre 0 y 100000' });
     }
     connection = await pool.getConnection();
@@ -123,7 +138,14 @@ const actualizarAncillary = async (req, res) => {
       await connection.rollback();
       return res.status(404).json({ error: 'Servicio no encontrado' });
     }
-    const valores = entries.map(([key, value]) => key === 'default_stock' ? Number(value) : value);
+    const valores = entries.map(([key, value]) => {
+      if (key === 'code') return value.trim().toUpperCase();
+      if (['default_stock', 'iva_incluido'].includes(key)) return Number(value);
+      if (key === 'name') return value.trim();
+      if (key === 'description' && value != null) return String(value).trim();
+      if (key === 'base_price') return Number(value);
+      return value;
+    });
     await connection.query('UPDATE ancillaries SET ' + entries.map(([key]) => key + ' = ?').join(', ') + ' WHERE id = ?', [...valores, req.params.id]);
     await sincronizarInventarioPredeterminado(req.params.id, connection);
     await connection.commit();
@@ -150,10 +172,14 @@ const asignarAncillaryVuelo = async (req, res) => {
 const ancillariesDeVuelo = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT fa.*, a.code, a.name, a.type, a.description, COALESCE(fa.price_override, a.base_price) AS precio_final
+      `SELECT fa.*, a.code, a.name, a.type, a.description, a.iva_incluido, COALESCE(fa.price_override, a.base_price) AS precio_final
        FROM flight_ancillaries fa JOIN ancillaries a ON a.id = fa.ancillary_id
        WHERE fa.flight_id = ? AND fa.active = 1 AND a.active = 1 ORDER BY a.type, a.code`, [req.params.flightId]);
-    res.json({ exito: true, datos: rows });
+    const datos = await Promise.all(rows.map(async (servicio) => {
+      const importe = await calcularPrecioServicio(req.params.flightId, servicio.precio_final, Number(servicio.iva_incluido) === 1);
+      return { ...servicio, precio_con_impuestos: importe.precioFinal, impuesto_aplicado: importe.iva };
+    }));
+    res.json({ exito: true, datos });
   } catch (e) { res.status(500).json({ error: 'Error interno' }); }
 };
 
@@ -220,13 +246,15 @@ const agregarAncillaryReserva = async (req, res) => {
     const [fa] = await conn.query('SELECT * FROM flight_ancillaries WHERE flight_id = ? AND ancillary_id = ? AND active = 1 FOR UPDATE', [flight_id, ancillary_id]);
     if (!fa.length) throw Object.assign(new Error('Este servicio no está configurado para el vuelo de la reserva'), { statusCode: 409 });
     if (Number(fa[0].stock) < qty) throw Object.assign(new Error('No hay inventario suficiente para este servicio'), { statusCode: 409 });
-    const [a] = await conn.query('SELECT base_price FROM ancillaries WHERE id = ? AND active = 1', [ancillary_id]);
+    const [a] = await conn.query('SELECT base_price, iva_incluido FROM ancillaries WHERE id = ? AND active = 1', [ancillary_id]);
     if (!a.length) throw Object.assign(new Error('El servicio seleccionado está inactivo'), { statusCode: 409 });
-    const precio = fa[0].price_override ?? a[0].base_price;
+    const precioBase = fa[0].price_override ?? a[0].base_price;
+    const importe = await calcularPrecioServicio(flight_id, precioBase, Number(a[0].iva_incluido) === 1, conn);
+    const precio = importe.precioFinal;
     const total = precio * qty;
     let r;
     for (let unit = 0; unit < qty; unit++) {
-      [r] = await conn.query("INSERT INTO reservation_ancillaries (reservation_id, passenger_id, flight_id, ancillary_id, price, status) VALUES (?,?,?,?,?,'active')", [reservation_id, passenger_id || null, flight_id, ancillary_id, precio]);
+      [r] = await conn.query("INSERT INTO reservation_ancillaries (reservation_id, passenger_id, flight_id, ancillary_id, price, iva_amount, status) VALUES (?,?,?,?,?,?, 'active')", [reservation_id, passenger_id || null, flight_id, ancillary_id, precio, importe.iva]);
     }
     await conn.query('UPDATE flight_ancillaries SET stock = stock - ? WHERE id = ?', [qty, fa[0].id]);
     await conn.query('UPDATE reservations SET estimated_total = estimated_total + ? WHERE id = ?', [total, reservation_id]);

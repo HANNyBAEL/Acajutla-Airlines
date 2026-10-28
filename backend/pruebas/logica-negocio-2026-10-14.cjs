@@ -86,6 +86,8 @@ function operationalFixture(overrides = {}) {
   const data = state;
   query = async (raw, p = []) => {
     const s = compact(raw); data.sql.push(s);
+    if (s.startsWith('SELECT flight_id FROM flight_segments WHERE id')) return [[{ flight_id: data.segment.flight_id }]];
+    if (s.startsWith('SELECT id FROM flights WHERE id')) return [[{ id: data.segment.flight_id }]];
     if (s.startsWith('SELECT fs.*')) return [[{ ...data.segment, pnr: data.reservation.pnr, res_status: data.reservation.status, paid_total: data.reservation.paid_total, estimated_total: data.reservation.estimated_total }]];
     if (s.startsWith('SELECT cm.role_operativo')) return [[{ role_operativo: 'pilot' }, { role_operativo: 'copilot' }]];
     if (s.startsWith('SELECT param_value')) return [[{ param_value: '45' }]];
@@ -215,6 +217,27 @@ function apiFixture(retryStatus = null, refreshFails = false) {
     const data = reservationFixture(); assert.equal((await createReservation([passenger('adult',{ id: 999 })])).statusCode, 201);
     assert.equal(data.segments[0].passenger_id, data.passengers[0].id, `Pasajero creado=${data.passengers[0].id}; segmento asociado=${data.segments[0].passenger_id}`);
   });
+  await test('RES-ASIENTOS-INDIVIDUALES', 'Cada pasajero conserva su asiento en el vuelo', async () => {
+    const data = reservationFixture();
+    const res = await createReservation([passenger(), passenger()], { vuelos: [{ flight_id: 1, asientos: ['1a', '1B'] }] });
+    assert.equal(res.statusCode, 201, JSON.stringify(res.body));
+    assert.deepEqual(data.segments.map(s => s.seat), ['1A', '1B']);
+  });
+  await test('RES-ASIENTOS-DUPLICADOS', 'Rechaza el mismo asiento para dos pasajeros', async () => {
+    const data = reservationFixture();
+    const res = await createReservation([passenger(), passenger()], { vuelos: [{ flight_id: 1, asientos: ['1A', '1a'] }] });
+    assert.equal(res.statusCode, 409); assert.equal(data.segments.length, 0);
+  });
+  await test('RES-ASIENTO-OCUPADO', 'No permite seleccionar un asiento ocupado', async () => {
+    const data = reservationFixture(); data.segments.push({ flight_id: 1, seat: '1A' });
+    const res = await createReservation([passenger()], { vuelos: [{ flight_id: 1, asientos: ['1A'] }] });
+    assert.equal(res.statusCode, 409); assert.equal(data.segments.length, 1);
+  });
+  await test('RES-ASIENTO-LEGADO-MULTIPLE', 'No aplica un asiento legado a varios pasajeros', async () => {
+    const data = reservationFixture();
+    const res = await createReservation([passenger(), passenger()], { vuelos: [{ flight_id: 1, seat: '1A' }] });
+    assert.equal(res.statusCode, 400); assert.equal(data.segments.length, 0);
+  });
   await test('RES-EDAD', 'Un adulto no obtiene tarifa infantil por declarar infant', async () => {
     const data = reservationFixture(); const res = await createReservation([passenger('infant', { birth_date: '1990-01-01' })]);
     assert.ok(res.statusCode >= 400 || data.reservation.estimated_total === 100, `Adulto de 1990 aceptado HTTP ${res.statusCode} por $${data.reservation?.estimated_total}`);
@@ -246,6 +269,22 @@ function apiFixture(retryStatus = null, refreshFails = false) {
   });
   await test('CHECKIN-PAGADO', 'Reserva pagada con tripulacion valida hace check-in', async () => {
     const data = operationalFixture(); assert.equal((await controller(Checkin.hacerCheckin)).statusCode, 200); assert.equal(data.segment.checkin_status, 'checked_in');
+  });
+  await test('CHECKIN-ASIENTO-DUPLICADO', 'El check-in rechaza un asiento ocupado de otro pasajero', async () => {
+    const data = operationalFixture(); data.occupied = [{ id: 2 }];
+    const res = await controller(Checkin.hacerCheckin);
+    assert.equal(res.statusCode, 409); assert.equal(data.segment.checkin_status, 'pending');
+  });
+  await test('ASIENTO-OCUPADO', 'No se asigna manualmente un asiento ocupado', async () => {
+    const data = operationalFixture(); data.occupied = [{ id: 2 }];
+    const res = await controller(Checkin.asignarAsiento, { seat: '2B' });
+    assert.equal(res.statusCode, 409); assert.equal(data.segment.seat, '1A');
+  });
+  await test('CHECKIN-BLOQUEO', 'La autoasignación bloquea el vuelo antes del segmento y lee ocupación actual', async () => {
+    const data = operationalFixture(); data.segment.seat = null;
+    assert.equal((await controller(Checkin.hacerCheckin)).statusCode, 200);
+    assert.ok(data.sql.findIndex(s => s.startsWith('SELECT id FROM flights')) < data.sql.findIndex(s => s.startsWith('SELECT fs.*')));
+    assert.ok(data.sql.some(s => s.startsWith('SELECT fs.seat') && s.endsWith('FOR UPDATE')));
   });
   await test('CHECKIN-SALDO', 'Un saldo pendiente bloquea check-in', async () => {
     const data = operationalFixture(); data.reservation.paid_total = 99; assert.equal((await controller(Checkin.hacerCheckin)).statusCode, 400);

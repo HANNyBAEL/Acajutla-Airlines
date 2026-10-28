@@ -95,6 +95,7 @@ const reglasAutomaticas = [
     await db.query(`CREATE TABLE IF NOT EXISTS tax_rules (
       id INT AUTO_INCREMENT PRIMARY KEY, country_id INT NOT NULL, airport_id INT NULL,
       code VARCHAR(30) NOT NULL, name VARCHAR(120) NOT NULL,
+      scope ENUM('flight','ancillary') NOT NULL DEFAULT 'flight',
       calculation_type ENUM('percentage','fixed') NOT NULL,
       value DECIMAL(12,4) NOT NULL, applies_to ENUM('all','domestic','international') NOT NULL DEFAULT 'all',
       active TINYINT(1) NOT NULL DEFAULT 1, valid_from DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -103,6 +104,7 @@ const reglasAutomaticas = [
       KEY tax_country_airport (country_id, airport_id, active), KEY tax_validity (valid_from, valid_to)
     )`);
     for (const [column, definition] of [
+      ['scope', "ENUM('flight','ancillary') NOT NULL DEFAULT 'flight'"],
       ['source_url', 'VARCHAR(1000) NULL'],
       ['source_checked_at', 'DATE NULL'],
       ['notes', 'TEXT NULL']
@@ -156,6 +158,48 @@ const reglasAutomaticas = [
       [country.id, airportId, rule.code, rule.name, rule.type, rule.value, rule.applies, rule.source, rule.notes]);
     };
     for (const rule of reglasAutomaticas) await insertarReglaSiNoExiste(rule);
+
+    // Inicializa reglas propias para ancillary copiando solo tasas de IVA activas;
+    // cargos aeroportuarios y tributos del boleto nunca se heredan.
+    await db.query(`INSERT INTO tax_rules
+      (country_id, airport_id, code, name, scope, calculation_type, value, applies_to, active, valid_from, valid_to, source_url, source_checked_at, notes)
+      SELECT flight_rule.country_id, flight_rule.airport_id, flight_rule.code, flight_rule.name, 'ancillary',
+        flight_rule.calculation_type, flight_rule.value, flight_rule.applies_to, 1, flight_rule.valid_from,
+        flight_rule.valid_to, flight_rule.source_url, flight_rule.source_checked_at,
+        CONCAT(COALESCE(flight_rule.notes, ''), ' Regla inicial independiente para servicios adicionales.')
+      FROM tax_rules flight_rule
+      WHERE flight_rule.scope = 'flight' AND flight_rule.active = 1
+        AND UPPER(flight_rule.code) IN ('20', 'IVA', 'IVA_GENERAL')
+        AND NOT EXISTS (
+          SELECT 1 FROM tax_rules ancillary_rule
+          WHERE ancillary_rule.scope = 'ancillary'
+            AND ancillary_rule.country_id = flight_rule.country_id
+            AND ancillary_rule.airport_id <=> flight_rule.airport_id
+            AND ancillary_rule.code = flight_rule.code
+        )`);
+
+    // Tarifas generales para servicios adicionales. Se guardan en su propio
+    // alcance y no se copian los gravámenes especiales de boletos/aeropuertos.
+    const impuestosAncillary = [
+      { country: 'CR', code: 'CR-IVA-GEN', name: 'IVA general de servicios adicionales', value: 13, source: 'https://www.hacienda.go.cr/docs/TarifasdelIVA.pdf', note: 'Tarifa general; distinta de las tarifas reducidas aplicables a boletos aéreos.' },
+      { country: 'GT', code: 'GT-IVA-GEN', name: 'IVA general de servicios adicionales', value: 12, source: 'https://en.portal.sat.gob.gt/portal/preguntas-frecuentes/principales-impuestos-guatemala/', note: 'Tarifa general sobre bienes y servicios.' },
+      { country: 'HN', code: 'HN-ISV-GEN', name: 'ISV general de servicios adicionales', value: 15, source: 'https://www.sar.gob.hn/impuesto-sobre-ventas-isv/', note: 'Tasa general; verificar excepciones y tasas especiales.' },
+      { country: 'MX', code: 'MX-IVA-GEN', name: 'IVA general de servicios adicionales', value: 16, source: 'https://wwwmat.sat.gob.mx/articulo/19848/articulo-1', note: 'Tasa general; verificar estímulos y reglas territoriales.' },
+      { country: 'NI', code: 'NI-IVA-GEN', name: 'IVA general de servicios adicionales', value: 15, source: 'https://www.dgi.gob.ni/FAQ/creacion__materia_imponible__h.htm', note: 'Tasa general; verificar territorialidad y excepciones.' },
+      { country: 'PA', code: 'PA-ITBMS-GEN', name: 'ITBMS general de servicios adicionales', value: 7, source: 'https://dgi.mef.gob.pa/itbms/Itbms', note: 'Aplicabilidad condicionada a obligaciones del contribuyente y naturaleza del servicio.' }
+    ];
+    for (const rule of impuestosAncillary) {
+      const [[country]] = await db.query('SELECT id FROM countries WHERE code = ? AND active = 1 LIMIT 1', [rule.country]);
+      if (!country) continue;
+      const [existing] = await db.query(
+        'SELECT id FROM tax_rules WHERE country_id = ? AND airport_id IS NULL AND code = ? AND scope = \'ancillary\' LIMIT 1',
+        [country.id, rule.code]
+      );
+      if (!existing.length) await db.query(`INSERT INTO tax_rules
+        (country_id, airport_id, code, name, scope, calculation_type, value, applies_to, active, source_url, source_checked_at, notes)
+        VALUES (?, NULL, ?, ?, 'ancillary', 'percentage', ?, 'all', 1, ?, CURRENT_DATE, ?)`,
+      [country.id, rule.code, rule.name, rule.value, rule.source, rule.note]);
+    }
 
     const insertarReferenciaSiNoExiste = async (reference) => {
       const [[country]] = await db.query('SELECT id FROM countries WHERE code = ? LIMIT 1', [reference.country]);

@@ -33,10 +33,11 @@ const listarReferencias = async (_req, res) => {
   res.json({ exito: true, datos: rows });
 };
 const crearRegla = async (req, res) => {
-  const { country_id, airport_id, code, name, calculation_type, value, applies_to, source_url, notes } = req.body;
+  const { country_id, airport_id, code, name, calculation_type, value, applies_to, scope = 'flight', source_url, notes } = req.body;
   if (!country_id || !code || !name || !['percentage', 'fixed'].includes(calculation_type) || !Number.isFinite(Number(value)) || Number(value) < 0) return res.status(400).json({ error: 'Complete país, código, nombre, tipo y valor válido' });
   if (source_url && !/^https?:\/\//i.test(source_url)) return res.status(400).json({ error: 'La fuente debe ser una URL http o https válida' });
   if (applies_to && !['all', 'domestic', 'international'].includes(applies_to)) return res.status(400).json({ error: 'Aplica a debe ser todos, nacional o internacional' });
+  if (!['flight', 'ancillary'].includes(scope)) return res.status(400).json({ error: 'El alcance debe ser vuelo o servicio adicional' });
   const [country] = await pool.query('SELECT id FROM countries WHERE id = ? AND active = 1', [country_id]);
   if (!country.length) return res.status(404).json({ error: 'País no encontrado o inactivo' });
   if (airport_id) {
@@ -44,27 +45,28 @@ const crearRegla = async (req, res) => {
     if (!airport.length) return res.status(400).json({ error: 'El aeropuerto debe pertenecer al país seleccionado' });
   }
   const [r] = await pool.query(`INSERT INTO tax_rules
-    (country_id, airport_id, code, name, calculation_type, value, applies_to, source_url, source_checked_at, notes, created_by, updated_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, IF(? IS NULL, NULL, CURRENT_DATE), ?, ?, ?)`,
-  [country_id, airport_id || null, code.toUpperCase(), name, calculation_type, value, applies_to || 'all', source_url || null, source_url || null, notes || null, req.usuario?.id || null, req.usuario?.id || null]);
+    (country_id, airport_id, code, name, scope, calculation_type, value, applies_to, source_url, source_checked_at, notes, created_by, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, IF(? IS NULL, NULL, CURRENT_DATE), ?, ?, ?)`,
+  [country_id, airport_id || null, code.toUpperCase(), name, scope, calculation_type, value, applies_to || 'all', source_url || null, source_url || null, notes || null, req.usuario?.id || null, req.usuario?.id || null]);
   res.status(201).json({ exito: true, datos: { id: r.insertId } });
 };
 const actualizarRegla = async (req, res) => {
-  const { country_id, airport_id, code, name, calculation_type, value, applies_to, source_url, notes } = req.body;
+  const { country_id, airport_id, code, name, calculation_type, value, applies_to, scope = 'flight', source_url, notes } = req.body;
   if (!country_id || !code || !name || !['percentage', 'fixed'].includes(calculation_type) || !Number.isFinite(Number(value)) || Number(value) < 0) return res.status(400).json({ error: 'Complete país, código, nombre, tipo y valor válido' });
   if (source_url && !/^https?:\/\//i.test(source_url)) return res.status(400).json({ error: 'La fuente debe ser una URL http o https válida' });
   if (applies_to && !['all', 'domestic', 'international'].includes(applies_to)) return res.status(400).json({ error: 'Aplica a debe ser todos, nacional o internacional' });
+  if (!['flight', 'ancillary'].includes(scope)) return res.status(400).json({ error: 'El alcance debe ser vuelo o servicio adicional' });
   const [country] = await pool.query('SELECT id FROM countries WHERE id = ? AND active = 1', [country_id]);
   if (!country.length) return res.status(404).json({ error: 'País no encontrado o inactivo' });
   if (airport_id) {
     const [airport] = await pool.query('SELECT id FROM airports WHERE id = ? AND country_id = ?', [airport_id, country_id]);
     if (!airport.length) return res.status(400).json({ error: 'El aeropuerto debe pertenecer al país seleccionado' });
   }
-  const [result] = await pool.query(`UPDATE tax_rules SET country_id = ?, airport_id = ?, code = ?, name = ?,
+  const [result] = await pool.query(`UPDATE tax_rules SET country_id = ?, airport_id = ?, code = ?, name = ?, scope = ?,
     calculation_type = ?, value = ?, applies_to = ?, source_url = ?,
     source_checked_at = IF(? IS NULL, NULL, CURRENT_DATE), notes = ?, updated_by = ?
     WHERE id = ?`,
-  [country_id, airport_id || null, code.toUpperCase(), name, calculation_type, value, applies_to || 'all', source_url || null,
+  [country_id, airport_id || null, code.toUpperCase(), name, scope, calculation_type, value, applies_to || 'all', source_url || null,
     source_url || null, notes || null, req.usuario?.id || null, req.params.id]);
   if (!result.affectedRows) return res.status(404).json({ error: 'Regla fiscal no encontrada' });
   res.json({ exito: true });

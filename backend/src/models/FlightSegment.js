@@ -18,7 +18,7 @@ const FlightSegment = {
       const mapa = crearMapaAsientos(disponible.total_capacity);
       if (!mapa.asientos.includes(seat)) throw new Error('El asiento no existe en esta aeronave');
       const ocupado = await FlightSegment.validarAsiento(flight_id, seat, connection);
-      if (ocupado) throw new Error(`El asiento ${seat} ya está ocupado en este vuelo`);
+      if (ocupado) throw Object.assign(new Error(`El asiento ${seat} ya está ocupado en este vuelo`), { statusCode: 409 });
     }
     const [result] = await connection.query(
       `INSERT INTO flight_segments (reservation_id, passenger_id, flight_id, fare_class, seat, fare_id, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -57,7 +57,7 @@ const FlightSegment = {
   validarAsiento: async (flight_id, seat, connection = pool) => {
     const [rows] = await connection.query(
       `SELECT fs.id FROM flight_segments fs JOIN reservations rx ON rx.id = fs.reservation_id
-       WHERE fs.flight_id = ? AND fs.seat = ? AND rx.status IN ${ESTADOS_ACTIVOS} LIMIT 1`,
+       WHERE fs.flight_id = ? AND UPPER(TRIM(fs.seat)) = ? AND rx.status IN ${ESTADOS_ACTIVOS} LIMIT 1 FOR UPDATE`,
       [flight_id, seat]
     );
     return rows.length > 0;

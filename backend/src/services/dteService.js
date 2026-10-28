@@ -124,10 +124,31 @@ const emitirInterno = async (opciones, conn) => {
   }
   const [segmentos] = await conn.query('SELECT passenger_id, SUM(total_price) AS base FROM flight_segments WHERE reservation_id = ? GROUP BY passenger_id', [reservation_id]);
   const bases = new Map(segmentos.map(s => [s.passenger_id, redondeo8(s.base)]));
-  const [servicios] = await conn.query("SELECT ra.id, ra.price, a.name FROM reservation_ancillaries ra JOIN ancillaries a ON a.id = ra.ancillary_id WHERE ra.reservation_id = ? AND ra.status = 'active' ORDER BY ra.id", [reservation_id]);
+  const [servicios] = await conn.query("SELECT ra.id, ra.price, ra.iva_amount, a.name FROM reservation_ancillaries ra JOIN ancillaries a ON a.id = ra.ancillary_id WHERE ra.reservation_id = ? AND ra.status = 'active' ORDER BY ra.id", [reservation_id]);
   const baseTotal = [...bases.values()].reduce((a, b) => a + b, 0) + servicios.reduce((a, b) => a + Number(b.price), 0);
   if (pax.some(p => !bases.has(p.id)) || Math.abs(redondeo(baseTotal + totalImpuestos) - Number(reserva.estimated_total)) > 0.001) throw new Error('Las tarifas, servicios e impuestos guardados no concilian con la reserva');
-  const itemsServicio = servicios.map((s, i) => ({ numItem: pax.length + i + 1, cantidad: 1, tipoItem: 2, codigo: 'SERV-' + s.id, codTributo: null, uniMedida: 99, descripcion: s.name, precioUni: Number(s.price), montoDescu: 0, ventaNoSuj: 0, ventaExenta: 0, ventaGravada: Number(s.price), tributos: null, ivaItem: 0, psv: 0, noGravado: 0 }));
+  for (const servicio of servicios) {
+    const ivaServicio = Number(servicio.iva_amount) || 0;
+    if (ivaServicio > 0) {
+      const previo = tributosResumen.get('20') || { codigo: '20', descripcion: 'IVA', valor: 0 };
+      previo.valor += ivaServicio;
+      tributosResumen.set('20', previo);
+    }
+  }
+  const itemsServicio = servicios.map((s, i) => {
+    const precio = Number(s.price);
+    const ivaItem = Number(s.iva_amount) || 0;
+    const precioNeto = redondeo(precio - ivaItem);
+    const esFactura = tipo_dte === '01';
+    return {
+      numItem: pax.length + i + 1, cantidad: 1, tipoItem: 2, codigo: 'SERV-' + s.id,
+      codTributo: !esFactura && ivaItem > 0 ? '20' : null, uniMedida: 99,
+      descripcion: s.name, precioUni: esFactura ? precio : precioNeto, montoDescu: 0,
+      ventaNoSuj: 0, ventaExenta: 0, ventaGravada: esFactura ? precio : precioNeto,
+      tributos: !esFactura && ivaItem > 0 ? ['20'] : null, ivaItem: esFactura ? ivaItem : 0,
+      psv: 0, noGravado: 0
+    };
+  });
   const tributosLista = (filtro) => {
     const lista = [...tributosResumen.values()].filter((t) => filtro(t.codigo)).map((t) => ({ ...t, valor: redondeo(t.valor) }));
     return lista.length ? lista : null;

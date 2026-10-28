@@ -5,7 +5,7 @@ const listarClientes = async (req, res) => {
     const [rows] = await pool.query(
       `SELECT c.id, c.first_names, c.last_names, c.document_type, c.document_number, c.birth_date, c.email, c.phone,
               (SELECT COUNT(*) FROM reservations r WHERE r.customer_id = c.id) AS reservation_count
-       FROM customers c ORDER BY c.id DESC LIMIT 50`
+       FROM customers c ORDER BY c.id DESC`
     );
     res.json({ exito: true, datos: rows });
   } catch (error) {

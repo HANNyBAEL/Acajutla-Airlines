@@ -1,9 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const controller = require('../controllers/reservasController');
+const { mapaAsientos } = require('../controllers/checkinController');
 const { verificarToken, verificarRol } = require('../middleware/auth');
 
 router.use(verificarToken);
+router.get('/asientos/:flightId', verificarRol('admin', 'cashier'), mapaAsientos);
 router.get('/expiradas', verificarRol('admin', 'operations', 'cashier', 'auditor'), (req, res) => res.json({ exito: true, datos: [] }));
 router.get('/:pnr', verificarRol('admin', 'cashier', 'operations', 'airport_staff', 'auditor'), controller.consultarReserva);
 router.post('/', verificarRol('admin', 'cashier'), controller.crearReserva);

@@ -14,11 +14,15 @@ require('dotenv').config();
     description VARCHAR(250) NULL,
     base_price DECIMAL(10,2) NOT NULL,
     default_stock INT NOT NULL DEFAULT 0,
+    iva_incluido TINYINT(1) NOT NULL DEFAULT 0,
     active TINYINT(1) DEFAULT 1
   )`);
   const [ancillaryColumns] = await pool.query('SHOW COLUMNS FROM ancillaries');
   if (!ancillaryColumns.some((column) => column.Field === 'default_stock')) {
     await pool.query('ALTER TABLE ancillaries ADD COLUMN default_stock INT NOT NULL DEFAULT 0 AFTER base_price');
+  }
+  if (!ancillaryColumns.some((column) => column.Field === 'iva_incluido')) {
+    await pool.query('ALTER TABLE ancillaries ADD COLUMN iva_incluido TINYINT(1) NOT NULL DEFAULT 0 AFTER default_stock');
   }
   await pool.query(`CREATE TABLE IF NOT EXISTS flight_ancillaries (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -36,10 +40,15 @@ require('dotenv').config();
     flight_id INT NOT NULL,
     ancillary_id INT NOT NULL,
     price DECIMAL(10,2) NOT NULL,
+    iva_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
     status ENUM('active','cancelled','refunded') DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     KEY ra_res (reservation_id), KEY ra_flight (flight_id)
   )`);
+  const [reservationAncillaryColumns] = await pool.query('SHOW COLUMNS FROM reservation_ancillaries');
+  if (!reservationAncillaryColumns.some((column) => column.Field === 'iva_amount')) {
+    await pool.query('ALTER TABLE reservation_ancillaries ADD COLUMN iva_amount DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER price');
+  }
   await pool.query(`CREATE TABLE IF NOT EXISTS waitlist (
     id INT AUTO_INCREMENT PRIMARY KEY,
     flight_id INT NOT NULL,
@@ -71,12 +80,15 @@ require('dotenv').config();
   }
   await pool.query("ALTER TABLE waitlist MODIFY COLUMN status ENUM('waiting','offered','confirmed','notified','expired','cancelled') NOT NULL DEFAULT 'waiting'");
   // Seed de ancillaries base
-  await pool.query(`INSERT IGNORE INTO ancillaries (code, name, type, description, base_price) VALUES
-    ('BAG23', 'Equipaje extra 23 kg', 'baggage', 'Maleta adicional hasta 23 kg en bodega', 35.00),
-    ('BAG10', 'Equipaje de mano extra 10 kg', 'baggage', 'Segundo artículo de mano en cabina', 20.00),
-    ('PRIOR', 'Abordaje prioritario', 'priority', 'Embarque antes del grupo general', 15.00),
-    ('SEAT', 'Selección de asiento', 'seat', 'Elección de asiento específico', 10.00),
-    ('MEAL', 'Comida especial', 'meal', 'Menú vegetariano, infantil o médico', 12.00)`);
+  await pool.query(`INSERT IGNORE INTO ancillaries (code, name, type, description, base_price, default_stock) VALUES
+    ('BAG23', 'Equipaje extra 23 kg', 'baggage', 'Maleta adicional hasta 23 kg en bodega', 35.00, 180),
+    ('BAG10', 'Equipaje de mano extra 10 kg', 'baggage', 'Segundo artículo de mano en cabina', 20.00, 180),
+    ('PRIOR', 'Abordaje prioritario', 'priority', 'Embarque antes del grupo general', 15.00, 180),
+    ('SEAT', 'Selección de asiento', 'seat', 'Elección de asiento específico', 10.00, 180),
+    ('MEAL', 'Comida especial', 'meal', 'Menú vegetariano, infantil o médico', 12.00, 180)`);
+  // Los servicios base deben tener inventario inicial para asignarse automáticamente.
+  await pool.query(`UPDATE ancillaries SET default_stock = 180
+    WHERE code IN ('BAG23', 'BAG10', 'PRIOR', 'SEAT', 'MEAL') AND default_stock = 0`);
   await pool.query(
     `INSERT IGNORE INTO flight_ancillaries (flight_id, ancillary_id, stock, price_override, active)
      SELECT f.id, a.id, a.default_stock, NULL, 1

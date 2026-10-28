@@ -3,7 +3,7 @@ import api from '../services/api';
 import toast from 'react-hot-toast';
 import { FiPlus, FiToggleLeft, FiToggleRight, FiX } from 'react-icons/fi';
 
-const reglaVacia = { country_id: '', airport_id: '', code: '', name: '', calculation_type: 'percentage', value: '', applies_to: 'all', source_url: '', notes: '' };
+const reglaVacia = { country_id: '', airport_id: '', code: '', name: '', scope: 'flight', calculation_type: 'percentage', value: '', applies_to: 'all', source_url: '', notes: '' };
 
 const FiscalidadTasas = () => {
   const [paises, setPaises] = useState([]); const [aeropuertos, setAeropuertos] = useState([]); const [reglas, setReglas] = useState([]); const [referencias, setReferencias] = useState([]);
@@ -35,6 +35,7 @@ const FiscalidadTasas = () => {
       airport_id: r.airport_id || '',
       code: r.code || '',
       name: r.name || '',
+      scope: r.scope || 'flight',
       calculation_type: r.calculation_type || 'percentage',
       value: r.value || '',
       applies_to: r.applies_to || 'all',
@@ -65,23 +66,24 @@ const FiscalidadTasas = () => {
   );
 
   return <div className="space-y-6">
-    <div><h1 className="text-3xl font-bold text-gray-800">Fiscalidad y tasas</h1><p className="text-gray-500 mt-1">Impuestos por país y cargos específicos de aeropuerto. Se aplican al aeropuerto de salida.</p></div>
+    <div><h1 className="text-3xl font-bold text-gray-800">Fiscalidad y tasas</h1><p className="text-gray-500 mt-1">Configura reglas independientes para boletos y servicios adicionales por país y aeropuerto.</p></div>
     <div className="grid lg:grid-cols-2 gap-6">
       <div className="card p-5 space-y-3"><h2 className="font-semibold text-gray-800">Nuevo país</h2>
         <div className="flex gap-3"><input className="input-field w-28" maxLength="2" placeholder="MX" value={pais.code} onChange={(e) => setPais({ ...pais, code: e.target.value.toUpperCase() })}/><input className="input-field" placeholder="México" value={pais.name} onChange={(e) => setPais({ ...pais, name: e.target.value })}/><button className="btn-primary" onClick={crearPais}><FiPlus /></button></div>
         <div className="flex flex-wrap gap-2">{paises.filter((p) => p.active).map((p) => <span key={p.id} className="px-2 py-1 rounded bg-gray-100 text-sm">{p.code} · {p.name}</span>)}</div>
       </div>
       <div className="card p-5 space-y-3"><h2 className="font-semibold text-gray-800">Nueva regla fiscal</h2>
-        <div className="grid grid-cols-2 gap-3"><select className="input-field" value={regla.country_id} onChange={(e) => set('country_id', e.target.value)}><option value="">País *</option>{paises.filter((p) => p.active).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+        <div className="grid grid-cols-2 gap-3"><select className="input-field" value={regla.scope} onChange={(e) => set('scope', e.target.value)}><option value="flight">Impuesto del boleto</option><option value="ancillary">Impuesto de servicios adicionales</option></select>
+          <select className="input-field" value={regla.country_id} onChange={(e) => set('country_id', e.target.value)}><option value="">País *</option>{paises.filter((p) => p.active).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
           <select className="input-field" value={regla.airport_id} onChange={(e) => set('airport_id', e.target.value)} disabled={!regla.country_id}><option value="">Todo el país</option>{aeropuertos.filter((a) => String(a.country_id) === String(regla.country_id)).map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select>
           <input className="input-field" placeholder="Código: IVA" value={regla.code} onChange={(e) => set('code', e.target.value.toUpperCase())}/><input className="input-field" placeholder="Nombre: IVA" value={regla.name} onChange={(e) => set('name', e.target.value)}/>
           <select className="input-field" value={regla.calculation_type} onChange={(e) => set('calculation_type', e.target.value)}><option value="percentage">Porcentaje</option><option value="fixed">Monto fijo por pasajero</option></select><input type="number" min="0" step="0.01" className="input-field" placeholder={regla.calculation_type === 'percentage' ? 'Porcentaje' : 'USD'} value={regla.value} onChange={(e) => set('value', e.target.value)}/>
-          <select className="input-field" value={regla.applies_to} onChange={(e) => set('applies_to', e.target.value)}><option value="all">Todos los vuelos</option><option value="domestic">Solo nacionales</option><option value="international">Solo internacionales</option></select><button className="btn-primary" onClick={() => { setReglaEditando(null); crearRegla(); }}>Crear regla</button>
+          <select className="input-field" value={regla.applies_to} onChange={(e) => set('applies_to', e.target.value)}><option value="all">Todas las rutas</option><option value="domestic">Solo nacionales</option><option value="international">Solo internacionales</option></select><button className="btn-primary" onClick={() => { setReglaEditando(null); crearRegla(); }}>Crear regla</button>
           <input className="input-field col-span-2" type="url" placeholder="Fuente oficial (URL, opcional)" value={regla.source_url} onChange={(e) => set('source_url', e.target.value)}/>
           <textarea className="input-field col-span-2 min-h-20" placeholder="Notas, vigencia o condiciones (opcional)" value={regla.notes} onChange={(e) => set('notes', e.target.value)}/></div>
       </div>
     </div>
-    <div className="card overflow-hidden"><table className="w-full"><thead className="bg-gray-50"><tr><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Ámbito</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Impuesto/tasa</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Cálculo</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Aplica a</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Estado</th></tr></thead><tbody className="divide-y">{reglas.map((r) => <tr key={r.id} onClick={() => setDrawerRegla(r)} className="cursor-pointer hover:bg-gray-50"><td className="p-3 text-sm">{r.country_name}{r.airport_code ? ' · ' + r.airport_code : ' · Nacional'}</td><td className="p-3 text-sm font-medium">{r.code} · {r.name}</td><td className="p-3 text-sm">{r.calculation_type === 'percentage' ? r.value + '%' : '$' + Number(r.value).toFixed(2)}</td><td className="p-3 text-sm">{r.applies_to === 'all' ? 'Todos' : r.applies_to === 'domestic' ? 'Nacional' : 'Internacional'}</td><td className="p-3"><button className={r.active ? 'text-green-700' : 'text-red-700'} onClick={(e) => { e.stopPropagation(); toggle(r); }}>{r.active ? <FiToggleRight size={22}/> : <FiToggleLeft size={22}/>}</button></td></tr>)}{!reglas.length && <tr><td colSpan="5" className="p-6 text-center text-gray-500">No hay reglas configuradas.</td></tr>}</tbody></table></div>
+    <div className="card overflow-hidden"><table className="w-full"><thead className="bg-gray-50"><tr><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Ámbito</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Concepto</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Impuesto/tasa</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Cálculo</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Aplica a</th><th className="p-3 text-left text-xs uppercase text-gray-600 font-semibold">Estado</th></tr></thead><tbody className="divide-y">{reglas.map((r) => <tr key={r.id} onClick={() => setDrawerRegla(r)} className="cursor-pointer hover:bg-gray-50"><td className="p-3 text-sm">{r.country_name}{r.airport_code ? ' · ' + r.airport_code : ' · Nacional'}</td><td className="p-3 text-sm">{r.scope === 'ancillary' ? 'Servicios extra' : 'Boleto'}</td><td className="p-3 text-sm font-medium">{r.code} · {r.name}</td><td className="p-3 text-sm">{r.calculation_type === 'percentage' ? r.value + '%' : '$' + Number(r.value).toFixed(2)}</td><td className="p-3 text-sm">{r.applies_to === 'all' ? 'Todas las rutas' : r.applies_to === 'domestic' ? 'Nacional' : 'Internacional'}</td><td className="p-3"><button className={r.active ? 'text-green-700' : 'text-red-700'} onClick={(e) => { e.stopPropagation(); toggle(r); }}>{r.active ? <FiToggleRight size={22}/> : <FiToggleLeft size={22}/>}</button></td></tr>)}{!reglas.length && <tr><td colSpan="6" className="p-6 text-center text-gray-500">No hay reglas configuradas.</td></tr>}</tbody></table></div>
 
     <section className="space-y-3">
       <div><h2 className="text-xl font-bold text-gray-800">Referencias fiscales y aeroportuarias</h2><p className="text-sm text-gray-500 mt-1">Datos consultados el 27/10/2026. Las reglas marcadas para cobro automático se suman al precio; las demás son informativas por moneda local, variación mensual o condiciones del pasajero.</p></div>
@@ -120,6 +122,7 @@ const FiscalidadTasas = () => {
           </div>
           <div className="flex-1 overflow-y-auto p-4">
             <InfoFila label="País" value={drawerRegla.country_name || '-'} />
+            <InfoFila label="Aplica a" value={drawerRegla.scope === 'ancillary' ? 'Servicios adicionales' : 'Boleto'} />
             <InfoFila label="Aeropuerto" value={drawerRegla.airport_code ? drawerRegla.airport_code + ' - ' + drawerRegla.airport_name : 'Nacional'} />
             <InfoFila label="Código" value={drawerRegla.code} />
             <InfoFila label="Nombre" value={drawerRegla.name} />
@@ -190,8 +193,15 @@ const FiscalidadTasas = () => {
             </div>
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Aplica a *</label>
+              <select className="input-field" value={regla.scope} onChange={(e) => set('scope', e.target.value)}>
+                <option value="flight">Impuesto del boleto</option>
+                <option value="ancillary">Impuesto de servicios adicionales</option>
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de ruta *</label>
               <select className="input-field" value={regla.applies_to} onChange={(e) => set('applies_to', e.target.value)}>
-                <option value="all">Todos los vuelos</option>
+                <option value="all">Todas las rutas</option>
                 <option value="domestic">Solo nacionales</option>
                 <option value="international">Solo internacionales</option>
               </select>

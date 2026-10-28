@@ -56,16 +56,28 @@ const Vuelos = () => {
     setModal(true);
     setCargandoNumeroVuelo(true);
     try {
-      const res = await Promise.all([
+      const resultados = await Promise.allSettled([
         api.get('/aeropuertos?activos=1'),
         api.get('/vuelos/aeronaves'),
         api.get('/operaciones/infraestructura'),
         api.get('/vuelos/numero-siguiente')
       ]);
-      setAeropuertos(res[0].data.datos || []);
-      setAeronaves(res[1].data.datos || []);
-      setInstalaciones(res[2].data.datos || []);
-      setForm((actual) => Object.assign({}, actual, { flight_number: res[3].data.datos?.flight_number || '' }));
+      const [aeropuertosResult, aeronavesResult, instalacionesResult, numeroResult] = resultados;
+      if (aeropuertosResult.status === 'fulfilled') setAeropuertos(aeropuertosResult.value.data.datos || []);
+      else console.error('Error al cargar aeropuertos:', aeropuertosResult.reason);
+      if (aeronavesResult.status === 'fulfilled') setAeronaves(aeronavesResult.value.data.datos || []);
+      else console.error('Error al cargar aeronaves:', aeronavesResult.reason);
+      if (instalacionesResult.status === 'fulfilled') setInstalaciones(instalacionesResult.value.data.datos || []);
+      else console.error('Error al cargar infraestructura:', instalacionesResult.reason);
+      if (numeroResult.status === 'fulfilled') {
+        setForm((actual) => Object.assign({}, actual, { flight_number: numeroResult.value.data.datos?.flight_number || '' }));
+      }
+      const errores = resultados.filter((resultado) => resultado.status === 'rejected');
+      if (errores.length) {
+        toast.error(errores.length === resultados.length
+          ? 'No se pudieron cargar los catálogos del vuelo'
+          : 'Algunos datos no se pudieron cargar; revisa los campos sin opciones');
+      }
     } catch (e) {
       toast.error(e.response?.data?.error || 'No se pudo cargar el número de vuelo y los catálogos');
     } finally {
@@ -77,6 +89,9 @@ const Vuelos = () => {
     if (f.origen_iata && f.destino_iata && f.origen_iata === f.destino_iata) {
       return 'El aeropuerto de destino no puede ser igual al de origen.';
     }
+    if (f.departure_datetime && f.arrival_datetime && new Date(f.arrival_datetime) <= new Date(f.departure_datetime)) {
+      return 'La llegada debe ser posterior a la salida.';
+    }
     if (f.base_price !== '' && Number(f.base_price) <= 0) {
       return 'El precio base debe ser mayor a 0 USD.';
     }
@@ -87,7 +102,7 @@ const Vuelos = () => {
     const nuevoForm = Object.assign({}, form, { [campo]: valor });
     if (campo === 'origen_iata') nuevoForm.gate_facility_id = '';
     setForm(nuevoForm);
-    if (campo === 'origen_iata' || campo === 'destino_iata' || campo === 'base_price') {
+    if (campo === 'origen_iata' || campo === 'destino_iata' || campo === 'base_price' || campo === 'departure_datetime' || campo === 'arrival_datetime') {
       setErrorValidacion(mensajeErrorForm(nuevoForm));
     }
   };
@@ -416,7 +431,7 @@ const Vuelos = () => {
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha y hora de salida *</label>
                 <input type="datetime-local" className="input-field" value={form.departure_datetime} onChange={(e) => setCampo('departure_datetime', e.target.value)} /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha y hora de llegada *</label>
-                <input type="datetime-local" className="input-field" value={form.arrival_datetime} onChange={(e) => setCampo('arrival_datetime', e.target.value)} /></div>
+                <input type="datetime-local" min={form.departure_datetime || undefined} className="input-field" value={form.arrival_datetime} onChange={(e) => setCampo('arrival_datetime', e.target.value)} /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Precio base (USD) *</label>
                 <input type="number" min="0.01" step="0.01" className="input-field" value={form.base_price} onChange={(e) => setCampo('base_price', e.target.value)} placeholder="250" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Puerta de embarque *</label>

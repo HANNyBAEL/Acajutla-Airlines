@@ -31,7 +31,7 @@ const Comercial = () => {
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [fWl, setFWl] = useState({ flight_id: '', passenger_name: '', passenger_email: '', passenger_doc: '', doc_type: 'DUI', requested_class: '' });
-  const [fAnc, setFAnc] = useState({ code: '', name: '', type: 'baggage', description: '', base_price: '', default_stock: 0 });
+  const [fAnc, setFAnc] = useState({ code: '', name: '', type: 'baggage', description: '', base_price: '', default_stock: 0, iva_incluido: false });
   const [fFa, setFFa] = useState({ flight_id: '', ancillary_id: '', stock: '', price_override: '' });
   const [fRa, setFRa] = useState({ reservation_id: '', flight_id: '', ancillary_id: '', quantity: 1 });
   const [paginaWl, setPaginaWl] = useState(1);
@@ -101,17 +101,27 @@ const Comercial = () => {
   };
 
   const guardarAnc = async () => {
-    if (!fAnc.code || !fAnc.name || !fAnc.base_price) return toast.error('Código, nombre y precio obligatorios');
+    const codigo = String(fAnc.code || '').trim().toUpperCase();
+    const nombre = String(fAnc.name || '').trim();
+    const precio = Number(fAnc.base_price);
+    if (!codigo || !nombre || fAnc.base_price === '') return toast.error('Código, nombre y precio son obligatorios');
+    if (!/^[A-Z0-9_-]{2,20}$/.test(codigo)) return toast.error('El código debe tener 2 a 20 caracteres: letras, números, guion o guion bajo');
+    if (nombre.length > 100) return toast.error('El nombre no puede superar 100 caracteres');
+    if (!['baggage', 'seat', 'meal', 'priority', 'other'].includes(fAnc.type)) return toast.error('Selecciona un tipo de servicio válido');
+    if (!Number.isFinite(precio) || precio <= 0 || Math.round(precio * 100) !== precio * 100) return toast.error('El precio debe ser mayor que cero y tener como máximo dos decimales');
+    if (String(fAnc.description || '').length > 250) return toast.error('La descripción no puede superar 250 caracteres');
     if (!Number.isInteger(Number(fAnc.default_stock)) || Number(fAnc.default_stock) < 0 || Number(fAnc.default_stock) > 100000) return toast.error('La cantidad predeterminada debe ser un entero entre 0 y 100000');
+    if (typeof fAnc.iva_incluido !== 'boolean') return toast.error('Selecciona si el precio incluye IVA o si se agrega según el país del vuelo');
+    const payload = Object.assign({}, fAnc, { code: codigo, name: nombre, base_price: precio, description: String(fAnc.description || '').trim() });
     try {
       if (editandoAncId) {
-        await api.put('/comercial/ancillaries/' + editandoAncId, fAnc);
+        await api.put('/comercial/ancillaries/' + editandoAncId, payload);
         toast.success('Ancillary actualizado');
       } else {
-        await api.post('/comercial/ancillaries', fAnc);
+        await api.post('/comercial/ancillaries', payload);
         toast.success('Ancillary creado');
       }
-      setFAnc({ code: '', name: '', type: 'baggage', description: '', base_price: '', default_stock: 0 });
+      setFAnc({ code: '', name: '', type: 'baggage', description: '', base_price: '', default_stock: 0, iva_incluido: false });
       setEditandoAncId(null);
       setModalAncillary(false);
       cargarBase();
@@ -382,7 +392,7 @@ const Comercial = () => {
                       />
                       <select className="input-field" value={fRa.ancillary_id} onChange={(e) => setFRa(Object.assign({}, fRa, { ancillary_id: e.target.value }))} disabled={!fRa.flight_id || ancillariesVentaReserva.length === 0}>
                         <option value="">-- Servicio disponible en el vuelo --</option>
-                        {ancillariesVentaReserva.map((a) => <option key={a.ancillary_id} value={a.ancillary_id}>{a.code} - {a.name} (${Number(a.precio_final).toFixed(2)} · {a.stock} disponibles)</option>)}
+                        {ancillariesVentaReserva.map((a) => <option key={a.ancillary_id} value={a.ancillary_id}>{a.code} - {a.name} (${Number(a.precio_con_impuestos ?? a.precio_final).toFixed(2)} impuestos incluidos · {a.stock} disponibles)</option>)}
                       </select>
                       <label className="flex items-center gap-2 text-sm text-gray-600">
                         Cantidad
@@ -441,7 +451,7 @@ const Comercial = () => {
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-gray-800">Catálogo de Servicios</h2>
 {puedeConfigurar && (
-                <button className="btn-primary" onClick={() => { setEditandoAncId(null); setFAnc({ code: '', name: '', type: 'baggage', description: '', base_price: '', default_stock: 0 }); setModalAncillary(true); }}>
+                <button className="btn-primary" onClick={() => { setEditandoAncId(null); setFAnc({ code: '', name: '', type: 'baggage', description: '', base_price: '', default_stock: 0, iva_incluido: false }); setModalAncillary(true); }}>
                 + Nuevo Servicio
               </button>)}
             </div>
@@ -450,12 +460,19 @@ const Comercial = () => {
                 <div className="bg-white rounded-lg p-6 max-w-2xl w-full">
                   <h3 className="text-lg font-bold mb-4">{editandoAncId ? 'Editar Servicio' : 'Nuevo Servicio Adicional'}</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                    <input className="input-field" placeholder="Código (BAG23)" value={fAnc.code} onChange={(e) => setFAnc(Object.assign({}, fAnc, { code: e.target.value }))} />
+                  <input className="input-field" placeholder="Código (BAG23)" value={fAnc.code} onChange={(e) => setFAnc(Object.assign({}, fAnc, { code: e.target.value }))} />
                     <input className="input-field" placeholder="Nombre" value={fAnc.name} onChange={(e) => setFAnc(Object.assign({}, fAnc, { name: e.target.value }))} />
                     <select className="input-field" value={fAnc.type} onChange={(e) => setFAnc(Object.assign({}, fAnc, { type: e.target.value }))}>
                       <option value="baggage">Equipaje</option><option value="seat">Asiento</option><option value="meal">Comida</option><option value="priority">Prioridad</option><option value="other">Otro</option>
                     </select>
                     <input type="number" step="0.01" className="input-field" placeholder="Precio" value={fAnc.base_price} onChange={(e) => setFAnc(Object.assign({}, fAnc, { base_price: e.target.value }))} />
+                    <label className="text-sm font-medium text-gray-700">Tratamiento del IVA
+                      <select className="input-field mt-1" value={fAnc.iva_incluido ? 'included' : 'added'} onChange={(e) => setFAnc(Object.assign({}, fAnc, { iva_incluido: e.target.value === 'included' }))}>
+                        <option value="included">El precio ya incluye IVA</option>
+                        <option value="added">Agregar IVA según el país del vuelo</option>
+                      </select>
+                      <span className="mt-1 block text-xs font-normal text-gray-500">La tasa se toma de Fiscalidad según el país y la ruta del vuelo.</span>
+                    </label>
                     <label className="md:col-span-2 text-sm font-medium text-gray-700">
                       Cantidad predeterminada por vuelo
                       <input type="number" min="0" max="100000" step="1" className="input-field mt-1" value={fAnc.default_stock} onChange={(e) => setFAnc(Object.assign({}, fAnc, { default_stock: e.target.value }))} />
@@ -510,7 +527,7 @@ const Comercial = () => {
                     <div><span className="text-sm text-gray-500">Estado</span><p>{drawerAncillary.active !== 0 ? 'Activo' : 'Inactivo'}</p></div>
 {puedeConfigurar && (
                       <button className="btn-primary w-full flex justify-center items-center gap-2 mt-4" onClick={() => {
-                      setFAnc({ code: drawerAncillary.code, name: drawerAncillary.name, type: drawerAncillary.type, description: drawerAncillary.description || '', base_price: drawerAncillary.base_price, default_stock: drawerAncillary.default_stock ?? 0 });
+                      setFAnc({ code: drawerAncillary.code, name: drawerAncillary.name, type: drawerAncillary.type, description: drawerAncillary.description || '', base_price: drawerAncillary.base_price, default_stock: drawerAncillary.default_stock ?? 0, iva_incluido: Number(drawerAncillary.iva_incluido) === 1 });
                       setEditandoAncId(drawerAncillary.id);
                       setModalAncillary(true);
                       setDrawerAncillary(null);

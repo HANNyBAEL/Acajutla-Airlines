@@ -4,6 +4,16 @@ const { centavos } = require('../utils/money');
 
 const FILAS_SALIDA = [12, 13];
 
+// Todas las asignaciones (venta, reasignación y check-in automático) adquieren
+// primero el mismo bloqueo por vuelo. La comprobación de ocupación posterior
+// usa lectura actual para no reutilizar una instantánea antigua de InnoDB.
+const bloquearVueloDelSegmento = async (conn, segmentId) => {
+  const [segmentos] = await conn.query('SELECT flight_id FROM flight_segments WHERE id = ?', [segmentId]);
+  if (!segmentos.length) return false;
+  const [vuelos] = await conn.query('SELECT id FROM flights WHERE id = ? FOR UPDATE', [segmentos[0].flight_id]);
+  return vuelos.length > 0;
+};
+
 const parseSeat = (seat) => {
   const m = /^([1-9][0-9]{0,2})([A-F])$/.exec(String(seat || '').toUpperCase());
   return m ? { fila: parseInt(m[1], 10), col: m[2] } : null;
@@ -66,10 +76,10 @@ const mapaAsientos = async (req, res) => {
     const filas = Math.ceil(f[0].total_capacity / 6);
     const [occ] = await pool.query(
       `SELECT fs.seat FROM flight_segments fs JOIN reservations r ON r.id = fs.reservation_id
-       WHERE fs.flight_id = ? AND fs.seat IS NOT NULL AND r.status NOT IN ('cancelled', 'expired')`,
+       WHERE fs.flight_id = ? AND fs.seat IS NOT NULL AND r.status IN ('pending','confirmed','paid')`,
       [req.params.flightId]
     );
-    res.json({ exito: true, datos: { ...crearMapaAsientos(f[0].total_capacity), ocupados: occ.map((o) => o.seat) } });
+    res.json({ exito: true, datos: { ...crearMapaAsientos(f[0].total_capacity), ocupados: occ.map((o) => String(o.seat).trim().toUpperCase()) } });
   } catch (e) { res.status(500).json({ error: 'Error interno' }); }
 };
 
@@ -80,7 +90,9 @@ const asignarAsiento = async (req, res) => {
     const seat = String(req.body.seat || '').toUpperCase();
     const s = parseSeat(seat);
     if (!s) { await conn.rollback(); return res.status(400).json({ error: 'Formato de asiento inválido (ej: 12A)' }); }
-    // Bloquear el segmento y las filas relacionadas durante la asignación.
+    if (!await bloquearVueloDelSegmento(conn, req.params.segmentId)) {
+      await conn.rollback(); return res.status(404).json({ error: 'Segmento no encontrado' });
+    }
     const [fs] = await conn.query(
       `SELECT fs.*, p.passenger_type, p.birth_date, r.status AS res_status, f.status AS flight_status, f.departure_datetime, at.total_capacity
        FROM flight_segments fs
@@ -101,7 +113,7 @@ const asignarAsiento = async (req, res) => {
     if (errorAsiento) { await conn.rollback(); return res.status(400).json({ error: errorAsiento }); }
     const [occ] = await conn.query(
       `SELECT fs.id FROM flight_segments fs JOIN reservations r ON r.id = fs.reservation_id
-       WHERE fs.flight_id = ? AND fs.seat = ? AND fs.id <> ? AND r.status IN ('pending','confirmed','paid')`,
+       WHERE fs.flight_id = ? AND UPPER(TRIM(fs.seat)) = ? AND fs.id <> ? AND r.status IN ('pending','confirmed','paid') FOR UPDATE`,
       [fs[0].flight_id, seat, req.params.segmentId]
     );
     if (occ.length) { await conn.rollback(); return res.status(409).json({ error: 'El asiento ' + seat + ' ya está ocupado' }); }
@@ -118,6 +130,9 @@ const hacerCheckin = async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    if (!await bloquearVueloDelSegmento(conn, req.params.segmentId)) {
+      await conn.rollback(); return res.status(404).json({ error: 'Segmento no encontrado' });
+    }
     const [fs] = await conn.query(
       `SELECT fs.*, p.passenger_type, p.birth_date, r.pnr, r.status AS res_status, r.paid_total, r.estimated_total, f.status AS flight_status, f.departure_datetime, f.flight_number, at.total_capacity
        FROM flight_segments fs
@@ -160,14 +175,19 @@ const hacerCheckin = async (req, res) => {
     if (seat) {
       const errorAsiento = errorAsientoPasajero(seat, s.total_capacity, s.passenger_type, s.birth_date);
       if (errorAsiento) { await conn.rollback(); return res.status(400).json({ error: errorAsiento }); }
+      const [ocupado] = await conn.query(
+        `SELECT fs.id FROM flight_segments fs JOIN reservations r ON r.id = fs.reservation_id
+         WHERE fs.flight_id = ? AND UPPER(TRIM(fs.seat)) = ? AND fs.id <> ? AND r.status IN ('pending','confirmed','paid') FOR UPDATE`,
+        [s.flight_id, seat, s.id]
+      );
+      if (ocupado.length) { await conn.rollback(); return res.status(409).json({ error: 'El asiento ' + seat + ' ya está ocupado' }); }
     }
     if (!seat) {
-      const filas = Math.ceil(s.total_capacity / 6);
       const [occ] = await conn.query(
         `SELECT fs.seat FROM flight_segments fs JOIN reservations r ON r.id = fs.reservation_id
-         WHERE fs.flight_id = ? AND fs.seat IS NOT NULL AND r.status IN ('pending','confirmed','paid')`, [s.flight_id]
+         WHERE fs.flight_id = ? AND fs.seat IS NOT NULL AND r.status IN ('pending','confirmed','paid') FOR UPDATE`, [s.flight_id]
       );
-      const ocupados = new Set(occ.map((o) => o.seat));
+      const ocupados = new Set(occ.map((o) => String(o.seat).trim().toUpperCase()));
       seat = crearMapaAsientos(s.total_capacity).asientos.find(cand => !FILAS_SALIDA.includes(parseSeat(cand).fila) && !ocupados.has(cand));
       if (!seat) { await conn.rollback(); return res.status(409).json({ error: 'No hay asientos disponibles' }); }
       await conn.query('UPDATE flight_segments SET seat = ? WHERE id = ?', [seat, s.id]);

@@ -93,20 +93,22 @@ async function enviarConfirmacionReserva(reservationId) {
   const res = r[0];
   const [pax] = await pool.query('SELECT first_names, last_names, passenger_type FROM passengers WHERE reservation_id = ?', [reservationId]);
   const [vuelos] = await pool.query(
-    `SELECT f.flight_number, f.departure_datetime, ao.iata_code AS origen, ad.iata_code AS destino
-     FROM flight_segments fs JOIN flights f ON f.id = fs.flight_id
+    `SELECT f.flight_number, f.departure_datetime, ao.iata_code AS origen, ad.iata_code AS destino,
+            p.first_names, p.last_names, fs.seat
+     FROM flight_segments fs JOIN passengers p ON p.id = fs.passenger_id
+     JOIN flights f ON f.id = fs.flight_id
      JOIN routes rt ON rt.id = f.route_id JOIN airports ao ON ao.id = rt.origin_id JOIN airports ad ON ad.id = rt.destination_id
-     WHERE fs.reservation_id = ?`, [reservationId]);
-  const filasPax = pax.map((p) => '<tr><td>' + p.first_names + ' ' + p.last_names + ' (' + p.passenger_type + ')</td></tr>').join('');
-  const filasVuelos = vuelos.map((v) => '<tr><td>' + v.flight_number + '</td><td>' + v.origen + ' → ' + v.destino + '</td><td>' + new Date(v.departure_datetime).toLocaleString('es-SV') + '</td></tr>').join('');
+     WHERE fs.reservation_id = ? ORDER BY f.departure_datetime, p.id`, [reservationId]);
+  const filasPax = pax.map((p) => '<tr><td>' + escaparHtml(p.first_names) + ' ' + escaparHtml(p.last_names) + ' (' + escaparHtml(p.passenger_type) + ')</td></tr>').join('');
+  const filasVuelos = vuelos.map((v) => '<tr><td>' + escaparHtml(v.first_names) + ' ' + escaparHtml(v.last_names) + '</td><td>' + escaparHtml(v.flight_number) + '</td><td>' + escaparHtml(v.origen) + ' → ' + escaparHtml(v.destino) + '</td><td>' + escaparHtml(new Date(v.departure_datetime).toLocaleString('es-SV')) + '</td><td>' + escaparHtml(v.seat || 'Por asignar') + '</td></tr>').join('');
   const cuerpo =
-    '<p>Estimado/a ' + (res.first_names || '') + ' ' + (res.last_names || '') + ', su reserva fue creada exitosamente.</p>' +
-    '<table class="kv"><tr><td><strong>Código PNR</strong></td><td class="total">' + res.pnr + '</td></tr>' +
-    '<tr><td>Estado</td><td>' + res.status + '</td></tr>' +
+    '<p>Estimado/a ' + escaparHtml(res.first_names) + ' ' + escaparHtml(res.last_names) + ', su reserva fue creada exitosamente.</p>' +
+    '<table class="kv"><tr><td><strong>Código PNR</strong></td><td class="total">' + escaparHtml(res.pnr) + '</td></tr>' +
+    '<tr><td>Estado</td><td>' + escaparHtml(res.status) + '</td></tr>' +
     '<tr><td>Total estimado</td><td>$' + Number(res.estimated_total).toFixed(2) + '</td></tr>' +
     '<tr><td>Tiempo límite de pago</td><td>' + (res.time_limit ? new Date(res.time_limit).toLocaleString('es-SV') : '-') + '</td></tr></table>' +
     '<h3 style="font-size:13px;margin:12px 0 4px">Pasajeros</h3><table class="kv">' + filasPax + '</table>' +
-    '<h3 style="font-size:13px;margin:12px 0 4px">Vuelos</h3><table class="kv"><tr><td>Vuelo</td><td>Ruta</td><td>Salida</td></tr>' + filasVuelos + '</table>' +
+    '<h3 style="font-size:13px;margin:12px 0 4px">Vuelos y asientos</h3><table class="kv"><tr><td>Pasajero</td><td>Vuelo</td><td>Ruta</td><td>Salida</td><td>Asiento</td></tr>' + filasVuelos + '</table>' +
     '<p class="note">Complete el pago antes del tiempo límite para confirmar su reserva (RN-COM-01). Presente su PNR para check-in y facturación.</p>';
   return queue('confirmacion_reserva', res.email, 'Confirmación de reserva ' + res.pnr + ' - Acajutla Airlines', wrap('Confirmación de Reserva', cuerpo), 'reserva', reservationId);
 }
