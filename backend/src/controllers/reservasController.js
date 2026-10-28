@@ -133,8 +133,7 @@ const crearReserva = async (req, res) => {
     const paisesConDuiPermitido = new Set(['GT', 'HN', 'NI']);
     const requierePasaporte = paisesPorTrayecto.some(({ origen, destino }) => {
       const vueloDomesticoSv = origen === 'SV' && destino === 'SV';
-      const corredorRegional = (origen === 'SV' && paisesConDuiPermitido.has(destino))
-        || (destino === 'SV' && paisesConDuiPermitido.has(origen));
+      const corredorRegional = origen === 'SV' && paisesConDuiPermitido.has(destino);
       return !vueloDomesticoSv && !corredorRegional;
     });
     if (requierePasaporte) {

@@ -16,18 +16,15 @@ const fechaLocalYaPaso = async (fecha, executor = pool) => {
 
 const buscarConflictoAeronave = async ({ aircraftId, departure, arrival, turnaroundMin, excluirVueloId = null }) => {
   const condicionExclusion = excluirVueloId ? ' AND id <> ?' : '';
-  const parametros = [aircraftId, departure, departure, turnaroundMin, arrival, turnaroundMin];
-  if (excluirVueloId) parametros.push(excluirVueloId);
   const [vuelos] = await pool.query(
     `SELECT id, flight_number, departure_datetime, arrival_datetime
      FROM flights
      WHERE aircraft_id = ? AND status <> 'cancelled'
-       AND (DATE(departure_datetime) = DATE(?)
-         OR NOT (? >= DATE_ADD(arrival_datetime, INTERVAL ? MINUTE)
-           OR ? <= DATE_SUB(departure_datetime, INTERVAL ? MINUTE)))${condicionExclusion}
+       AND NOT (? >= DATE_ADD(arrival_datetime, INTERVAL ? MINUTE)
+         OR ? <= DATE_SUB(departure_datetime, INTERVAL ? MINUTE))${condicionExclusion}
      ORDER BY departure_datetime
      LIMIT 1`,
-    parametros
+    [aircraftId, departure, turnaroundMin, arrival, turnaroundMin, ...(excluirVueloId ? [excluirVueloId] : [])]
   );
   return vuelos[0] || null;
 };

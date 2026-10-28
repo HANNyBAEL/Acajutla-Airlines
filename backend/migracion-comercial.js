@@ -49,36 +49,6 @@ require('dotenv').config();
   if (!reservationAncillaryColumns.some((column) => column.Field === 'iva_amount')) {
     await pool.query('ALTER TABLE reservation_ancillaries ADD COLUMN iva_amount DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER price');
   }
-  await pool.query(`CREATE TABLE IF NOT EXISTS waitlist (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    flight_id INT NOT NULL,
-    passenger_name VARCHAR(150) NOT NULL,
-    passenger_email VARCHAR(120) NULL,
-    passenger_doc VARCHAR(30) NULL,
-    doc_type VARCHAR(20) NULL,
-    requested_class VARCHAR(10) NULL,
-    position INT NOT NULL DEFAULT 0,
-    status ENUM('waiting','offered','confirmed','notified','expired','cancelled') NOT NULL DEFAULT 'waiting',
-    notes VARCHAR(250) NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    notified_at DATETIME NULL,
-    KEY wl_flight (flight_id), KEY wl_status (status)
-  )`);
-  // Compatibilidad: agregar columnas si la tabla waitlist ya existía sin ellas
-  const [cols] = await pool.query('SHOW COLUMNS FROM waitlist');
-  const have = new Set(cols.map((c) => c.Field));
-  const add = [
-    ['passenger_email', 'VARCHAR(120) NULL'],
-    ['passenger_doc', 'VARCHAR(30) NULL'],
-    ['doc_type', 'VARCHAR(20) NULL'],
-    ['requested_class', 'VARCHAR(10) NULL'],
-    ['position', 'INT NOT NULL DEFAULT 0'],
-    ['notified_at', 'DATETIME NULL']
-  ];
-  for (const [name, def] of add) {
-    if (!have.has(name)) await pool.query('ALTER TABLE waitlist ADD COLUMN ' + name + ' ' + def);
-  }
-  await pool.query("ALTER TABLE waitlist MODIFY COLUMN status ENUM('waiting','offered','confirmed','notified','expired','cancelled') NOT NULL DEFAULT 'waiting'");
   // Seed de ancillaries base
   await pool.query(`INSERT IGNORE INTO ancillaries (code, name, type, description, base_price, default_stock) VALUES
     ('BAG23', 'Equipaje extra 23 kg', 'baggage', 'Maleta adicional hasta 23 kg en bodega', 35.00, 180),

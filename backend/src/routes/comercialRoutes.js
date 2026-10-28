@@ -4,9 +4,6 @@ const c = require('../controllers/comercialController');
 const { verificarToken, verificarRol } = require('../middleware/auth');
 
 router.use(verificarToken);
-router.get('/waitlist', verificarRol('admin', 'operations', 'cashier', 'corporate_agent'), c.listarWaitlist);
-router.post('/waitlist', verificarRol('admin', 'operations', 'cashier', 'corporate_agent'), c.agregarWaitlist);
-router.put('/waitlist/:id', verificarRol('admin', 'operations', 'cashier'), c.actualizarWaitlist);
 router.get('/ancillaries', verificarRol('admin', 'operations', 'cashier'), c.listarAncillaries);
 router.get('/reservas-para-ancillaries', verificarRol('admin', 'cashier'), c.reservasParaAncillaries);
 router.post('/ancillaries', verificarRol('admin', 'operations'), c.crearAncillary);

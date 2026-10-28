@@ -3,7 +3,7 @@ import Select from 'react-select';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { roleOf } from '../utils/roles';
-import { FiShoppingBag, FiUsers, FiBarChart2, FiActivity, FiToggleRight, FiToggleLeft, FiX, FiEdit2 } from 'react-icons/fi';
+import { FiShoppingBag, FiBarChart2, FiActivity, FiToggleRight, FiToggleLeft, FiX, FiEdit2 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const Comercial = () => {
@@ -13,10 +13,8 @@ const Comercial = () => {
   const esOperaciones = rol === 'operations';
   const puedeConfigurar = ['admin', 'operations'].includes(rol);
   const puedeVerReportes = ['admin', 'operations'].includes(rol);
-  const puedeCambiarWaitlist = ['admin', 'operations', 'cashier'].includes(rol);
-  const [tab, setTab] = useState(puedeVerReportes ? 'reportes' : 'waitlist');
+  const [tab, setTab] = useState(puedeVerReportes ? 'reportes' : 'ancillaries');
   const [kpi, setKpi] = useState(null);
-  const [waitlist, setWaitlist] = useState([]);
   const [ancillaries, setAncillaries] = useState([]);
   const [vuelos, setVuelos] = useState([]);
   const [reservas, setReservas] = useState([]);
@@ -31,13 +29,10 @@ const Comercial = () => {
   const [repConc, setRepConc] = useState([]);
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
-  const [fWl, setFWl] = useState({ flight_id: '', passenger_name: '', passenger_email: '', passenger_doc: '', doc_type: 'DUI', requested_class: '' });
   const [fAnc, setFAnc] = useState({ code: '', name: '', type: 'baggage', description: '', base_price: '', default_stock: 0, iva_incluido: false });
   const [fFa, setFFa] = useState({ flight_id: '', ancillary_id: '', stock: '', price_override: '' });
   const [fRa, setFRa] = useState({ reservation_id: '', flight_id: '', ancillary_id: '', quantity: 1 });
-  const [paginaWl, setPaginaWl] = useState(1);
   const [paginaAnc, setPaginaAnc] = useState(1);
-  const [modalWaitlist, setModalWaitlist] = useState(false);
   const [modalAncillary, setModalAncillary] = useState(false);
   const [modalAsignarVuelo, setModalAsignarVuelo] = useState(false);
   const [modalVenderReserva, setModalVenderReserva] = useState(false);
@@ -46,7 +41,6 @@ const Comercial = () => {
   const itemsPorPagina = 40;
 
   const cargarBase = () => {
-    api.get('/comercial/waitlist').then((r) => setWaitlist(r.data.datos || [])).catch(() => {});
     api.get('/vuelos').then((r) => setVuelos(r.data.datos || [])).catch(() => {});
     if (!esAgenteCorporativo) api.get('/comercial/ancillaries').then((r) => setAncillaries(r.data.datos || [])).catch(() => {});
     if (puedeVerReportes) api.get('/comercial/kpi').then((r) => setKpi(r.data.datos)).catch(() => {});
@@ -72,20 +66,6 @@ const Comercial = () => {
     }
   };
 
-  const addWl = async () => {
-    if (!fWl.flight_id || !fWl.passenger_name) return toast.error('Vuelo y nombre obligatorios');
-    try {
-      const r = await api.post('/comercial/waitlist', fWl);
-      toast.success(r.data.mensaje);
-      setFWl({ flight_id: '', passenger_name: '', passenger_email: '', passenger_doc: '', doc_type: 'DUI', requested_class: '' });
-      setModalWaitlist(false);
-      cargarBase();
-    } catch (e) { toast.error(e.response && e.response.data ? e.response.data.error : 'Error'); }
-  };
-  const setWl = async (id, status) => {
-    try { await api.put('/comercial/waitlist/' + id, { status: status }); toast.success('Estado actualizado'); cargarBase(); }
-    catch (e) { toast.error('Error'); }
-  };
   const cambiarEstadoAncillary = async (id, newStatus, e) => {
     e.stopPropagation();
     try {
@@ -188,7 +168,6 @@ const Comercial = () => {
   };
 
   const tabs = [
-    { id: 'waitlist', label: 'Lista de Espera', icon: FiUsers },
     ...(!esAgenteCorporativo ? [
       { id: 'ancillaries', label: 'Servicios Adicionales', icon: FiShoppingBag },
       ...(puedeVerReportes ? [{ id: 'reportes', label: 'Dashboard & Reportes', icon: FiBarChart2 }] : []),
@@ -204,7 +183,7 @@ const Comercial = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-800">Gestión Comercial</h1>
-        <p className="text-gray-500 mt-1">{puedeVerReportes ? 'Lista de espera, servicios adicionales y reportes (Q15, Q32–Q36)' : 'Lista de espera y servicios adicionales'}</p>
+        <p className="text-gray-500 mt-1">{puedeVerReportes ? 'Servicios adicionales y reportes (Q32–Q36)' : 'Servicios adicionales'}</p>
       </div>
       <div className="flex flex-wrap gap-2">
         {tabs.map((t) => (
@@ -213,77 +192,6 @@ const Comercial = () => {
           </button>
         ))}
       </div>
-
-      {tab === 'waitlist' && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-gray-800">Pasajeros en Lista de Espera</h2>
-            <button className="btn-primary" onClick={() => setModalWaitlist(true)}>
-              + Agregar a Waitlist
-            </button>
-          </div>
-
-          {modalWaitlist && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg p-6 max-w-2xl w-full">
-                <h3 className="text-lg font-bold mb-4">Agregar a Waitlist</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                  <select className="input-field" value={fWl.flight_id} onChange={(e) => setFWl(Object.assign({}, fWl, { flight_id: e.target.value }))}>
-                    <option value="">-- Vuelo --</option>
-                    {vuelos.map((v) => <option key={v.id} value={v.id}>{v.flight_number}</option>)}
-                  </select>
-                  <input className="input-field" placeholder="Nombre pasajero" value={fWl.passenger_name} onChange={(e) => setFWl(Object.assign({}, fWl, { passenger_name: e.target.value }))} />
-                  <input className="input-field" placeholder="Email" value={fWl.passenger_email} onChange={(e) => setFWl(Object.assign({}, fWl, { passenger_email: e.target.value }))} />
-                  <input className="input-field" placeholder="Documento" value={fWl.passenger_doc} onChange={(e) => setFWl(Object.assign({}, fWl, { passenger_doc: e.target.value }))} />
-                  <select className="input-field" value={fWl.doc_type} onChange={(e) => setFWl(Object.assign({}, fWl, { doc_type: e.target.value }))}>
-                    <option value="DUI">DUI</option><option value="PASS">Pasaporte</option><option value="NIT">NIT</option>
-                  </select>
-                </div>
-                <div className="flex justify-end space-x-2">
-                  <button className="btn-secondary" onClick={() => setModalWaitlist(false)}>Cancelar</button>
-                  <button className="btn-primary" onClick={addWl}>Agregar</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="card overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b"><tr>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">#</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Vuelo</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Pasajero</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Documento</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Acciones</th>
-              </tr></thead>
-              <tbody className="divide-y">
-                {waitlist.length === 0 ? <tr><td colSpan="6" className="px-4 py-3 text-sm text-gray-500">Sin pasajeros en lista de espera</td></tr> :
-                waitlist.slice((paginaWl - 1) * itemsPorPagina, paginaWl * itemsPorPagina).map((w) => (
-                  <tr key={w.id}>
-                    <td className="px-4 py-2 text-sm font-mono">{w.position}</td>
-                    <td className="px-4 py-2 text-sm">{w.flight_number}</td>
-                    <td className="px-4 py-2 text-sm">{w.passenger_name}</td>
-                    <td className="px-4 py-2 text-sm">{w.doc_type} {w.passenger_doc}</td>
-                    <td className="px-4 py-2 text-sm"><span className={'px-2 py-1 rounded text-xs ' + (w.status === 'waiting' ? 'bg-yellow-100 text-yellow-800' : w.status === 'notified' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600')}>{w.status}</span></td>
-                    <td className="px-4 py-2 text-sm space-x-2">
-                      {puedeCambiarWaitlist && w.status === 'waiting' && <><button className="text-blue-600 hover:underline text-xs" onClick={() => setWl(w.id, 'notified')}>Notificar</button><button className="text-red-600 hover:underline text-xs" onClick={() => setWl(w.id, 'cancelled')}>Cancelar</button></>}
-                      {puedeCambiarWaitlist && w.status === 'notified' && <button className="text-green-600 hover:underline text-xs" onClick={() => setWl(w.id, 'confirmed')}>Confirmar</button>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {Math.ceil(waitlist.length / itemsPorPagina) > 1 && (
-              <div className="px-4 py-3 border-t flex items-center justify-between bg-gray-50">
-                <button disabled={paginaWl === 1} onClick={() => setPaginaWl(paginaWl - 1)} className="px-3 py-1 bg-white border rounded text-sm disabled:opacity-50">Anterior</button>
-                <span className="text-sm text-gray-600">Página {paginaWl} de {Math.ceil(waitlist.length / itemsPorPagina)}</span>
-                <button disabled={paginaWl === Math.ceil(waitlist.length / itemsPorPagina)} onClick={() => setPaginaWl(paginaWl + 1)} className="px-3 py-1 bg-white border rounded text-sm disabled:opacity-50">Siguiente</button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {tab === 'ancillaries' && (
         <div className="space-y-8">
@@ -543,8 +451,7 @@ const Comercial = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-2">
               <div className="card p-4"><div className="text-xs text-gray-500 uppercase">Vuelos hoy</div><div className="text-2xl font-bold mt-1">{kpi.vuelosHoy.programados + kpi.vuelosHoy.en_curso + kpi.vuelosHoy.completados}</div><div className="text-xs mt-2 text-gray-600">Prog {kpi.vuelosHoy.programados} · Curso {kpi.vuelosHoy.en_curso} · Compl {kpi.vuelosHoy.completados} · Canc {kpi.vuelosHoy.cancelados}</div></div>
               <div className="card p-4"><div className="text-xs text-gray-500 uppercase">Pax 24 h</div><div className="text-2xl font-bold mt-1">{kpi.pax24h}</div><div className="text-xs mt-2 text-gray-600">Ocupación hoy: {kpi.ocupacionHoy}%</div></div>
-              {esOperaciones && <div className="card p-4"><div className="text-xs text-gray-500 uppercase">Lista de espera activa</div><div className="text-2xl font-bold mt-1">{kpi.waitlistActivas}</div></div>}
-              {!esOperaciones && <div className="card p-4"><div className="text-xs text-gray-500 uppercase">Ventas hoy</div><div className="text-2xl font-bold mt-1 text-green-700">${Number(kpi.ventasHoy).toFixed(2)}</div><div className="text-xs mt-2 text-gray-600">Waitlist activas: {kpi.waitlistActivas}</div></div>}
+              {!esOperaciones && <div className="card p-4"><div className="text-xs text-gray-500 uppercase">Ventas hoy</div><div className="text-2xl font-bold mt-1 text-green-700">${Number(kpi.ventasHoy).toFixed(2)}</div></div>}
               {!esOperaciones && <div className="card p-4"><div className="text-xs text-gray-500 uppercase">Salud fiscal hoy</div><div className="text-2xl font-bold mt-1">{kpi.dtesHoy.emitidos}</div><div className="text-xs mt-2 text-gray-600">Rechazados {kpi.dtesHoy.rechazados} · Contingencia {kpi.dtesHoy.contingencia_pendiente}</div></div>}
             </div>
           )}

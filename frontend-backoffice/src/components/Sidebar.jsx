@@ -27,7 +27,7 @@ const Sidebar = () => {
         { page: 'reservas', path: '/reservas', icon: FiCalendar, label: 'Reservas' },
         { page: 'clientes', path: '/clientes', icon: FiUser, label: 'Clientes' },
         { page: 'pagos', path: '/pagos', icon: FiCreditCard, label: 'Pagos' },
-        { page: 'comercial', path: '/comercial', icon: FiShoppingBag, label: 'Comercial / Waitlist' },
+        { page: 'comercial', path: '/comercial', icon: FiShoppingBag, label: 'Gestión Comercial' },
       ],
     },
     {
@@ -68,6 +68,7 @@ const Sidebar = () => {
   ];
 
   const salir = async () => {
+    if (!window.confirm('¿Estás seguro de que deseas cerrar sesión?')) return;
     await cerrarSesion();
     navigate('/login');
   };

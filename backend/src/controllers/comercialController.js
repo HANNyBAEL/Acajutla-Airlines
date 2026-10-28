@@ -2,68 +2,6 @@ const pool = require('../config/db');
 const { fechaElSalvador } = require('../utils/fechaElSalvador');
 const { calcularPrecioServicio } = require('../services/taxService');
 
-// ---------- WAITLIST ----------
-const listarWaitlist = async (req, res) => {
-  try {
-    const { flight_id, status } = req.query;
-    let sql = 'SELECT w.*, f.flight_number FROM waitlist w JOIN flights f ON f.id = w.flight_id WHERE 1=1';
-    const params = [];
-    if (flight_id) { sql += ' AND w.flight_id = ?'; params.push(flight_id); }
-    if (status) { sql += ' AND w.status = ?'; params.push(status); }
-    sql += ' ORDER BY w.position ASC, w.id ASC';
-    const [rows] = await pool.query(sql, params);
-    res.json({ exito: true, datos: rows });
-  } catch (e) { res.status(500).json({ error: 'Error interno' }); }
-};
-
-const agregarWaitlist = async (req, res) => {
-  const connection = await pool.getConnection();
-  try {
-    await connection.beginTransaction();
-    const { flight_id, passenger_name, passenger_email, passenger_doc, doc_type, requested_class, notes } = req.body;
-    if (!flight_id || !passenger_name) {
-      await connection.rollback();
-      return res.status(400).json({ error: 'Vuelo y nombre son obligatorios' });
-    }
-    const [v] = await connection.query(
-      `SELECT f.id, f.flight_number, at.total_capacity,
-        (SELECT COUNT(DISTINCT fs.passenger_id) FROM flight_segments fs JOIN reservations r ON r.id = fs.reservation_id
-         WHERE fs.flight_id = f.id AND r.status IN ('pending','confirmed','paid')) AS ocupados
-       FROM flights f JOIN aircraft ac ON ac.id = f.aircraft_id JOIN aircraft_types at ON at.id = ac.type_id
-       WHERE f.id = ? FOR UPDATE`, [flight_id]);
-    if (!v.length) {
-      await connection.rollback();
-      return res.status(404).json({ error: 'Vuelo no encontrado' });
-    }
-    if (v[0].ocupados < v[0].total_capacity) {
-      await connection.rollback();
-      return res.status(409).json({ error: 'El vuelo aún tiene asientos disponibles; no requiere lista de espera', disponibles: v[0].total_capacity - v[0].ocupados });
-    }
-    const [max] = await connection.query("SELECT COALESCE(MAX(position),0) AS m FROM waitlist WHERE flight_id = ? AND status = 'waiting' FOR UPDATE", [flight_id]);
-    const posicion = max[0].m + 1;
-    const [r] = await connection.query(
-      'INSERT INTO waitlist (flight_id, passenger_name, passenger_email, passenger_doc, doc_type, requested_class, notes, position) VALUES (?,?,?,?,?,?,?,?)',
-      [flight_id, passenger_name, passenger_email || null, passenger_doc || null, doc_type || null, requested_class || null, notes || null, posicion]);
-    await connection.commit();
-    res.status(201).json({ exito: true, datos: { id: r.insertId, posicion: posicion }, mensaje: 'Agregado a lista de espera en posición #' + posicion });
-  } catch (e) {
-    await connection.rollback();
-    res.status(500).json({ error: 'Error interno' });
-  } finally {
-    connection.release();
-  }
-};
-
-const actualizarWaitlist = async (req, res) => {
-  try {
-    const { status } = req.body;
-    if (!['waiting','offered','confirmed','notified','expired','cancelled'].includes(status)) return res.status(400).json({ error: 'Estado inválido' });
-    const extra = status === 'notified' ? ', notified_at = NOW()' : '';
-    await pool.query('UPDATE waitlist SET status = ?' + extra + ' WHERE id = ?', [status, req.params.id]);
-    res.json({ exito: true });
-  } catch (e) { res.status(500).json({ error: 'Error interno' }); }
-};
-
 // ---------- ANCILLARIES ----------
 const listarAncillaries = async (req, res) => {
   try {
@@ -295,11 +233,9 @@ const kpi = async (req, res) => {
          GROUP BY fs.flight_id
        ) oc ON oc.flight_id = f.id
        WHERE DATE(f.departure_datetime) = ?`, [hoy]);
-    const [wl] = await pool.query("SELECT COUNT(*) AS t FROM waitlist WHERE status='waiting'");
     const datosOperativos = {
       vuelosHoy: { programados: map.scheduled || 0, en_curso: map.in_progress || 0, completados: map.completed || 0, cancelados: map.cancelled || 0 },
       pax24h: pax[0].t, ocupacionHoy: cap[0].cap ? Math.round((cap[0].ocu / cap[0].cap) * 100) : 0,
-      waitlistActivas: wl[0].t
     };
     if (req.usuario.rol === 'operations') return res.json({ exito: true, datos: datosOperativos });
     const [ventas] = await pool.query("SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE status='approved' AND type='payment' AND DATE(CONVERT_TZ(payment_date, 'UTC', 'America/El_Salvador')) = ?", [hoy]);
@@ -370,7 +306,6 @@ const reporteConciliacion = async (req, res) => {
 };
 
 module.exports = {
-  listarWaitlist, agregarWaitlist, actualizarWaitlist,
   listarAncillaries, crearAncillary, actualizarAncillary, asignarAncillaryVuelo, ancillariesDeVuelo, agregarAncillaryReserva, ancillariesDeReserva,
   reservasParaAncillaries, vuelosDeReservaAncillaries,
   kpi, reporteOcupacion, reporteAncillaries, reporteCanales, reporteConciliacion

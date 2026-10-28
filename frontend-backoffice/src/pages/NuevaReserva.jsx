@@ -89,8 +89,7 @@ const NuevaReserva = () => {
   const requierePasaporte = vuelosSeleccionados.some((vuelo) => {
     const origen = String(vuelo.origin_country_code || paisAeropuerto(vuelo.origin_iata)).trim().toUpperCase();
     const destino = String(vuelo.destination_country_code || paisAeropuerto(vuelo.destination_iata)).trim().toUpperCase();
-    const corredorRegional = (origen === 'SV' && ['GT', 'HN', 'NI'].includes(destino))
-      || (destino === 'SV' && ['GT', 'HN', 'NI'].includes(origen));
+    const corredorRegional = origen === 'SV' && ['GT', 'HN', 'NI'].includes(destino);
     return !(origen === 'SV' && destino === 'SV') && !corredorRegional;
   });
 

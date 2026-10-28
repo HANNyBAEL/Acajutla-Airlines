@@ -413,11 +413,12 @@ const Vuelos = () => {
                 <p className="mt-1 text-xs text-gray-500">Asignado automáticamente y bloqueado para evitar duplicados.</p></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Aeronave *</label>
                 <SearchableSelect options={aeronaves.map((a) => {
-                  const estados = { available: 'Disponible', in_flight: 'En vuelo', maintenance: 'Mantenimiento', out_of_service: 'Fuera de servicio' };
+                  const estados = { available: 'Operativa', in_flight: 'En vuelo', maintenance: 'Mantenimiento', out_of_service: 'Fuera de servicio' };
                   const modelo = a.model || 'Tipo sin definir';
                   const estado = estados[a.status] || a.status || 'Estado desconocido';
                   return { value: a.id, label: a.registration + ' · ' + modelo + ' · ' + estado, searchText: a.registration + ' ' + modelo + ' ' + estado };
-                })} value={form.aircraft_id} onChange={(valor) => setCampo('aircraft_id', valor)} placeholder="Matrícula o modelo..." /></div>
+                })} value={form.aircraft_id} onChange={(valor) => setCampo('aircraft_id', valor)} placeholder="Matrícula o modelo..." />
+                <p className="mt-1 text-xs text-gray-500">“Operativa” indica el estado de la aeronave; los horarios se validan al guardar con el tiempo mínimo de escala.</p></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Origen *</label>
                 <SearchableSelect options={aeropuertos.map((a) => ({ value: a.code, label: a.code + ' - ' + a.name, searchText: a.code + ' ' + a.name }))} value={form.origen_iata} onChange={(valor) => setCampo('origen_iata', valor)} placeholder="Código o ciudad..." /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Destino *</label>

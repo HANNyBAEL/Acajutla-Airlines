@@ -16,6 +16,7 @@ const Aeronaves = () => {
   const [tipos, setTipos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [filtro, setFiltro] = useState('');
+  const [filtroTipos, setFiltroTipos] = useState('');
   const [modalAeronave, setModalAeronave] = useState(false);
   const [modalTipo, setModalTipo] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -151,16 +152,21 @@ const Aeronaves = () => {
     } finally { setGuardando(false); }
   };
 
-  const lista = aeronaves.filter((a) => JSON.stringify(a).toLowerCase().includes(filtro.toLowerCase()));
+  const normalizarBusqueda = (valor) => String(valor ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const consultaFlota = normalizarBusqueda(filtro);
+  const consultaTipos = normalizarBusqueda(filtroTipos);
+  const lista = aeronaves.filter((a) => normalizarBusqueda([a.registration, a.model, a.manufacturer, a.total_capacity, a.manufacture_year, a.status].join(' ')).includes(consultaFlota));
+  const tiposFiltrados = tipos.filter((t) => normalizarBusqueda([t.model, t.manufacturer, t.total_capacity, t.aircraft_count, t.active ? 'activo' : 'inactivo'].join(' ')).includes(consultaTipos));
 
   const [paginaFlota, setPaginaFlota] = useState(1);
   const [paginaTipos, setPaginaTipos] = useState(1);
   const itemsPorPagina = 40;
   useEffect(() => { setPaginaFlota(1); }, [filtro]);
+  useEffect(() => { setPaginaTipos(1); }, [filtroTipos]);
   const flotaPaginada = lista.slice((paginaFlota - 1) * itemsPorPagina, paginaFlota * itemsPorPagina);
   const totalPaginasFlota = Math.ceil(lista.length / itemsPorPagina);
-  const tiposPaginados = tipos.slice((paginaTipos - 1) * itemsPorPagina, paginaTipos * itemsPorPagina);
-  const totalPaginasTipos = Math.ceil(tipos.length / itemsPorPagina);
+  const tiposPaginados = tiposFiltrados.slice((paginaTipos - 1) * itemsPorPagina, paginaTipos * itemsPorPagina);
+  const totalPaginasTipos = Math.ceil(tiposFiltrados.length / itemsPorPagina);
 
   const estadoBadge = (s) => ({
     available: 'bg-green-100 text-green-700',
@@ -222,7 +228,7 @@ const Aeronaves = () => {
             {cargando ? (
               <tr><td colSpan="6" className="text-center py-8 text-gray-500">Cargando...</td></tr>
             ) : lista.length === 0 ? (
-              <tr><td colSpan="6" className="text-center py-8 text-gray-500">No hay aeronaves registradas</td></tr>
+              <tr><td colSpan="6" className="text-center py-8 text-gray-500">{consultaFlota ? 'No se encontraron aeronaves con esa búsqueda' : 'No hay aeronaves registradas'}</td></tr>
             ) : flotaPaginada.map((a) => (
               <tr key={a.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => { setDrawerAeronave(a); setEstadoDrawer(a.status || 'available'); }}>
                 <td className="px-6 py-4 font-bold text-primary-700">{a.registration}</td>
@@ -250,6 +256,12 @@ const Aeronaves = () => {
           <FiLayers className="text-primary-600" />
           <h2 className="text-lg font-semibold text-gray-800">Tipos de Aeronave</h2>
         </div>
+        <div className="px-6 py-4 border-b border-gray-100">
+          <div className="relative">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input value={filtroTipos} onChange={(e) => setFiltroTipos(e.target.value)} placeholder="Buscar tipo por modelo, fabricante o capacidad..." className="input-field pl-10" aria-label="Buscar tipos de aeronave" />
+          </div>
+        </div>
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
@@ -261,8 +273,8 @@ const Aeronaves = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {tipos.length === 0 ? (
-              <tr><td colSpan="5" className="text-center py-8 text-gray-500">No hay tipos registrados</td></tr>
+            {tiposFiltrados.length === 0 ? (
+              <tr><td colSpan="5" className="text-center py-8 text-gray-500">{consultaTipos ? 'No se encontraron tipos con esa búsqueda' : 'No hay tipos registrados'}</td></tr>
             ) : tiposPaginados.map((t) => (
               <tr key={t.id} className={'hover:bg-gray-50 cursor-pointer ' + (t.active ? '' : 'opacity-60')} onClick={() => editarTipo(t)} title="Clic para ver y editar el tipo">
                 <td className="px-6 py-4 font-medium text-gray-800">{t.model}</td>
