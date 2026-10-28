@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const crypto = require('crypto');
 const { CONFIG, fmtFecha, fmtHora, uuidV4 } = require('./dteService');
 const fiscalCompliance = require('./fiscalCompliance');
+const { validarOrigenFacturaElSalvador } = require('./validarOrigenFacturaService');
 
 const FECHAS_EVENTO_DTE = new Set(['03', '04', '05', '06', '07', '08', '09', '15']);
 const TIPOS_INVALIDACION = new Set([1, 2, 3]);
@@ -83,8 +84,14 @@ const combinarFechaHora = (fecha, hora) => {
 const listarPendientes = async () => {
   const [rows] = await pool.query(
     `SELECT h.*, r.pnr FROM dte_headers h LEFT JOIN reservations r ON r.id = h.reservation_id
-     WHERE h.transmission_status = 'contingency'
-        OR (h.transmission_status = 'transmitted' AND h.reception_seal IS NULL)
+     WHERE (h.transmission_status = 'contingency'
+        OR (h.transmission_status = 'transmitted' AND h.reception_seal IS NULL))
+       AND h.reservation_id IS NOT NULL
+       AND (SELECT COALESCE(NULLIF(BINARY c.code, BINARY ''), NULLIF(BINARY ao.country_code, BINARY ''))
+            FROM flight_segments fs JOIN flights f ON f.id = fs.flight_id
+            JOIN routes rt ON rt.id = f.route_id JOIN airports ao ON ao.id = rt.origin_id
+            LEFT JOIN countries c ON c.id = ao.country_id
+            WHERE fs.reservation_id = h.reservation_id ORDER BY f.departure_datetime, fs.id LIMIT 1) = BINARY 'SV'
      ORDER BY h.id`
   );
   return rows;
@@ -135,7 +142,7 @@ const transmitirEventoContingencia = async (datos, usuarioId = null) => {
     if (ids.length > 1000) throw new Error('El lote no puede exceder 1000 DTEs');
     if (new Set(ids.map(Number)).size !== ids.length || ids.some((id) => !Number.isInteger(Number(id)) || Number(id) < 1)) throw new Error('La selección contiene identificadores de DTE inválidos o repetidos');
     const [docs] = await conn.query(
-      `SELECT id, dte_type, uuid_generation, transmission_status, emission_date, emission_time FROM dte_headers
+      `SELECT id, dte_type, uuid_generation, reservation_id, transmission_status, emission_date, emission_time FROM dte_headers
        WHERE id IN (?) AND (transmission_status = 'contingency'
           OR (transmission_status = 'transmitted' AND reception_seal IS NULL)) FOR UPDATE`,
       [ids]
@@ -143,6 +150,7 @@ const transmitirEventoContingencia = async (datos, usuarioId = null) => {
     if (!docs.length) throw new Error('Ninguno de los DTEs seleccionados está en contingencia');
     if (docs.length !== ids.length) throw new Error('Todos los DTEs seleccionados deben estar pendientes de contingencia');
     for (const doc of docs) {
+      await validarOrigenFacturaElSalvador(doc, conn);
       const fecha = fechaSql(doc.emission_date);
       const hora = doc.emission_time ? String(doc.emission_time).slice(0, 5) : '00:00';
       const generado = fecha && fechaHoraFormulario(fecha, hora);
@@ -238,6 +246,7 @@ const invalidarDTE = async (uuidDte, datos) => {
     const [h] = await conn.query('SELECT * FROM dte_headers WHERE uuid_generation = ? FOR UPDATE', [uuidDte]);
     if (!h.length) throw new Error('DTE no encontrado');
     const doc = h[0];
+    await validarOrigenFacturaElSalvador(doc, conn);
     if (doc.transmission_status !== 'accepted' || !doc.reception_seal) throw new Error('Solo se pueden invalidar DTEs con Sello de Recepción (aceptados)');
 
     const ahora = new Date();
@@ -267,11 +276,12 @@ const invalidarDTE = async (uuidDte, datos) => {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(datos.codigoReemplazo || '')) {
         throw new Error('Debe indicar el código de generación del DTE de reemplazo');
       }
-      const [reemplazos] = await conn.query('SELECT id, dte_type, transmission_status, reception_seal FROM dte_headers WHERE uuid_generation = ? FOR UPDATE', [datos.codigoReemplazo]);
+      const [reemplazos] = await conn.query('SELECT id, dte_type, reservation_id, transmission_status, reception_seal FROM dte_headers WHERE uuid_generation = ? FOR UPDATE', [datos.codigoReemplazo]);
       const reemplazo = reemplazos[0];
       if (!reemplazo || reemplazo.id === doc.id || String(reemplazo.dte_type) !== tipoDte || reemplazo.transmission_status !== 'accepted' || !reemplazo.reception_seal) {
         throw new Error('El DTE de reemplazo debe existir, ser del mismo tipo y estar aceptado con Sello de Recepción');
       }
+      await validarOrigenFacturaElSalvador(reemplazo, conn);
       codigoReemplazo = datos.codigoReemplazo;
     }
 
@@ -481,6 +491,7 @@ const retornarDTEs = async (uuids, datos = {}) => {
     if (rows.length !== uuids.length) throw new Error('Algún DTE seleccionado no existe');
     const byUuid = new Map(rows.map((d) => [d.uuid_generation, d]));
     const docs = uuids.map((u) => byUuid.get(u));
+    for (const doc of docs) await validarOrigenFacturaElSalvador(doc, conn);
     if (docs.some((doc) => doc.transmission_status !== 'accepted' || !doc.reception_seal)) throw new Error('Todos los DTE deben estar aceptados y tener sello de recepción');
     if (docs.some((doc) => String(doc.dte_type) !== '01')) throw new Error('El Evento de Retorno solo aplica a Facturas Electrónicas (FE)');
     if (new Set(docs.map((d) => String(d.dte_type))).size !== 1) throw new Error('Todos los DTE deben ser del mismo tipo');
@@ -580,7 +591,15 @@ const listarEventos = async () => {
   );
   const [inv] = await pool.query(
     `SELECT i.id, i.uuid, i.tipo_invalidacion, i.motivo, i.estado, i.sello, i.created_at, h.control_number, h.dte_type
-     FROM dte_invalidation_events i JOIN dte_headers h ON h.id = i.dte_id ORDER BY i.id DESC`
+     FROM dte_invalidation_events i JOIN dte_headers h ON h.id = i.dte_id
+     WHERE h.reservation_id IS NOT NULL AND (
+       SELECT COALESCE(NULLIF(BINARY c.code, BINARY ''), NULLIF(BINARY ao.country_code, BINARY ''))
+       FROM flight_segments fs JOIN flights f ON f.id = fs.flight_id
+       JOIN routes rt ON rt.id = f.route_id JOIN airports ao ON ao.id = rt.origin_id
+       LEFT JOIN countries c ON c.id = ao.country_id
+       WHERE fs.reservation_id = h.reservation_id ORDER BY f.departure_datetime, fs.id LIMIT 1
+     ) = BINARY 'SV'
+     ORDER BY i.id DESC`
   );
   return { contingencia: cont, invalidacion: inv };
 };

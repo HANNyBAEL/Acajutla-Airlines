@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { roleOf } from '../utils/roles';
@@ -18,6 +18,7 @@ const Pagos = () => {
   const [formReembolso, setFormReembolso] = useState({ amount: '', method: 'cash', reason: '' });
   const [form, setForm] = useState({ method: 'card', amount: '', numero: '', expiracion: '', cvv: '', referencia: '', tipo_dte: '01', receptor_nit: '', receptor_nrc: '', requiere_deduccion_fiscal: false });
   const [procesando, setProcesando] = useState(false);
+  const procesarEnCurso = useRef(false);
   const [buscarPendientes, setBuscarPendientes] = useState('');
   const [buscarPagos, setBuscarPagos] = useState('');
   // Drawer state
@@ -73,6 +74,7 @@ const Pagos = () => {
   };
 
   const procesar = async () => {
+    if (procesarEnCurso.current) return;
     const monto = Number(form.amount);
     const saldo = Number(modal.balance);
     if (!Number.isFinite(monto) || monto <= 0) return toast.error('Indique un monto válido');
@@ -88,6 +90,7 @@ const Pagos = () => {
       if (!/^\d{9,14}$/.test(form.receptor_nit)) return toast.error('El NIT del receptor debe contener entre 9 y 14 dígitos');
       if (!/^\d{1,8}$/.test(form.receptor_nrc)) return toast.error('El NRC del receptor debe contener entre 1 y 8 dígitos');
     }
+    procesarEnCurso.current = true;
     setProcesando(true);
     try {
       const payload = {
@@ -114,7 +117,11 @@ const Pagos = () => {
         } else if (r.data.facturacion?.tipo === 'revision_manual') {
           toast.error('Pago aprobado; origen sin confirmar. La facturación requiere revisión manual.');
         } else if (r.data.dte && r.data.dte.envio && r.data.dte.envio.enviado) {
-          toast.success('DTE ' + r.data.dte.numeroControl + ' emitido. Correo enviado con PDF y ZIP que contiene el JSON' + (r.data.dte.envio.simulado ? ' (simulado, ver storage/correos)' : ''));
+          if (r.data.dte.envio.simulado) {
+            toast.success('DTE ' + r.data.dte.numeroControl + ' emitido. No se envió correo externo; PDF y JSON guardados en backend/storage/correos.');
+          } else {
+            toast.success('DTE ' + r.data.dte.numeroControl + ' emitido y correo enviado con PDF y ZIP que contiene el JSON');
+          }
         } else if (r.data.dte && r.data.dte.error) {
           toast.error('Pago OK, pero el DTE falló: ' + r.data.dte.error);
         } else if (r.data.dte) {
@@ -132,8 +139,19 @@ const Pagos = () => {
       cerrarCobro();
       cargar();
     } catch (e) {
+      const codigo = e.response?.data?.codigo;
+      if (codigo === 'RESERVATION_ALREADY_PAID' || codigo === 'FULL_BALANCE_TRANSFER_PENDING') {
+        cerrarCobro();
+        cargar();
+        if (codigo === 'RESERVATION_ALREADY_PAID') toast.success('La reserva ya estaba pagada. Actualicé el estado de cobros.');
+        else toast('Ya existe una transferencia pendiente por el saldo completo. No se registró otro cobro; actualicé el estado.', { icon: 'ℹ️' });
+        return;
+      }
       toast.error(e.response && e.response.data && e.response.data.error ? e.response.data.error : 'Error al procesar el pago');
-    } finally { setProcesando(false); }
+    } finally {
+      procesarEnCurso.current = false;
+      setProcesando(false);
+    }
   };
 
   const confirmar = async (p) => {
@@ -158,7 +176,8 @@ const Pagos = () => {
       } else if (r.data.facturacion?.tipo === 'revision_manual') {
         toast.error('Origen sin confirmar; la facturación requiere revisión manual.');
       } else if (r.data.dte && r.data.dte.envio && r.data.dte.envio.enviado) {
-        toast.success('DTE ' + r.data.dte.numeroControl + ' emitido y enviado con PDF y ZIP que contiene el JSON');
+        if (r.data.dte.envio.simulado) toast.success('DTE ' + r.data.dte.numeroControl + ' emitido. No se envió correo externo; PDF y JSON guardados en backend/storage/correos.');
+        else toast.success('DTE ' + r.data.dte.numeroControl + ' emitido y enviado con PDF y ZIP que contiene el JSON');
       } else if (r.data.dte && r.data.dte.error) {
         toast.error('Confirmado, pero el DTE falló: ' + r.data.dte.error);
       }

@@ -41,7 +41,7 @@ const Correos = () => {
 
     try {
       const r = await api.post('/correos/' + correo.id + '/reenviar', {});
-      if (r.data.datos.enviado) toast.success(r.data.datos.simulado ? 'Reenvío simulado (sin BREVO_API_KEY)' : 'Correo reenviado');
+      if (r.data.datos.enviado) toast.success(r.data.datos.simulado ? 'No se envió al destinatario; los adjuntos se guardaron localmente.' : 'Correo reenviado');
       else toast.error(r.data.datos.motivo || 'No se pudo reenviar');
       cargar();
       if (detalleCorreo && Number(detalleCorreo.id) === Number(correo.id)) {
@@ -122,8 +122,7 @@ const Correos = () => {
       <div className="card p-4 flex items-start space-x-3 bg-blue-50 border-blue-200">
         <FiMail className="text-blue-600 mt-1" />
         <p className="text-sm text-blue-800">
-          Para envío real configura en <code>backend/.env</code>: <code>BREVO_API_KEY=tu_llave</code> (y opcional <code>BREVO_SENDER_EMAIL</code>).
-          Sin clave, los correos se marcan como <strong>Simulado</strong> y quedan visibles aquí para demo y auditoría.
+          Si el entorno bloquea el destinatario externo, el correo se marca como simulado y los archivos PDF/JSON quedan guardados en <code>backend/storage/correos</code>. Para un envío real, Brevo debe aceptar el destinatario configurado para el proyecto.
         </p>
       </div>
 

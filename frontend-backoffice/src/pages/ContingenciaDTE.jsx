@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api, { reservasAPI } from '../services/api';
 import SearchableSelect from '../components/SearchableSelect';
-import { FiAlertTriangle, FiXCircle, FiRefreshCw, FiPlus, FiX } from 'react-icons/fi';
+import { FiAlertTriangle, FiXCircle, FiRefreshCw, FiPlus, FiX, FiSearch } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const CAT005 = [
@@ -24,6 +24,7 @@ const leerJsonDte = (dte) => {
 };
 const mostrarValor = (valor) => valor === null || valor === undefined || valor === '' ? '—' : typeof valor === 'object' ? JSON.stringify(valor) : String(valor);
 const montoDte = (valor) => Number.isFinite(Number(valor)) ? '$' + Number(valor).toFixed(2) : '—';
+const normalizarBusqueda = (valor) => String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
 
 const DatoDetalleDte = ({ etiqueta, valor, mono = false }) => (
   <div className="min-w-0 rounded-lg bg-gray-50 px-3 py-2">
@@ -36,6 +37,7 @@ const ContingenciaDTE = () => {
   const [pendientes, setPendientes] = useState([]);
   const [eventos, setEventos] = useState({ contingencia: [], invalidacion: [] });
   const [aceptados, setAceptados] = useState([]);
+  const [busquedaAceptados, setBusquedaAceptados] = useState('');
   const [facturables, setFacturables] = useState([]);
   const [mh, setMh] = useState(null);
   const [modalEvento, setModalEvento] = useState(false);
@@ -47,6 +49,20 @@ const ContingenciaDTE = () => {
   const [formEvento, setFormEvento] = useState({ fInicio: '', hInicio: '', fFin: '', hFin: '', tipoContingencia: 1, motivoContingencia: '', responsable: { nombre: '', tipoDoc: '13', numDoc: '' } });
   const [formInv, setFormInv] = useState({ tipoAnulacion: 1, motivo: '', codigoReemplazo: '', responsable: { nombre: '', tipoDoc: '13', numDoc: '' }, solicitante: { nombre: '', tipoDoc: '13', numDoc: '' } });
   const [formEmitir, setFormEmitir] = useState({ reservation_id: '', tipo_dte: '01', tipoContingencia: 1, motivoContin: '' });
+
+  const aceptadosFiltrados = aceptados.filter((dte) => {
+    const consulta = normalizarBusqueda(busquedaAceptados.trim());
+    if (!consulta) return true;
+    return normalizarBusqueda([
+      dte.control_number,
+      dte.dte_type,
+      TIPOS_DTE[dte.dte_type],
+      dte.receiver_name,
+      dte.reception_seal,
+      dte.uuid_generation,
+      dte.pnr
+    ].join(' ')).includes(consulta);
+  });
 
   const cargar = () => {
     // Cada petición es independiente: si una falla no borra el resto de la pantalla
@@ -209,7 +225,20 @@ const ContingenciaDTE = () => {
       </div>
 
       <div className="card overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100"><h2 className="text-lg font-semibold text-gray-800">DTEs aceptados (invalidables)</h2></div>
+        <div className="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <h2 className="text-lg font-semibold text-gray-800">DTEs aceptados (invalidables)</h2>
+          <label className="relative block w-full sm:w-80">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+            <input
+              type="search"
+              className="input-field pl-9"
+              placeholder="Buscar por control, tipo, receptor o sello..."
+              aria-label="Buscar DTEs aceptados"
+              value={busquedaAceptados}
+              onChange={(e) => setBusquedaAceptados(e.target.value)}
+            />
+          </label>
+        </div>
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200"><tr>
             <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">N° Control</th>
@@ -221,7 +250,9 @@ const ContingenciaDTE = () => {
           <tbody className="divide-y divide-gray-100">
             {aceptados.length === 0 ? (
               <tr><td colSpan="5" className="text-center py-8 text-gray-500">Sin DTEs aceptados</td></tr>
-            ) : aceptados.map((d) => (
+            ) : aceptadosFiltrados.length === 0 ? (
+              <tr><td colSpan="5" className="text-center py-8 text-gray-500">No hay DTEs que coincidan con la búsqueda.</td></tr>
+            ) : aceptadosFiltrados.map((d) => (
               <tr key={d.id} className="hover:bg-primary-50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" onClick={() => abrirDetalle(d)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirDetalle(d); } }} tabIndex={0} aria-label={'Ver detalle del DTE ' + d.control_number}>
                 <td className="px-6 py-4"><code className="text-xs font-mono">{d.control_number}</code></td>
                 <td className="px-6 py-4 text-sm">{TIPOS_DTE[d.dte_type] || `DTE ${d.dte_type}`}</td>

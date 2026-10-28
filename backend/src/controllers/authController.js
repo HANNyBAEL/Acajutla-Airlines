@@ -49,7 +49,13 @@ const login = async (req, res) => {
     const userAgent = req.headers['user-agent'];
     const resultado = await AuthService.login(usuario, password, ip, userAgent);
     await AuditLog.registrar({ usuario_id: resultado.usuarioId || null, usuario_nombre: usuario, accion: 'LOGIN', modulo: 'auth', ip, user_agent: userAgent, resultado: 'exito' });
-    if (resultado.requiereMFA) return res.json({ exito: true, requiereMFA: true, usuarioId: resultado.usuarioId, mensaje: resultado.mensaje });
+    if (resultado.requiereMFA) return res.json({
+      exito: true,
+      requiereMFA: true,
+      usuarioId: resultado.usuarioId,
+      mensaje: resultado.mensaje,
+      ...(resultado.codigoMfaSimulado ? { codigoMfaSimulado: resultado.codigoMfaSimulado } : {})
+    });
     res.json({ exito: true, datos: resultado });
   } catch (error) {
     await AuditLog.registrar({ usuario_nombre: req.body.usuario || 'desconocido', accion: 'LOGIN', modulo: 'auth', ip: req.ip, resultado: 'fallo', detalle: { error: error.message } });

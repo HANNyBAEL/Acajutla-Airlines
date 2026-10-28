@@ -12,8 +12,9 @@ const Comercial = () => {
   const esAgenteCorporativo = rol === 'corporate_agent';
   const esOperaciones = rol === 'operations';
   const puedeConfigurar = ['admin', 'operations'].includes(rol);
+  const puedeVerReportes = ['admin', 'operations'].includes(rol);
   const puedeCambiarWaitlist = ['admin', 'operations', 'cashier'].includes(rol);
-  const [tab, setTab] = useState(esAgenteCorporativo ? 'waitlist' : 'reportes');
+  const [tab, setTab] = useState(puedeVerReportes ? 'reportes' : 'waitlist');
   const [kpi, setKpi] = useState(null);
   const [waitlist, setWaitlist] = useState([]);
   const [ancillaries, setAncillaries] = useState([]);
@@ -47,30 +48,26 @@ const Comercial = () => {
   const cargarBase = () => {
     api.get('/comercial/waitlist').then((r) => setWaitlist(r.data.datos || [])).catch(() => {});
     api.get('/vuelos').then((r) => setVuelos(r.data.datos || [])).catch(() => {});
-    if (!esAgenteCorporativo) {
-      api.get('/comercial/kpi').then((r) => setKpi(r.data.datos)).catch(() => {});
-      api.get('/comercial/ancillaries').then((r) => setAncillaries(r.data.datos || [])).catch(() => {});
-      if (!esOperaciones) api.get('/comercial/reservas-para-ancillaries').then((r) => setReservas(r.data.datos || [])).catch((e) => {
-        console.error('Error al cargar reservas disponibles para servicios:', e);
-        toast.error(e.response?.data?.error || 'No se pudieron cargar las reservas para vender servicios');
-      });
-    }
+    if (!esAgenteCorporativo) api.get('/comercial/ancillaries').then((r) => setAncillaries(r.data.datos || [])).catch(() => {});
+    if (puedeVerReportes) api.get('/comercial/kpi').then((r) => setKpi(r.data.datos)).catch(() => {});
+    if (!esAgenteCorporativo && !esOperaciones) api.get('/comercial/reservas-para-ancillaries').then((r) => setReservas(r.data.datos || [])).catch((e) => {
+      console.error('Error al cargar reservas disponibles para servicios:', e);
+      toast.error(e.response?.data?.error || 'No se pudieron cargar las reservas para vender servicios');
+    });
   };
 
   useEffect(() => {
     cargarBase();
-    if (!esAgenteCorporativo) cargarReportes();
+    if (puedeVerReportes) cargarReportes();
   }, []);
 
   const cargarReportes = () => {
-    if (esAgenteCorporativo) return;
+    if (!puedeVerReportes) return;
     const q = (desde || hasta) ? ('?desde=' + (desde || '') + '&hasta=' + (hasta || '')) : '';
-    if (rol !== 'cashier') {
-      api.get('/comercial/reportes/ocupacion' + q).then((r) => setRepOcp(r.data.datos || [])).catch(() => {});
-      api.get('/comercial/reportes/ancillaries').then((r) => setRepAnc(r.data.datos || [])).catch(() => {});
-    }
+    api.get('/comercial/reportes/ocupacion' + q).then((r) => setRepOcp(r.data.datos || [])).catch(() => {});
+    api.get('/comercial/reportes/ancillaries').then((r) => setRepAnc(r.data.datos || [])).catch(() => {});
     if (rol === 'admin') api.get('/comercial/reportes/canales').then((r) => setRepCan(r.data.datos || [])).catch(() => {});
-    if (['admin', 'cashier'].includes(rol)) {
+    if (rol === 'admin') {
       api.get('/comercial/reportes/conciliacion' + q).then((r) => setRepConc(r.data.datos || [])).catch(() => {});
     }
   };
@@ -194,7 +191,7 @@ const Comercial = () => {
     { id: 'waitlist', label: 'Lista de Espera', icon: FiUsers },
     ...(!esAgenteCorporativo ? [
       { id: 'ancillaries', label: 'Servicios Adicionales', icon: FiShoppingBag },
-      { id: 'reportes', label: 'Dashboard & Reportes', icon: FiBarChart2 },
+      ...(puedeVerReportes ? [{ id: 'reportes', label: 'Dashboard & Reportes', icon: FiBarChart2 }] : []),
     ] : []),
   ];
   const Bar = ({ value, max, color }) => (
@@ -207,7 +204,7 @@ const Comercial = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-800">Gestión Comercial</h1>
-        <p className="text-gray-500 mt-1">Lista de espera, servicios adicionales y reportes (Q15, Q32–Q36)</p>
+        <p className="text-gray-500 mt-1">{puedeVerReportes ? 'Lista de espera, servicios adicionales y reportes (Q15, Q32–Q36)' : 'Lista de espera y servicios adicionales'}</p>
       </div>
       <div className="flex flex-wrap gap-2">
         {tabs.map((t) => (

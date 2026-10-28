@@ -12,7 +12,7 @@ export const ROLE_DEFINITIONS = {
   cashier: {
     label: 'Cajero',
     responsibility: 'Atiende reservas, clientes, cobros, reembolsos y documentos fiscales.',
-    access: 'Reservas, clientes, pagos, DTE, notas, lista de espera, reportes y check-in',
+    access: 'Reservas, clientes, pagos, DTE, notas, lista de espera y check-in',
   },
   airport_staff: {
     label: 'Personal aeroportuario',
@@ -36,7 +36,7 @@ export const ROLE_ORDER = ['admin', 'operations', 'cashier', 'airport_staff', 'c
 const ACCESS_BY_ROLE = {
   admin: ['*'],
   operations: ['dashboard', 'vuelos', 'aeropuertos', 'reservas', 'aeronaves', 'comercial', 'operaciones', 'fiscalidad', 'notificaciones', 'checkin'],
-  cashier: ['dashboard', 'clientes', 'nueva-reserva', 'reservas', 'pagos', 'dte', 'notas', 'contingencia', 'reportes', 'comercial', 'cumplimiento', 'correos', 'notificaciones', 'checkin'],
+  cashier: ['dashboard', 'clientes', 'nueva-reserva', 'reservas', 'pagos', 'dte', 'notas', 'contingencia', 'comercial', 'cumplimiento', 'correos', 'notificaciones', 'checkin'],
   airport_staff: ['checkin', 'notificaciones'],
   corporate_agent: ['comercial', 'notificaciones'],
   auditor: ['dashboard', 'clientes', 'vuelos', 'reservas', 'pagos', 'dte', 'reportes', 'auditoria', 'cierre-qa', 'cumplimiento', 'correos', 'notificaciones'],

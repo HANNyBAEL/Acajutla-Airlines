@@ -16,10 +16,10 @@ router.get('/ancillaries/vuelo/:flightId', verificarRol('admin', 'operations', '
 router.post('/ancillaries/reserva', verificarRol('admin', 'cashier'), c.agregarAncillaryReserva);
 router.get('/ancillaries/reserva/:reservationId/vuelos', verificarRol('admin', 'cashier'), c.vuelosDeReservaAncillaries);
 router.get('/ancillaries/reserva/:reservationId', verificarRol('admin', 'cashier'), c.ancillariesDeReserva);
-router.get('/kpi', verificarRol('admin', 'operations', 'cashier'), c.kpi);
+router.get('/kpi', verificarRol('admin', 'operations'), c.kpi);
 router.get('/reportes/ocupacion', verificarRol('admin', 'operations'), c.reporteOcupacion);
 router.get('/reportes/ancillaries', verificarRol('admin', 'operations'), c.reporteAncillaries);
 router.get('/reportes/canales', verificarRol('admin'), c.reporteCanales);
-router.get('/reportes/conciliacion', verificarRol('admin', 'cashier'), c.reporteConciliacion);
+router.get('/reportes/conciliacion', verificarRol('admin'), c.reporteConciliacion);
 
 module.exports = router;

@@ -7,7 +7,7 @@ const { obtenerImpuestos, calcularPrecioServicio } = require('../services/taxSer
 const { resolverClase } = require('../utils/fareClass');
 const { centavos } = require('../utils/money');
 const { tipoPorNacimiento } = require('../utils/passengerAge');
-const { errorAsientoPasajero } = require('../utils/asientos');
+const { crearMapaAsientos, errorAsientoPasajero } = require('../utils/asientos');
 const { cancelarServiciosReserva } = require('../services/reservationInventoryService');
 
 const importesPasajero = (tarifa, tipo) => {
@@ -52,6 +52,7 @@ const crearReserva = async (req, res) => {
       throw Object.assign(new Error('Los vuelos seleccionados deben ser válidos y no repetirse'), { statusCode: 400 });
     }
     const asientosPorVuelo = new Map();
+    const numeroVueloPorId = new Map();
     for (const vuelo of [...vuelos].sort((a, b) => Number(a.flight_id) - Number(b.flight_id))) {
       const disponibilidad = await FlightSegment.validarDisponibilidad(vuelo.flight_id, vuelo.fare_class || 'economy', connection);
       if (!disponibilidad.disponible) {
@@ -78,25 +79,43 @@ const crearReserva = async (req, res) => {
       if (vuelo.seat && (pasajeros.length !== 1 || vuelo.asientos !== undefined)) {
         throw Object.assign(new Error('Indique los asientos por pasajero para cada vuelo'), { statusCode: 400 });
       }
-      const asientos = (vuelo.asientos || [vuelo.seat || null]).map(seat => {
+      const entradaAsientos = vuelo.asientos !== undefined
+        ? vuelo.asientos
+        : vuelo.seat ? [vuelo.seat] : Array(pasajeros.length).fill(null);
+      const asientosSolicitados = entradaAsientos.map(seat => {
         if (seat == null || seat === '') return null;
         if (typeof seat !== 'string') throw Object.assign(new Error('Asiento inválido'), { statusCode: 400 });
         return seat.trim().toUpperCase();
       });
+      const mapa = crearMapaAsientos(disponibilidad.total_capacity);
+      const [filasOcupadas] = await connection.query(
+        `SELECT UPPER(TRIM(fs.seat)) AS seat FROM flight_segments fs
+         JOIN reservations rx ON rx.id = fs.reservation_id
+         WHERE fs.flight_id = ? AND fs.seat IS NOT NULL AND rx.status IN ('pending','confirmed','paid') FOR UPDATE`,
+        [vuelo.flight_id]
+      );
+      const ocupados = new Set(filasOcupadas.map((fila) => fila.seat));
       const seleccionados = new Set();
-      for (let i = 0; i < asientos.length; i++) {
-        const seat = asientos[i];
-        if (!seat) continue;
+      const asientos = [];
+      for (let i = 0; i < asientosSolicitados.length; i++) {
         const pax = pasajeros[i];
+        let seat = asientosSolicitados[i];
+        if (!seat) {
+          seat = mapa.asientos.find((opcion) => !ocupados.has(opcion) && !seleccionados.has(opcion)
+            && !errorAsientoPasajero(opcion, disponibilidad.total_capacity, pax.passenger_type || 'adult', pax.birth_date));
+          if (!seat) throw Object.assign(new Error(`No se encontró un asiento disponible y permitido para ${pax.first_names || `el pasajero ${i + 1}`} en el vuelo ${disponibilidad.flight_number}`), { statusCode: 409 });
+        }
         const error = errorAsientoPasajero(seat, disponibilidad.total_capacity, pax.passenger_type || 'adult', pax.birth_date);
         if (error) throw Object.assign(new Error(error), { statusCode: 400 });
         if (seleccionados.has(seat)) throw Object.assign(new Error(`El asiento ${seat} está asignado a más de un pasajero`), { statusCode: 409 });
         seleccionados.add(seat);
-        if (await FlightSegment.validarAsiento(vuelo.flight_id, seat, connection)) {
+        if (ocupados.has(seat) || await FlightSegment.validarAsiento(vuelo.flight_id, seat, connection)) {
           throw Object.assign(new Error(`El asiento ${seat} ya está ocupado en este vuelo`), { statusCode: 409 });
         }
+        asientos.push(seat);
       }
       asientosPorVuelo.set(String(vuelo.flight_id), asientos);
+      numeroVueloPorId.set(String(vuelo.flight_id), disponibilidad.flight_number);
     }
 
     // Resolver y bloquear la tarifa neta vigente de cada vuelo/clase. El total
@@ -285,7 +304,12 @@ const crearReserva = async (req, res) => {
         reservation_id: reservation_id,
         total_passengers: pasajeros.length,
         total_flights: vuelos.length,
-        estimated_total: estimated_total
+        estimated_total: estimated_total,
+        asientos_asignados: pasajerosCreados.flatMap((pax, indice) => vuelos.map((vuelo) => ({
+          pasajero: `${pax.first_names} ${pax.last_names}`.trim(),
+          vuelo: numeroVueloPorId.get(String(vuelo.flight_id)) || String(vuelo.flight_id),
+          asiento: asientosPorVuelo.get(String(vuelo.flight_id))[indice]
+        })))
       }
     });
   } catch (error) {

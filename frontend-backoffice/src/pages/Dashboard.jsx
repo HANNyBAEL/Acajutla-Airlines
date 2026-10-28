@@ -10,7 +10,10 @@ const ETIQUETAS = { scheduled: 'Programado', confirmed: 'Confirmado', in_progres
 
 const Dashboard = () => {
   const { usuario } = useAuth();
-  const esOperaciones = roleOf(usuario) === 'operations';
+  const rol = roleOf(usuario);
+  const esOperaciones = rol === 'operations';
+  const esCajero = rol === 'cashier';
+  const soloOperativo = esOperaciones || esCajero;
   const [datos, setDatos] = useState(null);
   const [cargando, setCargando] = useState(true);
 
@@ -38,10 +41,10 @@ const Dashboard = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
-        <p className="text-gray-500 mt-1">{esOperaciones ? 'Indicadores operativos en tiempo real' : 'Indicadores operativos, comerciales y fiscales en tiempo real'}</p>
+        <p className="text-gray-500 mt-1">{soloOperativo ? 'Indicadores operativos en tiempo real' : 'Indicadores operativos, comerciales y fiscales en tiempo real'}</p>
       </div>
 
-      {!esOperaciones && Number(datos.contingenciaPendiente24h || 0) > 0 && (
+      {!soloOperativo && Number(datos.contingenciaPendiente24h || 0) > 0 && (
         <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-lg flex items-center space-x-3">
           <FiAlertTriangle size={22} />
           <p className="text-sm font-medium">CRÍTICO: {datos.contingenciaPendiente24h} DTE(s) pendientes de transmisión con más de 24 horas.</p>
@@ -74,7 +77,7 @@ const Dashboard = () => {
             <div className="bg-purple-500 text-white p-3 rounded-lg"><FiPercent size={22} /></div>
           </div>
         </div>
-        {!esOperaciones && <div className="card p-5">
+        {!soloOperativo && <div className="card p-5">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Ventas brutas hoy</p>
@@ -104,7 +107,7 @@ const Dashboard = () => {
           )}
         </div>
 
-        {!esOperaciones && <div className="card p-5">
+        {!soloOperativo && <div className="card p-5">
           <h3 className="font-semibold text-gray-800 mb-3">Salud fiscal (DTE hoy)</h3>
           <p className={'text-4xl font-bold ' + colorSalud}>{salud}%</p>
           <p className="text-sm text-gray-500 mt-1">Aceptados: {aceptados} · Rechazados: {rechazados} · Pendientes: {Number(dte.pendientes || 0)} · Contingencia: {Number(dte.contingencia || 0)}</p>
@@ -117,7 +120,7 @@ const Dashboard = () => {
         </div>}
         {esOperaciones && <div className="card p-5"><h3 className="font-semibold text-gray-800 mb-3">Mantenimiento</h3><div className="flex items-center space-x-2 text-sm text-gray-600"><FiTool /><span>Aeronaves en mantenimiento o fuera de servicio: {datos.alertasMantenimiento || 0}</span></div></div>}
 
-        {!esOperaciones && <div className="card p-5">
+        {!soloOperativo && <div className="card p-5">
           <h3 className="font-semibold text-gray-800 mb-3">Ventas por canal (hoy)</h3>
           {canales.length === 0 ? (
             <p className="text-sm text-gray-500">Sin ventas registradas hoy.</p>

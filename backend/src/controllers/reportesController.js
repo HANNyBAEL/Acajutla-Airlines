@@ -32,7 +32,7 @@ const dashboard = async (req, res) => {
       ocupacionPromedio: ocup[0].promedio || 0,
       alertasMantenimiento: mant[0].total,
     };
-    if (req.usuario.rol === 'operations') return res.json({ exito: true, datos: datosOperativos });
+    if (['operations', 'cashier'].includes(req.usuario.rol)) return res.json({ exito: true, datos: datosOperativos });
     const [ventasPorCanal] = await pool.query(
       "SELECT r.sales_channel AS canal, COALESCE(SUM(p.amount),0) AS monto FROM payments p JOIN reservations r ON r.id = p.reservation_id WHERE p.status = 'approved' AND p.type = 'payment' AND DATE(CONVERT_TZ(p.payment_date, 'UTC', 'America/El_Salvador')) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador')) GROUP BY r.sales_channel ORDER BY monto DESC"
     );

@@ -8,6 +8,7 @@ const Login = () => {
   const [form, setForm] = useState({ usuario: '', password: '' });
   const [mostrarPassword, setMostrarPassword] = useState(false);
   const [mfa, setMfa] = useState({ codigo: '' });
+  const [codigoMfaSimulado, setCodigoMfaSimulado] = useState('');
   const [requiereMFA, setRequiereMFA] = useState(false);
   const [usuarioId, setUsuarioId] = useState(null);
   const [cargando, setCargando] = useState(false);
@@ -19,7 +20,13 @@ const Login = () => {
     setCargando(true);
     try {
       const r = await iniciarSesion(form);
-      if (r.requiereMFA) { setRequiereMFA(true); setUsuarioId(r.usuarioId); toast.success('Código MFA enviado'); }
+      if (r.requiereMFA) {
+        setRequiereMFA(true);
+        setUsuarioId(r.usuarioId);
+        setCodigoMfaSimulado(r.codigoMfaSimulado || '');
+        if (r.codigoMfaSimulado) setMfa({ codigo: r.codigoMfaSimulado });
+        toast.success(r.codigoMfaSimulado ? 'Código MFA de simulación listo' : 'Código MFA enviado');
+      }
       else { toast.success('Bienvenido'); navigate('/', { replace: true }); }
     } catch (err) { toast.error(err.response?.data?.error || 'Error al iniciar sesión'); }
     finally { setCargando(false); }
@@ -60,7 +67,15 @@ const Login = () => {
           </form>
         ) : (
           <form onSubmit={enviarMFA} className="space-y-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4"><p className="text-sm text-blue-800">Ingresa el código de 6 dígitos enviado a tu correo</p></div>
+            {codigoMfaSimulado ? (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4" role="status">
+                <p className="text-sm font-medium text-amber-900">MFA de simulación local</p>
+                <p className="mt-1 text-sm text-amber-800">El entorno escolar bloquea correos externos. Usa este código de prueba:</p>
+                <p className="mt-2 text-center font-mono text-2xl font-bold tracking-[0.3em] text-amber-950">{codigoMfaSimulado}</p>
+              </div>
+            ) : (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4"><p className="text-sm text-blue-800">Ingresa el código de 6 dígitos enviado a tu correo</p></div>
+            )}
             <label htmlFor="login-mfa" className="sr-only">Código MFA</label>
             <input id="login-mfa" inputMode="numeric" autoComplete="one-time-code" type="text" value={mfa.codigo} onChange={(e) => setMfa({ ...mfa, codigo: e.target.value.replace(/\D/g, '').slice(0, 6) })} className="input-field text-center text-2xl tracking-widest" maxLength={6} required />
             <button type="submit" disabled={cargando} className="btn-primary w-full py-3">{cargando ? 'Verificando...' : 'Verificar Código'}</button>

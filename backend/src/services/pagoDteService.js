@@ -72,6 +72,26 @@ function asuntoDte(header, nombreBase) {
   return nombreBase + etiquetaPruebas + ' - Documento Tributario Electrónico';
 }
 
+function guardarAdjuntosSimulados(nombreBase, pdfBuffer, jsonStr, sinDestinatario = false) {
+  try {
+    if (!fs.existsSync(STORAGE)) fs.mkdirSync(STORAGE, { recursive: true });
+    const archivos = [nombreBase + '.pdf', nombreBase + '.json', nombreBase + '_JSON.zip'];
+    fs.writeFileSync(path.join(STORAGE, archivos[0]), pdfBuffer);
+    fs.writeFileSync(path.join(STORAGE, archivos[1]), jsonStr);
+    fs.writeFileSync(path.join(STORAGE, archivos[2]), zipArchivo(nombreBase + '.json', Buffer.from(jsonStr, 'utf8')));
+    return {
+      enviado: !sinDestinatario,
+      simulado: true,
+      noEnviado: true,
+      ruta: STORAGE,
+      archivos,
+      ...(sinDestinatario ? { motivo: 'El receptor no tiene correo registrado; los documentos quedaron guardados localmente' } : {})
+    };
+  } catch (e) {
+    return { enviado: false, simulado: true, motivo: e.message };
+  }
+}
+
 async function obtenerCorreo(header) {
   try {
     const json = typeof header.full_json === 'string' ? JSON.parse(header.full_json) : (header.full_json || {});
@@ -97,7 +117,7 @@ async function enviarAdjuntos(header) {
     { name: nombreBase + '.pdf', content: pdfBuffer.toString('base64') },
     { name: nombreBase + '_JSON.zip', content: jsonZip.toString('base64') }
   ];
-  if (!to) return { enviado: false, motivo: 'El receptor no tiene correo registrado' };
+  if (!to) return guardarAdjuntosSimulados(nombreBase, pdfBuffer, jsonStr, true);
   if (BREVO_KEY) {
     try {
       const asunto = '[SIMULACIÓN ESCOLAR] ' + asuntoDte(header, nombreBase);
@@ -116,6 +136,9 @@ async function enviarAdjuntos(header) {
       return { enviado: true, messageId: r.data && r.data.messageId };
     } catch (e) {
       const detalle = e.response && e.response.data && (e.response.data.message || e.response.data.code || JSON.stringify(e.response.data));
+      if (String(detalle || e.message).includes('SIMULATION_NETWORK_BLOCKED')) {
+        return guardarAdjuntosSimulados(nombreBase, pdfBuffer, jsonStr);
+      }
       return {
         enviado: false,
         motivo: e.response && e.response.status === 401
@@ -124,14 +147,7 @@ async function enviarAdjuntos(header) {
       };
     }
   }
-  try {
-    if (!fs.existsSync(STORAGE)) fs.mkdirSync(STORAGE, { recursive: true });
-    fs.writeFileSync(path.join(STORAGE, nombreBase + '.pdf'), pdfBuffer);
-    fs.writeFileSync(path.join(STORAGE, nombreBase + '.json'), jsonStr);
-    return { enviado: true, simulado: true, ruta: STORAGE };
-  } catch (e) {
-    return { enviado: false, motivo: e.message };
-  }
+  return guardarAdjuntosSimulados(nombreBase, pdfBuffer, jsonStr);
 }
 
 async function reenviarAdjuntos(uuid) {
@@ -145,15 +161,14 @@ async function enviarDTEExistente(uuid) {
   if (!h.length) return { enviado: false, motivo: 'DTE no encontrado' };
   const header = h[0];
   const to = await obtenerCorreo(header);
-  if (!to) return { enviado: false, motivo: 'El receptor no tiene correo registrado' };
 
   let envio;
   try { envio = await enviarAdjuntos(header); }
   catch (e) { envio = { enviado: false, motivo: e.message }; }
   const nombreBase = 'DTE_' + header.control_number;
   await pool.query(
-    "INSERT INTO email_outbox (template, to_email, subject, html, ref_type, ref_id, status, brevo_message_id, created_at) VALUES (?,?,?,?,?,?,?,?,NOW())",
-    ['dte_entrega_adjuntos', to, asuntoDte(header, nombreBase), 'DTE enviado con PDF y ZIP que contiene el JSON', 'dte', header.uuid_generation, envio.enviado ? (envio.simulado ? 'simulado' : 'sent') : 'failed', envio.messageId || null]
+    "INSERT INTO email_outbox (template, to_email, subject, html, ref_type, ref_id, status, brevo_message_id, error_msg, created_at) VALUES (?,?,?,?,?,?,?,?,?,NOW())",
+    ['dte_entrega_adjuntos', to || '', asuntoDte(header, nombreBase), 'DTE enviado con PDF y ZIP que contiene el JSON', 'dte', header.uuid_generation, envio.enviado ? (envio.simulado ? 'simulado' : 'sent') : 'failed', envio.messageId || null, envio.enviado ? null : (envio.motivo || null)]
   );
   return envio;
 }
@@ -176,8 +191,8 @@ async function emitirYEnviar(reservationId, tipoDte, receptorOverride, opciones 
   const asunto = asuntoDte(header, nombreBase);
 
   await pool.query(
-    "INSERT INTO email_outbox (template, to_email, subject, html, ref_type, ref_id, status, brevo_message_id, created_at) VALUES (?,?,?,?,?,?,?,?,NOW())",
-    ['dte_entrega_adjuntos', to, asunto, 'DTE enviado con PDF y ZIP que contiene el JSON', 'dte', header.uuid_generation, envio.enviado ? (envio.simulado ? 'simulado' : 'sent') : 'failed', envio.messageId || null]
+    "INSERT INTO email_outbox (template, to_email, subject, html, ref_type, ref_id, status, brevo_message_id, error_msg, created_at) VALUES (?,?,?,?,?,?,?,?,?,NOW())",
+    ['dte_entrega_adjuntos', to || '', asunto, 'DTE enviado con PDF y ZIP que contiene el JSON', 'dte', header.uuid_generation, envio.enviado ? (envio.simulado ? 'simulado' : 'sent') : 'failed', envio.messageId || null, envio.enviado ? null : (envio.motivo || null)]
   );
   return { uuid: uuid, numeroControl: header.control_number, sello: header.reception_seal, envio: envio };
 }

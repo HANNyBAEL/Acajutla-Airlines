@@ -29,6 +29,20 @@ const escaparHtml = (valor) => String(valor == null ? '' : valor)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/\"/g, '&quot;').replace(/'/g, '&#39;');
 
+const fechaPagoElSalvador = (valor) => {
+  if (!valor) return '-';
+  // payments.payment_date se guarda como DATETIME UTC. mysql2 devuelve
+  // strings por dateStrings:true, así que se marca el valor como UTC antes
+  // de convertirlo a la hora local de El Salvador.
+  const fechaDb = typeof valor === 'string' && /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(valor)
+    ? valor.replace(' ', 'T') + 'Z'
+    : valor;
+  const fecha = new Date(fechaDb);
+  return Number.isNaN(fecha.getTime())
+    ? '-'
+    : fecha.toLocaleString('es-SV', { timeZone: 'America/El_Salvador' });
+};
+
 async function dispatch(outboxId) {
   const [rows] = await pool.query('SELECT * FROM email_outbox WHERE id = ?', [outboxId]);
   if (!rows.length) return { enviado: false, motivo: 'Registro no encontrado' };
@@ -128,7 +142,7 @@ async function enviarComprobantePago(pago) {
     '<tr><td>Método</td><td>' + row.method + '</td></tr>' +
     '<tr><td>Referencia</td><td>' + (row.external_reference || '-') + '</td></tr>' +
     '<tr><td>Estado del pago</td><td>' + row.status + '</td></tr>' +
-    '<tr><td>Fecha</td><td>' + new Date(row.payment_date).toLocaleString('es-SV') + '</td></tr></table>' +
+    '<tr><td>Fecha</td><td>' + fechaPagoElSalvador(row.payment_date) + '</td></tr></table>' +
     '<p class="note">Conserve este comprobante. Su factura electrónica (FE) o comprobante de crédito fiscal (CCFE) será emitido y enviado según normativa DTE.</p>';
   return queue('comprobante_pago', row.email, 'Comprobante de pago - Reserva ' + row.pnr, wrap('Comprobante de Pago', cuerpo), 'pago', pagoId);
 }
@@ -164,7 +178,7 @@ async function enviarReembolso(reembolso) {
     '<tr><td>Referencia de reembolso</td><td>' + escaparHtml(row.external_reference || '-') + '</td></tr>' +
     '<tr><td>Pago original</td><td>#' + escaparHtml(row.original_payment_id) + ' · ' + escaparHtml(row.original_reference || '-') + '</td></tr>' +
     '<tr><td>Motivo</td><td>' + escaparHtml(row.reason || '-') + '</td></tr>' +
-    '<tr><td>Fecha</td><td>' + escaparHtml(new Date(row.payment_date).toLocaleString('es-SV')) + '</td></tr></table>' +
+    '<tr><td>Fecha</td><td>' + escaparHtml(fechaPagoElSalvador(row.payment_date)) + '</td></tr></table>' +
     '<p>El tiempo para que el monto se refleje depende del medio de pago y de la entidad que lo procesa.</p>';
   return queue('reembolso', row.email, 'Confirmación de reembolso - Reserva ' + row.pnr, wrap('Confirmación de Reembolso', cuerpo), 'pago', reembolsoId);
 }
@@ -266,7 +280,7 @@ async function enviarReciboVenta(pago) {
     '<tr><td>Último pago</td><td>$' + Number(row.amount).toFixed(2) + ' ' + escaparHtml(row.currency) + '</td></tr>' +
     '<tr><td>Método</td><td>' + escaparHtml(row.method) + '</td></tr>' +
     '<tr><td>Referencia</td><td>' + escaparHtml(row.external_reference || '-') + '</td></tr>' +
-    '<tr><td>Fecha</td><td>' + escaparHtml(new Date(row.payment_date).toLocaleString('es-SV')) + '</td></tr></table>' +
+    '<tr><td>Fecha</td><td>' + escaparHtml(fechaPagoElSalvador(row.payment_date)) + '</td></tr></table>' +
     '<h3 style="font-size:13px;margin:12px 0 4px">Itinerario</h3>' +
     '<table class="kv"><tr><td>Vuelo</td><td>Ruta</td><td>Salida</td></tr>' + rutas + '</table>' +
     '<p class="note">Este recibo acredita la venta y el pago. No es un DTE ni sustituye los documentos fiscales que pudieran corresponder en la jurisdicción aplicable.</p>';

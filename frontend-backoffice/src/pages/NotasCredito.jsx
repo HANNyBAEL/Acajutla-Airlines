@@ -143,7 +143,7 @@ const NotasCredito = () => {
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">DTE origen (FE/CCFE/FEXE sellado) *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Factura de salida de El Salvador (FE/CCFE sellada) *</label>
                 <SearchableSelect
                   options={opcionesOrigen}
                   value={form.origenUuid}

@@ -61,6 +61,7 @@ const NuevaReserva = () => {
   const [clase, setClase] = useState('economy');
   const [guardando, setGuardando] = useState(false);
   const [pnrCreado, setPnrCreado] = useState(null);
+  const [asientosCreados, setAsientosCreados] = useState([]);
   const [ancillariesPorVuelo, setAncillariesPorVuelo] = useState({});
   const [ancillariesCargando, setAncillariesCargando] = useState(false);
   const [ancillariesSeleccionados, setAncillariesSeleccionados] = useState([]);
@@ -316,6 +317,7 @@ const NuevaReserva = () => {
       });
       setEstadoCorreo({ tipo: 'enviando' });
       setPnrCreado(r.data.datos.pnr);
+      setAsientosCreados(r.data.datos.asientos_asignados || []);
       toast.success('Reserva creada');
       try {
         const respuestaCorreo = await api.post('/correos/confirmacion-reserva', { reservation_id: r.data.datos.reservation_id });
@@ -342,6 +344,12 @@ const NuevaReserva = () => {
           <p className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-6">
             Reserva en estado PENDIENTE con time limit de 30 minutos (RN-COM-01). Sigue al módulo de Pagos.
           </p>
+          {asientosCreados.length > 0 && <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4 text-left">
+            <h2 className="font-semibold text-blue-900">Asientos asignados</h2>
+            <div className="mt-2 space-y-1 text-sm text-blue-800">
+              {asientosCreados.map((item, indice) => <p key={`${item.vuelo}-${indice}`}>{item.pasajero} · {item.vuelo} · asiento {item.asiento}</p>)}
+            </div>
+          </div>}
           {estadoCorreo && <p role="status" className={'mt-4 rounded-lg border p-3 text-sm ' + (estadoCorreo.tipo === 'enviado' ? 'border-green-200 bg-green-50 text-green-800' : estadoCorreo.tipo === 'enviando' ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-amber-200 bg-amber-50 text-amber-800')}>
             {estadoCorreo.tipo === 'enviando' ? 'Enviando confirmación por correo...' : estadoCorreo.tipo === 'enviado' ? 'Confirmación enviada por correo.' : estadoCorreo.tipo === 'simulado' ? 'La confirmación quedó en modo simulado; no se envió un correo real.' : `La reserva se creó, pero no se pudo enviar la confirmación${estadoCorreo.motivo ? ': ' + estadoCorreo.motivo : '.'}`}
           </p>}
@@ -358,7 +366,7 @@ const NuevaReserva = () => {
               <p className="mt-2 text-xs text-blue-700">Se cobrarán junto con la reserva y se incluirán en el DTE emitido al completar el pago.</p>
             </div>
           )}
-          <button className="btn-primary mt-6" disabled={guardando} onClick={() => { setPnrCreado(null); setEstadoCorreo(null); setPasajeros([pasajeroVacio()]); setTrayectos([{ origen: 'SAL', destino: 'MIA', fecha: '', vuelos: [], vueloId: null, buscando: false }]); setAncillariesSeleccionados([]); setClienteId(''); setClienteSel(null); setTipoViaje('ida'); setClase('economy'); }}>
+          <button className="btn-primary mt-6" disabled={guardando} onClick={() => { setPnrCreado(null); setAsientosCreados([]); setEstadoCorreo(null); setPasajeros([pasajeroVacio()]); setTrayectos([{ origen: 'SAL', destino: 'MIA', fecha: '', vuelos: [], vueloId: null, buscando: false }]); setAncillariesSeleccionados([]); setClienteId(''); setClienteSel(null); setTipoViaje('ida'); setClase('economy'); }}>
             Crear otra reserva
           </button>
         </div>
@@ -494,7 +502,7 @@ const NuevaReserva = () => {
 
         <div className="card p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-2">4. Asientos (opcional)</h2>
-          <p className="text-sm text-gray-500 mb-4">Puedes elegir un asiento para cada pasajero en cada vuelo. Los asientos seleccionados se confirman al crear la reserva.</p>
+          <p className="text-sm text-gray-500 mb-4">Puedes elegir un asiento para cada pasajero. Los que dejes vacíos se asignarán automáticamente al crear la reserva.</p>
           {asientosCargando ? <p className="text-sm text-gray-500">Consultando disponibilidad...</p> : asientosError ? (
             <div role="alert" className="text-sm text-red-700">No se pudo consultar la disponibilidad. <button type="button" className="underline font-medium" onClick={() => setRevisionAsientos((actual) => actual + 1)}>Reintentar</button></div>
           ) : vuelosSeleccionados.length === 0 ? <p className="text-sm text-gray-500">Selecciona primero los vuelos.</p> : (

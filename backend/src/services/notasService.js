@@ -3,6 +3,7 @@ const { validarDTECompleto } = require('./dte/validators');
 const pool = require('../config/db');
 const crypto = require('crypto');
 const { fechaElSalvador, horaElSalvador } = require('../utils/fechaElSalvador');
+const { validarOrigenFacturaElSalvador } = require('./validarOrigenFacturaService');
 
 const redondeo = (v) => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
 
@@ -42,9 +43,10 @@ function numeroALetras(num) {
 async function generarNotaInterna(datos, conn) {
   const { origenUuid, tipoDte, motivo, monto, noGravado, montoIncluyeIva } = datos;
   if (!['05', '06'].includes(tipoDte)) throw new Error('Tipo de nota inválido (05 NCE / 06 NDE)');
-  const [orig] = await conn.query("SELECT * FROM dte_headers WHERE uuid_generation = ? AND dte_type IN ('01','03','11')", [origenUuid]);
-  if (!orig.length) throw new Error('DTE origen no encontrado o no válido (Solo FE, CCFE o FEXE)');
+  const [orig] = await conn.query("SELECT * FROM dte_headers WHERE uuid_generation = ? AND dte_type IN ('01','03')", [origenUuid]);
+  if (!orig.length) throw new Error('DTE origen no encontrado o no válido (solo FE o CCFE de El Salvador)');
   const row = orig[0];
+  await validarOrigenFacturaElSalvador(row, conn);
   if (!row.reception_seal) throw new Error('El DTE origen debe tener Sello de Recepción');
   const origJson = typeof row.full_json === 'string' ? JSON.parse(row.full_json) : row.full_json;
   const m = Number(monto);
@@ -159,14 +161,28 @@ async function generarNotaInterna(datos, conn) {
 
 async function listarNotas() {
   const [rows] = await pool.query(
-    "SELECT id, dte_type, control_number, uuid_generation, reception_seal, emission_date, emission_time, total_to_pay, reservation_id, full_json FROM dte_headers WHERE dte_type IN ('05','06') ORDER BY id DESC"
+    `SELECT h.id, h.dte_type, h.control_number, h.uuid_generation, h.reception_seal, h.emission_date, h.emission_time, h.total_to_pay, h.reservation_id, h.full_json
+     FROM dte_headers h WHERE h.dte_type IN ('05','06') AND h.reservation_id IS NOT NULL
+       AND (SELECT COALESCE(NULLIF(BINARY c.code, BINARY ''), NULLIF(BINARY ao.country_code, BINARY ''))
+            FROM flight_segments fs JOIN flights f ON f.id = fs.flight_id
+            JOIN routes rt ON rt.id = f.route_id JOIN airports ao ON ao.id = rt.origin_id
+            LEFT JOIN countries c ON c.id = ao.country_id
+            WHERE fs.reservation_id = h.reservation_id ORDER BY f.departure_datetime, fs.id LIMIT 1) = BINARY 'SV'
+     ORDER BY h.id DESC`
   );
   return rows;
 }
 
 async function origenes() {
   const [rows] = await pool.query(
-    "SELECT uuid_generation, dte_type, control_number, emission_date, emission_time, total_to_pay, reception_seal, full_json FROM dte_headers WHERE dte_type IN ('01','03','11') AND reception_seal IS NOT NULL ORDER BY id DESC"
+    `SELECT h.uuid_generation, h.dte_type, h.control_number, h.emission_date, h.emission_time, h.total_to_pay, h.reception_seal, h.full_json
+     FROM dte_headers h WHERE h.dte_type IN ('01','03') AND h.reception_seal IS NOT NULL AND h.reservation_id IS NOT NULL
+       AND (SELECT COALESCE(NULLIF(BINARY c.code, BINARY ''), NULLIF(BINARY ao.country_code, BINARY ''))
+            FROM flight_segments fs JOIN flights f ON f.id = fs.flight_id
+            JOIN routes rt ON rt.id = f.route_id JOIN airports ao ON ao.id = rt.origin_id
+            LEFT JOIN countries c ON c.id = ao.country_id
+            WHERE fs.reservation_id = h.reservation_id ORDER BY f.departure_datetime, fs.id LIMIT 1) = BINARY 'SV'
+     ORDER BY h.id DESC`
   );
   return rows;
 }

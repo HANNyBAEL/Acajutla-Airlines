@@ -35,6 +35,15 @@ class AuthService {
         await enviarCorreo(usuario.email, 'Código de verificación - Acajutla Airlines',
           `<div><h2>Código de Verificación</h2><p>Hola ${usuario.username},</p><p>Tu código: <strong style="font-size:32px;letter-spacing:8px;">${codigoMFA}</strong></p><p>Expira en 5 minutos.</p></div>`);
       } catch (error) {
+        if (process.env.NODE_ENV !== 'production' && String(error.message).includes('SIMULATION_NETWORK_BLOCKED')) {
+          console.warn('MFA local simulado: el envío externo está bloqueado por el entorno escolar.');
+          return {
+            requiereMFA: true,
+            usuarioId: usuario.id,
+            mensaje: 'Código MFA de simulación local',
+            codigoMfaSimulado: codigoMFA
+          };
+        }
         const proveedor = error.response?.body || {};
         const diagnostico = {
           status: error.status || error.response?.status || null,

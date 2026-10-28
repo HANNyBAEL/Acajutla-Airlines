@@ -89,7 +89,17 @@ const Reserva = {
       sql += ` AND NOT EXISTS (
         SELECT 1 FROM dte_headers dh
         WHERE dh.reservation_id = r.id AND dh.transmission_status != 'invalidated'
-      )`;
+      ) AND (
+        SELECT COALESCE(NULLIF(BINARY c.code, BINARY ''), NULLIF(BINARY ao.country_code, BINARY ''))
+        FROM flight_segments fs
+        JOIN flights f ON f.id = fs.flight_id
+        JOIN routes rt ON rt.id = f.route_id
+        JOIN airports ao ON ao.id = rt.origin_id
+        LEFT JOIN countries c ON c.id = ao.country_id
+        WHERE fs.reservation_id = r.id
+        ORDER BY f.departure_datetime, fs.id
+        LIMIT 1
+      ) = BINARY 'SV'`;
     }
     sql += ' ORDER BY r.created_at DESC LIMIT 100';
     const [rows] = await pool.query(sql, valores);

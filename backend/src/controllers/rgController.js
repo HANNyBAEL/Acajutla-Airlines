@@ -1,10 +1,13 @@
 const pool = require('../config/db');
 const rgService = require('../services/rgPdfService');
+const { validarOrigenFacturaElSalvador } = require('../services/validarOrigenFacturaService');
 
 const pdf = async (req, res) => {
   try {
     const [h] = await pool.query('SELECT * FROM dte_headers WHERE uuid_generation = ?', [req.params.uuid]);
     if (!h.length) return res.status(404).json({ error: 'DTE no encontrado' });
+    try { await validarOrigenFacturaElSalvador(h[0], pool); }
+    catch (_) { return res.status(404).json({ error: 'Documento no disponible: solo se generan archivos fiscales para salidas de El Salvador' }); }
     const doc = await rgService.generarPDF(h[0]);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="DTE_' + h[0].control_number + '.pdf"');
@@ -20,6 +23,8 @@ const json = async (req, res) => {
   try {
     const [h] = await pool.query('SELECT * FROM dte_headers WHERE uuid_generation = ?', [req.params.uuid]);
     if (!h.length) return res.status(404).json({ error: 'DTE no encontrado' });
+    try { await validarOrigenFacturaElSalvador(h[0], pool); }
+    catch (_) { return res.status(404).json({ error: 'Documento no disponible: solo se generan archivos fiscales para salidas de El Salvador' }); }
     const row = h[0];
     let parsed = row.full_json;
     if (typeof parsed === 'string') {

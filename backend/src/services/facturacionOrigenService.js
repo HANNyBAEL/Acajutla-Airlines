@@ -2,7 +2,7 @@ const pool = require('../config/db');
 
 const resolverPoliticaFacturacion = async (reservationId, connection = pool) => {
   const [rows] = await connection.query(
-    `SELECT COALESCE(NULLIF(c.code, ''), NULLIF(ao.country_code, '')) AS origin_country_code,
+    `SELECT COALESCE(NULLIF(BINARY c.code, BINARY ''), NULLIF(BINARY ao.country_code, BINARY '')) AS origin_country_code,
             ao.iata_code AS origin_airport_code
      FROM flight_segments fs
      JOIN flights f ON f.id = fs.flight_id

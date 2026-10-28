@@ -21,30 +21,35 @@ const procesarPagoCompleto = async (entrada, usuario) => {
     receptorDte: receptor,
     requiereDeduccionFiscal
   }, usuario);
-  const [pagos] = await pool.query('SELECT * FROM payments WHERE id = ?', [resultado.payment_id]);
   let dteInfo = null;
   let reciboVenta = null;
-
-  if (pagos.length) {
-    const pago = pagos[0];
-    await pool.query('UPDATE payments SET tipo_dte = ? WHERE id = ?', [tipoDte, pago.id]);
-    if (pago.status === 'approved' && resultado.reservation_status === 'paid') {
-      if (politicaFacturacion.tipo === 'recibo_venta') {
-        try {
-          reciboVenta = await mailerService.enviarReciboVenta(pago.id);
-        } catch (error) {
-          reciboVenta = { enviado: false, motivo: error.message };
-        }
-      } else if (politicaFacturacion.tipo === 'revision_manual') {
-        reciboVenta = { enviado: false, motivo: politicaFacturacion.mensaje, requiere_revision: true };
-      } else {
-        try {
-          dteInfo = await pagoDteService.emitirYEnviar(pago.reservation_id, tipoDte, receptor, { requiereDeduccionFiscal });
-        } catch (error) {
-          dteInfo = { error: error.message };
+  try {
+    const [pagos] = await pool.query('SELECT * FROM payments WHERE id = ?', [resultado.payment_id]);
+    if (pagos.length) {
+      const pago = pagos[0];
+      await pool.query('UPDATE payments SET tipo_dte = ? WHERE id = ?', [tipoDte, pago.id]);
+      if (pago.status === 'approved' && resultado.reservation_status === 'paid') {
+        if (politicaFacturacion.tipo === 'recibo_venta') {
+          try {
+            reciboVenta = await mailerService.enviarReciboVenta(pago.id);
+          } catch (error) {
+            reciboVenta = { enviado: false, motivo: error.message };
+          }
+        } else if (politicaFacturacion.tipo === 'revision_manual') {
+          reciboVenta = { enviado: false, motivo: politicaFacturacion.mensaje, requiere_revision: true };
+        } else {
+          try {
+            dteInfo = await pagoDteService.emitirYEnviar(pago.reservation_id, tipoDte, receptor, { requiereDeduccionFiscal });
+          } catch (error) {
+            dteInfo = { error: error.message };
+          }
         }
       }
     }
+  } catch (error) {
+    // PaymentService already committed the payment. Keep the API response
+    // successful and report only the downstream invoicing failure.
+    dteInfo = { error: 'El pago quedó registrado, pero falló el proceso posterior de facturación: ' + error.message };
   }
 
   return { exito: true, datos: resultado, dte: dteInfo, recibo_venta: reciboVenta, facturacion: politicaFacturacion };

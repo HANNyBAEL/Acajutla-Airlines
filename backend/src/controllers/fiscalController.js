@@ -2,10 +2,19 @@ const pool = require('../config/db');
 const FC = require('../services/fiscalCompliance');
 const dteEventosService = require('../services/dteEventosService');
 const mailerService = require('../services/mailerService');
+const { validarOrigenFacturaElSalvador } = require('../services/validarOrigenFacturaService');
 
 const aplicar = async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT id, dte_type, reception_seal, full_json, reservation_id FROM dte_headers WHERE full_json IS NOT NULL');
+    const [rows] = await pool.query(
+      `SELECT h.id, h.dte_type, h.reception_seal, h.full_json, h.reservation_id
+       FROM dte_headers h WHERE h.full_json IS NOT NULL AND h.reservation_id IS NOT NULL
+         AND (SELECT COALESCE(NULLIF(BINARY c.code, BINARY ''), NULLIF(BINARY ao.country_code, BINARY ''))
+              FROM flight_segments fs JOIN flights f ON f.id = fs.flight_id
+              JOIN routes rt ON rt.id = f.route_id JOIN airports ao ON ao.id = rt.origin_id
+              LEFT JOIN countries c ON c.id = ao.country_id
+              WHERE fs.reservation_id = h.reservation_id ORDER BY f.departure_datetime, fs.id LIMIT 1) = BINARY 'SV'`
+    );
     let n = 0;
     for (const r of rows) {
       let json = typeof r.full_json === 'string' ? JSON.parse(r.full_json) : r.full_json;
@@ -42,8 +51,10 @@ const validarInvalidacion = async (req, res) => {
   try {
     const { dteUuid, fechaEvento } = req.body;
     if (!dteUuid || !fechaEvento) return res.status(400).json({ error: 'dteUuid y fechaEvento son obligatorios' });
-    const [r] = await pool.query('SELECT dte_type, transmission_status, reception_seal, full_json, emission_date, reception_date, created_at FROM dte_headers WHERE uuid_generation = ?', [dteUuid]);
+    const [r] = await pool.query('SELECT dte_type, reservation_id, transmission_status, reception_seal, full_json, emission_date, reception_date, created_at FROM dte_headers WHERE uuid_generation = ?', [dteUuid]);
     if (!r.length) return res.status(404).json({ error: 'DTE no encontrado' });
+    try { await validarOrigenFacturaElSalvador(r[0], pool); }
+    catch (e) { return res.status(400).json({ error: e.message }); }
     if (r[0].transmission_status !== 'accepted' || !r[0].reception_seal) return res.status(409).json({ exito: true, datos: { ok: false, mensaje: 'Solo se valida el plazo para DTEs aceptados con Sello de Recepción.' } });
     const json = typeof r[0].full_json === 'string' ? JSON.parse(r[0].full_json) : r[0].full_json;
     const v = FC.validarPlazoInvalidacion(json, fechaEvento, new Date(), r[0].reception_date || r[0].created_at);

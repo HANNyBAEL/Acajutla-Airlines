@@ -11,7 +11,8 @@ const procesarPago = async (req, res) => {
     res.status(201).json(resultado);
   } catch (e) {
     console.error('Error procesar pago:', e);
-    res.status(400).json({ error: e.message });
+    res.status(e.code === 'RESERVATION_ALREADY_PAID' || e.code === 'FULL_BALANCE_TRANSFER_PENDING' ? 409 : 400)
+      .json({ error: e.message, codigo: e.code || null });
   }
 };
 
@@ -72,7 +73,7 @@ const listar = async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT p.*, r.pnr, u.username AS procesado_por,
-              (SELECT COALESCE(NULLIF(co.code, ''), NULLIF(ao.country_code, '')) FROM flight_segments fs
+              (SELECT COALESCE(NULLIF(CONVERT(co.code USING utf8mb4) COLLATE utf8mb4_unicode_ci, _utf8mb4'' COLLATE utf8mb4_unicode_ci), NULLIF(CONVERT(ao.country_code USING utf8mb4) COLLATE utf8mb4_unicode_ci, _utf8mb4'' COLLATE utf8mb4_unicode_ci)) FROM flight_segments fs
                 JOIN flights f ON f.id = fs.flight_id JOIN routes rt ON rt.id = f.route_id
                 JOIN airports ao ON ao.id = rt.origin_id LEFT JOIN countries co ON co.id = ao.country_id
                 WHERE fs.reservation_id = r.id ORDER BY f.departure_datetime, fs.id LIMIT 1) AS origin_country_code,
@@ -103,7 +104,7 @@ const reservasPendientes = async (req, res) => {
                 JOIN flights f ON f.id = fs.flight_id JOIN routes rt ON rt.id = f.route_id
                 JOIN airports ao ON ao.id = rt.origin_id
                 WHERE fs.reservation_id = r.id ORDER BY f.departure_datetime, fs.id LIMIT 1) AS origin_airport_code,
-              (SELECT COALESCE(NULLIF(co.code, ''), NULLIF(ao.country_code, '')) FROM flight_segments fs
+              (SELECT COALESCE(NULLIF(CONVERT(co.code USING utf8mb4) COLLATE utf8mb4_unicode_ci, _utf8mb4'' COLLATE utf8mb4_unicode_ci), NULLIF(CONVERT(ao.country_code USING utf8mb4) COLLATE utf8mb4_unicode_ci, _utf8mb4'' COLLATE utf8mb4_unicode_ci)) FROM flight_segments fs
                 JOIN flights f ON f.id = fs.flight_id JOIN routes rt ON rt.id = f.route_id
                 JOIN airports ao ON ao.id = rt.origin_id LEFT JOIN countries co ON co.id = ao.country_id
                 WHERE fs.reservation_id = r.id ORDER BY f.departure_datetime, fs.id LIMIT 1) AS origin_country_code

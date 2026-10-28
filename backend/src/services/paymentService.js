@@ -26,7 +26,14 @@ const procesarPago = async (datos, usuario) => {
     const totalCentavos = centavos(reserva.estimated_total);
     const pagadoCentavos = centavos(reserva.paid_total || 0);
     const pendienteCentavos = totalCentavos - pagadoCentavos - centavos(pendientesTransferencia[0]?.amount || 0);
-    if (pendienteCentavos <= 0) throw new Error('La reserva ya está pagada o tiene transferencias pendientes por el saldo completo');
+    if (pendienteCentavos <= 0) {
+      const yaPagada = pagadoCentavos >= totalCentavos;
+      const error = new Error(yaPagada
+        ? 'La reserva ya está completamente pagada'
+        : 'La reserva tiene una transferencia pendiente de confirmación por el saldo completo');
+      error.code = yaPagada ? 'RESERVATION_ALREADY_PAID' : 'FULL_BALANCE_TRANSFER_PENDING';
+      throw error;
+    }
     const monto = normalizarImporte(datos.amount ?? pendienteCentavos / 100);
     const montoCentavos = centavos(monto);
     if (montoCentavos <= 0) throw new Error('El monto debe ser mayor a 0');

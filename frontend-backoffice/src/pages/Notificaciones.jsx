@@ -10,8 +10,12 @@ const Notificaciones = () => {
   const cargar = () => api.get('/notificaciones').then((r) => setItems(r.data.datos || [])).catch(() => toast.error('Error al cargar notificaciones'));
   useEffect(() => { cargar(); }, []);
 
-  const leer = async (n) => { await api.post('/notificaciones/leer', { key: n.key }).catch(() => {}); cargar(); };
-  const ir = (n) => { api.post('/notificaciones/leer', { key: n.key }).catch(() => {}); navigate(n.link); };
+  const leer = (n) => setItems((actuales) => actuales.filter((item) => item.id !== n.id));
+  const ir = (n) => {
+    leer(n);
+    const rutas = { reserva: '/reservas', dte: '/dte', contingencia: '/contingencia', pago: '/pagos' };
+    navigate(n.link || rutas[n.tipo] || '/dashboard');
+  };
 
   return (
     <div className="space-y-6">
@@ -28,7 +32,7 @@ const Notificaciones = () => {
         ) : (
           <ul className="divide-y divide-gray-100">
             {items.map((n) => (
-              <li key={n.key} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50">
+              <li key={n.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50">
                 <div>
                   <p className="text-sm font-medium text-gray-800">{n.titulo}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{n.detalle}</p>

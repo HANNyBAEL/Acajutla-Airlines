@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const DTEService = require('../services/dteService');
 const pagoDteService = require('../services/pagoDteService');
+const { validarOrigenFacturaElSalvador } = require('../services/validarOrigenFacturaService');
 
 const emitir = async (req, res) => {
   try {
@@ -27,7 +28,14 @@ const emitir = async (req, res) => {
 
 const listar = async (req, res) => {
   try {
-    let sql = `SELECT h.*, r.pnr FROM dte_headers h LEFT JOIN reservations r ON r.id = h.reservation_id WHERE 1=1`;
+    let sql = `SELECT h.*, r.pnr FROM dte_headers h LEFT JOIN reservations r ON r.id = h.reservation_id
+      WHERE h.reservation_id IS NOT NULL AND (
+        SELECT COALESCE(NULLIF(BINARY c.code, BINARY ''), NULLIF(BINARY ao.country_code, BINARY ''))
+        FROM flight_segments fs JOIN flights f ON f.id = fs.flight_id
+        JOIN routes rt ON rt.id = f.route_id JOIN airports ao ON ao.id = rt.origin_id
+        LEFT JOIN countries c ON c.id = ao.country_id
+        WHERE fs.reservation_id = h.reservation_id ORDER BY f.departure_datetime, fs.id LIMIT 1
+      ) = BINARY 'SV'`;
     const vals = [];
     if (req.query.tipo) { sql += ' AND h.dte_type = ?'; vals.push(req.query.tipo); }
     if (req.query.estado) { sql += ' AND h.transmission_status = ?'; vals.push(req.query.estado); }
@@ -41,8 +49,10 @@ const listar = async (req, res) => {
 
 const obtener = async (req, res) => {
   try {
-    const [h] = await pool.query('SELECT h.*, r.pnr FROM dte_headers h LEFT JOIN reservations r ON r.id = h.reservation_id WHERE h.uuid_generation = ?', [req.params.uuid]);
+    const [h] = await pool.query(`SELECT h.*, r.pnr FROM dte_headers h LEFT JOIN reservations r ON r.id = h.reservation_id WHERE h.uuid_generation = ?`, [req.params.uuid]);
     if (h.length === 0) return res.status(404).json({ error: 'DTE no encontrado' });
+    try { await validarOrigenFacturaElSalvador(h[0], pool); }
+    catch (_) { return res.status(404).json({ error: 'DTE no disponible: solo se muestran documentos de boletos con salida de El Salvador' }); }
     const [items] = await pool.query('SELECT * FROM dte_items WHERE header_id = ? ORDER BY item_number', [h[0].id]);
     res.json({ exito: true, datos: Object.assign({}, h[0], { items: items }) });
   } catch (e) {
@@ -58,7 +68,13 @@ const kpis = async (req, res) => {
               SUM(transmission_status = 'rejected') AS rechazados,
               SUM(transmission_status IN ('transmitted','contingency')) AS pendientes,
               SUM(CASE WHEN emission_date = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador')) THEN total_to_pay ELSE 0 END) AS facturado_hoy
-       FROM dte_headers`
+       FROM dte_headers h WHERE h.reservation_id IS NOT NULL AND (
+         SELECT COALESCE(NULLIF(BINARY c.code, BINARY ''), NULLIF(BINARY ao.country_code, BINARY ''))
+         FROM flight_segments fs JOIN flights f ON f.id = fs.flight_id
+         JOIN routes rt ON rt.id = f.route_id JOIN airports ao ON ao.id = rt.origin_id
+         LEFT JOIN countries c ON c.id = ao.country_id
+         WHERE fs.reservation_id = h.reservation_id ORDER BY f.departure_datetime, fs.id LIMIT 1
+       ) = BINARY 'SV'`
     );
     res.json({ exito: true, datos: rows[0] });
   } catch (e) {
