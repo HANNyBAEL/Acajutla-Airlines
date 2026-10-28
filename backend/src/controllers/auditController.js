@@ -5,7 +5,7 @@ const listar = async (req, res) => {
     const { modulo, resultado, accion, usuario, limite } = req.query;
     let sql = 'SELECT al.*, u.role AS usuario_rol FROM audit_logs al LEFT JOIN users u ON al.user_id = u.id WHERE 1=1';
     const vals = [];
-    if (modulo) { sql += ' AND al.modulo = ?'; vals.push(modulo); }
+    if (modulo) { sql += ' AND al.module = ?'; vals.push(modulo); }
     if (resultado) { sql += ' AND al.result = ?'; vals.push(resultado); }
     if (accion) { sql += ' AND al.action LIKE ?'; vals.push('%' + accion + '%'); }
     if (usuario) { sql += ' AND (al.user_name LIKE ? OR u.username LIKE ?)'; vals.push('%' + usuario + '%', '%' + usuario + '%'); }
@@ -41,4 +41,16 @@ const estadisticas = async (req, res) => {
   }
 };
 
-module.exports = { listar: listar, estadisticas: estadisticas };
+const modulos = async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      "SELECT DISTINCT module FROM audit_logs WHERE module IS NOT NULL AND TRIM(module) <> '' ORDER BY module"
+    );
+    res.json({ exito: true, datos: rows.map((row) => row.module) });
+  } catch (e) {
+    console.error('Error auditoria módulos:', e);
+    res.status(500).json({ error: 'Error interno' });
+  }
+};
+
+module.exports = { listar: listar, estadisticas: estadisticas, modulos: modulos };

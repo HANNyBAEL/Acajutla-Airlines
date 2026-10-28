@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiSend, FiEye, FiEyeOff } from 'react-icons/fi';
+import { FiEye, FiEyeOff } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const Login = () => {
@@ -20,7 +20,7 @@ const Login = () => {
     try {
       const r = await iniciarSesion(form);
       if (r.requiereMFA) { setRequiereMFA(true); setUsuarioId(r.usuarioId); toast.success('Código MFA enviado'); }
-      else { toast.success('Bienvenido'); navigate('/dashboard'); }
+      else { toast.success('Bienvenido'); navigate('/', { replace: true }); }
     } catch (err) { toast.error(err.response?.data?.error || 'Error al iniciar sesión'); }
     finally { setCargando(false); }
   };
@@ -28,7 +28,7 @@ const Login = () => {
   const enviarMFA = async (e) => {
     e.preventDefault();
     setCargando(true);
-    try { await verificarMFA(usuarioId, mfa.codigo); toast.success('Verificado'); navigate('/dashboard'); }
+    try { await verificarMFA(usuarioId, mfa.codigo); toast.success('Verificado'); navigate('/', { replace: true }); }
     catch (err) { toast.error(err.response?.data?.error || 'Código inválido'); }
     finally { setCargando(false); }
   };
@@ -37,11 +37,9 @@ const Login = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-700 via-primary-800 to-primary-900">
       <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-br from-primary-600 to-primary-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <FiSend className="text-white" size={32} />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-800">Acajutla Airlines</h1>
-          <p className="text-gray-500 text-sm mt-1">Panel Administrativo - Acajutla Airlines</p>
+          <img src="/logo-acajutla-airlines.png" alt="Acajutla Airlines" className="w-64 max-w-full h-auto mx-auto mb-4 rounded-lg" />
+          <h1 className="text-xl font-bold text-gray-800">Panel administrativo</h1>
+          <p className="text-gray-500 text-sm mt-1">Accede al sistema de gestión de la aerolínea</p>
         </div>
         {!requiereMFA ? (
           <form onSubmit={enviar} className="space-y-4">

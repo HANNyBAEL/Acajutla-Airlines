@@ -71,6 +71,38 @@ const listarVuelos = async (req, res) => {
   }
 };
 
+const formatoNumeroVuelo = (prefijo, numero) => `${prefijo}${String(numero).padStart(4, '0')}`;
+
+const siguienteNumeroDisponible = async (executor, prefijo, ultimoNumero) => {
+  let numero = Number(ultimoNumero) + 1;
+  while (Number.isSafeInteger(numero) && numero > 0) {
+    const candidato = formatoNumeroVuelo(prefijo, numero);
+    const [existentes] = await executor.query(
+      'SELECT id FROM flights WHERE flight_number = ? LIMIT 1',
+      [candidato]
+    );
+    if (existentes.length === 0) return { flightNumber: candidato, numero };
+    numero += 1;
+  }
+  throw new Error('No se pudo generar un número de vuelo válido.');
+};
+
+const obtenerNumeroVueloSiguiente = async (req, res) => {
+  try {
+    const [secuencias] = await pool.query(
+      'SELECT prefix, last_number FROM flight_number_sequences WHERE id = 1'
+    );
+    if (!secuencias.length) {
+      return res.status(503).json({ error: 'Falta inicializar la numeración automática de vuelos.' });
+    }
+    const siguiente = await siguienteNumeroDisponible(pool, secuencias[0].prefix, secuencias[0].last_number);
+    res.json({ exito: true, datos: { flight_number: siguiente.flightNumber } });
+  } catch (error) {
+    console.error('Error al obtener el siguiente número de vuelo:', error);
+    res.status(500).json({ error: 'No se pudo generar el número de vuelo.' });
+  }
+};
+
 const obtenerVuelo = async (req, res) => {
   try {
     const vuelo = await Vuelo.buscarPorId(req.params.id);
@@ -96,8 +128,8 @@ const listarAeronaves = async (req, res) => {
 
 const crearVuelo = async (req, res) => {
   try {
-    const { origen_iata, destino_iata, aircraft_id, flight_number, departure_datetime, arrival_datetime, base_price, gate_facility_id } = req.body;
-    if (!origen_iata || !destino_iata || !aircraft_id || !flight_number || !departure_datetime || !arrival_datetime || !base_price) {
+    const { origen_iata, destino_iata, aircraft_id, departure_datetime, arrival_datetime, base_price, gate_facility_id } = req.body;
+    if (!origen_iata || !destino_iata || !aircraft_id || !departure_datetime || !arrival_datetime || !base_price) {
       return res.status(400).json({ error: 'Faltan campos obligatorios' });
     }
     if (!gate_facility_id) return res.status(400).json({ error: 'La puerta de embarque es obligatoria' });
@@ -113,19 +145,6 @@ const crearVuelo = async (req, res) => {
     const precioBase = Number(base_price);
     if (!Number.isFinite(precioBase) || precioBase <= 0) {
       return res.status(400).json({ error: 'El precio base debe ser mayor a 0 USD.' });
-    }
-
-    // Verificación temprana del índice único uk_flight_number_date: identificar
-    // el vuelo existente evita el mensaje genérico de duplicado de MySQL.
-    const [duplicado] = await pool.query(
-      'SELECT id, flight_number, departure_datetime FROM flights WHERE flight_number = ? AND departure_datetime = ?',
-      [flight_number.toUpperCase(), departure_datetime]
-    );
-    if (duplicado.length > 0) {
-      return res.status(409).json({
-        error: 'Ya existe el vuelo ' + flight_number.toUpperCase() + ' con esa misma fecha y hora de salida (vuelo #' + duplicado[0].id + ')',
-        conflicto: { id: duplicado[0].id, flight_number: duplicado[0].flight_number, departure_datetime: duplicado[0].departure_datetime }
-      });
     }
 
     const [origen] = await pool.query('SELECT id FROM airports WHERE iata_code = ? AND active = 1', [origen_iata.toUpperCase()]);
@@ -160,11 +179,24 @@ const crearVuelo = async (req, res) => {
 
     const connection = await pool.getConnection();
     let result;
+    let flightNumber;
     try {
       await connection.beginTransaction();
+      const [secuencias] = await connection.query(
+        'SELECT prefix, last_number FROM flight_number_sequences WHERE id = 1 FOR UPDATE'
+      );
+      if (!secuencias.length) {
+        throw new Error('Falta inicializar la numeración automática de vuelos. Ejecuta la migración de numeración.');
+      }
+      const siguiente = await siguienteNumeroDisponible(connection, secuencias[0].prefix, secuencias[0].last_number);
+      flightNumber = siguiente.flightNumber;
+      await connection.query(
+        'UPDATE flight_number_sequences SET last_number = ? WHERE id = 1',
+        [siguiente.numero]
+      );
       [result] = await connection.query(
       'INSERT INTO flights (route_id, aircraft_id, flight_number, departure_datetime, arrival_datetime, status, base_price, gate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [routeId, aircraft_id, flight_number.toUpperCase(), departure_datetime, arrival_datetime, 'scheduled', precioBase, gateCode]
+      [routeId, aircraft_id, flightNumber, departure_datetime, arrival_datetime, 'scheduled', precioBase, gateCode]
       );
       // Cada clase activa recibe su tarifa inicial = precio base × multiplicador
       // de la clase (editable desde Operaciones → Clases Tarifarias).
@@ -176,18 +208,22 @@ const crearVuelo = async (req, res) => {
           [result.insertId, clase.id, precio, req.usuario?.id || null, req.usuario?.id || null]
         );
       }
+      await connection.query(
+        `INSERT INTO flight_ancillaries (flight_id, ancillary_id, stock, price_override, active)
+         SELECT ?, id, default_stock, NULL, 1 FROM ancillaries
+         WHERE active = 1 AND default_stock > 0`,
+        [result.insertId]
+      );
       await connection.commit();
     } catch (error) {
       await connection.rollback();
       throw error;
     } finally { connection.release(); }
-    res.status(201).json({ exito: true, datos: { id: result.insertId } });
+    res.status(201).json({ exito: true, datos: { id: result.insertId, flight_number: flightNumber } });
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY') {
-      // El índice único de flights se valida arriba; si llega aquí es otro
-      // duplicado (p. ej. tarifas) y conviene ver el detalle en el log.
       console.error('Duplicado al crear vuelo:', error.sqlMessage || error.message);
-      return res.status(409).json({ error: 'Registro duplicado al crear el vuelo. Revisa número, fecha y hora de salida.' });
+      return res.status(409).json({ error: 'Registro duplicado al crear el vuelo. Vuelve a intentarlo para asignar otro número.' });
     }
     console.error('Error crear vuelo:', error);
     res.status(500).json({ error: 'Error interno: ' + (error.sqlMessage || error.message || 'Desconocido') });
@@ -429,4 +465,4 @@ const buscarItinerarios = async (req, res) => {
   }
 };
 
-module.exports = { buscarVuelos, listarVuelos, obtenerVuelo, listarAeronaves, crearVuelo, cancelarVuelo, reprogramarVuelo, buscarItinerarios };
+module.exports = { buscarVuelos, listarVuelos, obtenerNumeroVueloSiguiente, obtenerVuelo, listarAeronaves, crearVuelo, cancelarVuelo, reprogramarVuelo, buscarItinerarios };

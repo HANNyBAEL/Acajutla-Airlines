@@ -217,7 +217,10 @@ const manifiesto = async (req, res) => {
        WHERE fs.flight_id = ? AND r.status NOT IN ('cancelled', 'expired')
        ORDER BY fs.seat IS NULL, fs.seat`, [req.params.flightId]
     );
-    res.json({ exito: true, total: rows.length, datos: rows });
+    const datos = req.usuario?.rol === 'operations'
+      ? rows.map(({ boarding_pass_code, ...operativo }) => operativo)
+      : rows;
+    res.json({ exito: true, total: datos.length, datos });
   } catch (e) { res.status(500).json({ error: 'Error interno' }); }
 };
 

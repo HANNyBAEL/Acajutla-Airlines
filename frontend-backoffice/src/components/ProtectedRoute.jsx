@@ -1,9 +1,10 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { roleOf } from '../utils/roles';
+import { DEFAULT_PAGE_BY_ROLE, roleOf } from '../utils/roles';
 
 const ProtectedRoute = ({ children, roles }) => {
   const { estaAutenticado, cargando, usuario } = useAuth();
+  const location = useLocation();
 
   if (cargando) {
     return (
@@ -18,6 +19,11 @@ const ProtectedRoute = ({ children, roles }) => {
   }
 
   if (roles && !roles.includes(roleOf(usuario))) {
+    const paginaInicial = DEFAULT_PAGE_BY_ROLE[roleOf(usuario)];
+    if (paginaInicial && location.pathname !== paginaInicial) {
+      return <Navigate to={paginaInicial} replace />;
+    }
+
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import api from '../services/api';
 import Autocomplete from '../components/Autocomplete';
 import SearchableSelect from '../components/SearchableSelect';
-import { FiSearch, FiUserPlus, FiTrash2, FiCheckCircle, FiX } from 'react-icons/fi';
+import { FiSearch, FiUserPlus, FiTrash2, FiCheckCircle, FiX, FiShoppingBag } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { fechaActualSV } from '../utils/fechaServidor';
 const nacionalidades = ['SV', 'US', 'GT', 'HN', 'NI', 'CR', 'PA', 'MX'];
@@ -53,6 +53,9 @@ const NuevaReserva = () => {
   const [clase, setClase] = useState('economy');
   const [guardando, setGuardando] = useState(false);
   const [pnrCreado, setPnrCreado] = useState(null);
+  const [ancillariesPorVuelo, setAncillariesPorVuelo] = useState({});
+  const [ancillariesCargando, setAncillariesCargando] = useState(false);
+  const [ancillariesSeleccionados, setAncillariesSeleccionados] = useState([]);
 
   useEffect(() => {
     api.get('/aeropuertos?activos=1')
@@ -60,10 +63,65 @@ const NuevaReserva = () => {
       .catch(() => toast.error('Error al cargar aeropuertos'));
   }, []);
 
+  const claveVuelosSeleccionados = [...new Set(trayectos.map((t) => t.vueloId).filter(Boolean).map(String))].sort().join(',');
+  useEffect(() => {
+    let vigente = true;
+    const ids = claveVuelosSeleccionados ? claveVuelosSeleccionados.split(',') : [];
+    if (!ids.length) {
+      setAncillariesPorVuelo({});
+      setAncillariesSeleccionados([]);
+      setAncillariesCargando(false);
+      return () => { vigente = false; };
+    }
+
+    setAncillariesCargando(true);
+    Promise.all(ids.map((id) => api.get('/comercial/ancillaries/vuelo/' + id)
+      .then((response) => [id, response.data.datos || []])
+      .catch((error) => {
+        console.error('Error al cargar servicios del vuelo:', error);
+        return [id, []];
+      })))
+      .then((resultados) => {
+        if (!vigente) return;
+        const porVuelo = Object.fromEntries(resultados);
+        setAncillariesPorVuelo(porVuelo);
+        setAncillariesSeleccionados((actuales) => actuales.flatMap((linea) => {
+          const servicio = (porVuelo[String(linea.flight_id)] || []).find((item) => String(item.ancillary_id) === String(linea.ancillary_id));
+          if (!servicio || Number(servicio.stock) <= 0) return [];
+          return [Object.assign({}, linea, { quantity: Math.min(linea.quantity, Number(servicio.stock)) })];
+        }));
+      })
+      .finally(() => { if (vigente) setAncillariesCargando(false); });
+
+    return () => { vigente = false; };
+  }, [claveVuelosSeleccionados]);
+
   const actualizarTrayecto = (indice, campo, valor) => {
+    const vueloAnterior = trayectos[indice]?.vueloId;
+    if (vueloAnterior && campo !== 'vueloId') {
+      setAncillariesSeleccionados((actuales) => actuales.filter((linea) => String(linea.flight_id) !== String(vueloAnterior)));
+    }
+    if (vueloAnterior && campo === 'vueloId' && String(valor) !== String(vueloAnterior)) {
+      setAncillariesSeleccionados((actuales) => actuales.filter((linea) => String(linea.flight_id) !== String(vueloAnterior)));
+    }
     setTrayectos((actuales) => actuales.map((t, i) => i === indice
       ? Object.assign({}, t, { [campo]: valor, vuelos: campo === 'vueloId' ? t.vuelos : [], vueloId: campo === 'vueloId' ? valor : null })
       : t));
+  };
+
+  const cambiarAncillarySeleccionado = (flightId, servicio, incluido) => {
+    setAncillariesSeleccionados((actuales) => {
+      const restantes = actuales.filter((linea) => !(String(linea.flight_id) === String(flightId) && String(linea.ancillary_id) === String(servicio.ancillary_id)));
+      return incluido ? restantes.concat([{ flight_id: Number(flightId), ancillary_id: Number(servicio.ancillary_id), quantity: 1 }]) : restantes;
+    });
+  };
+
+  const cambiarCantidadAncillary = (flightId, ancillaryId, quantity) => {
+    setAncillariesSeleccionados((actuales) => actuales.map((linea) =>
+      String(linea.flight_id) === String(flightId) && String(linea.ancillary_id) === String(ancillaryId)
+        ? Object.assign({}, linea, { quantity: Number(quantity) })
+        : linea
+    ));
   };
 
   const cambiarTipoViaje = (tipo) => {
@@ -173,13 +231,24 @@ const NuevaReserva = () => {
       return total + lineas.reduce((subtotal, monto) => subtotal + Math.round(Math.round(Number(monto) * 100) * porcentaje / 100), 0);
     }, 0);
   }, 0) / 100;
+  const totalAncillariesCentavos = ancillariesSeleccionados.reduce((total, linea) => {
+    const servicio = (ancillariesPorVuelo[String(linea.flight_id)] || []).find((item) => String(item.ancillary_id) === String(linea.ancillary_id));
+    return total + Math.round(Number(servicio?.precio_final || 0) * 100) * Number(linea.quantity || 0);
+  }, 0);
+  const totalEstimadoConAncillaries = totalEstimado + totalAncillariesCentavos / 100;
 
   const guardar = async () => {
     if (!clienteId || !clienteSel || Number(clienteSel.id) !== Number(clienteId)) return toast.error('Selecciona un cliente o agrega uno nuevo');
     if (trayectos.some((t) => !t.vueloId)) return toast.error('Selecciona un vuelo para cada trayecto');
+    if (ancillariesCargando) return toast.error('Espera a que termine de cargar la disponibilidad de servicios');
     const vueloSinCupo = vuelosSeleccionados.find((vuelo) => pasajeros.length > Number(vuelo.available_seats || 0));
     if (vueloSinCupo) {
       return toast.error(`No se puede completar la compra: el vuelo ${vueloSinCupo.flight_number} tiene ${Number(vueloSinCupo.available_seats || 0)} asientos disponibles y se solicitaron ${pasajeros.length} boletos.`, { duration: 8000 });
+    }
+    for (const linea of ancillariesSeleccionados) {
+      const servicio = (ancillariesPorVuelo[String(linea.flight_id)] || []).find((item) => String(item.ancillary_id) === String(linea.ancillary_id));
+      if (!Number.isInteger(Number(linea.quantity)) || Number(linea.quantity) < 1) return toast.error('La cantidad de cada servicio debe ser al menos 1');
+      if (!servicio || Number(linea.quantity) > Number(servicio.stock)) return toast.error(`Ya no hay suficiente inventario para ${servicio?.name || 'el servicio seleccionado'}`);
     }
     for (let i = 0; i < pasajeros.length; i++) {
       const p = pasajeros[i];
@@ -193,6 +262,7 @@ const NuevaReserva = () => {
         customer_id: Number(cid),
         vuelos: trayectos.map((t) => ({ flight_id: t.vueloId, fare_class: clase })),
         pasajeros: pasajeros,
+        ancillaries: ancillariesSeleccionados,
         time_limit_minutes: 30,
       });
       setPnrCreado(r.data.datos.pnr);
@@ -215,7 +285,20 @@ const NuevaReserva = () => {
           <p className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-6">
             Reserva en estado PENDIENTE con time limit de 30 minutos (RN-COM-01). Sigue al módulo de Pagos.
           </p>
-          <button className="btn-primary mt-6" onClick={() => { setPnrCreado(null); setPasajeros([pasajeroVacio()]); setTrayectos([{ origen: 'SAL', destino: 'MIA', fecha: '', vuelos: [], vueloId: null, buscando: false }]); setClienteId(''); setClienteSel(null); setTipoViaje('ida'); setClase('economy'); }}>
+          {ancillariesSeleccionados.length > 0 && (
+            <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4 text-left">
+              <h2 className="font-semibold text-blue-900">Servicios incluidos en la reserva</h2>
+              <div className="mt-2 space-y-1 text-sm text-blue-800">
+                {ancillariesSeleccionados.map((linea) => {
+                  const servicio = (ancillariesPorVuelo[String(linea.flight_id)] || []).find((item) => String(item.ancillary_id) === String(linea.ancillary_id));
+                  const vuelo = vuelosSeleccionados.find((item) => String(item.id) === String(linea.flight_id));
+                  return <p key={`${linea.flight_id}-${linea.ancillary_id}`}>{linea.quantity} × {servicio?.name || 'Servicio adicional'} · {vuelo?.flight_number || 'Vuelo'} · ${((Math.round(Number(servicio?.precio_final || 0) * 100) * Number(linea.quantity)) / 100).toFixed(2)}</p>;
+                })}
+              </div>
+              <p className="mt-2 text-xs text-blue-700">Se cobrarán junto con la reserva y se incluirán en el DTE emitido al completar el pago.</p>
+            </div>
+          )}
+          <button className="btn-primary mt-6" onClick={() => { setPnrCreado(null); setPasajeros([pasajeroVacio()]); setTrayectos([{ origen: 'SAL', destino: 'MIA', fecha: '', vuelos: [], vueloId: null, buscando: false }]); setAncillariesSeleccionados([]); setClienteId(''); setClienteSel(null); setTipoViaje('ida'); setClase('economy'); }}>
             Crear otra reserva
           </button>
         </div>
@@ -348,6 +431,60 @@ const NuevaReserva = () => {
             ))}
           </div>
         </div>
+
+        <div className="card p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <FiShoppingBag className="text-primary-600" size={21} />
+            <h2 className="text-lg font-semibold text-gray-800">4. Servicios adicionales (opcional)</h2>
+          </div>
+          <p className="text-sm text-gray-500 mb-4">Elige los servicios disponibles para cada vuelo. Se sumarán al total de la reserva y aparecerán como conceptos en la misma factura.</p>
+          {ancillariesCargando ? (
+            <p className="text-sm text-gray-500">Cargando servicios disponibles...</p>
+          ) : vuelosSeleccionados.length === 0 ? (
+            <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-500">Selecciona primero los vuelos para consultar sus servicios adicionales.</p>
+          ) : (
+            <div className="space-y-4">
+              {vuelosSeleccionados.map((vuelo) => {
+                const servicios = ancillariesPorVuelo[String(vuelo.id)] || [];
+                return (
+                  <div key={vuelo.id} className="rounded-lg border border-gray-200 overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                      <p className="font-semibold text-gray-800">{vuelo.flight_number}</p>
+                      <p className="text-xs text-gray-500">{vuelo.origin_iata} → {vuelo.destination_iata}</p>
+                    </div>
+                    {servicios.length === 0 ? (
+                      <p className="px-4 py-3 text-sm text-gray-500">Este vuelo no tiene servicios adicionales disponibles.</p>
+                    ) : (
+                      <div className="divide-y divide-gray-100">
+                        {servicios.map((servicio) => {
+                          const linea = ancillariesSeleccionados.find((item) => String(item.flight_id) === String(vuelo.id) && String(item.ancillary_id) === String(servicio.ancillary_id));
+                          const agotado = Number(servicio.stock) <= 0;
+                          return (
+                            <div key={servicio.ancillary_id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                              <label className={'flex min-w-0 flex-1 items-start gap-3 ' + (agotado ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}>
+                                <input type="checkbox" className="mt-1" checked={Boolean(linea)} disabled={agotado} onChange={(e) => cambiarAncillarySeleccionado(vuelo.id, servicio, e.target.checked)} />
+                                <span className="min-w-0">
+                                  <span className="block font-medium text-gray-800">{servicio.code} · {servicio.name}</span>
+                                  <span className="block text-xs text-gray-500">${Number(servicio.precio_final).toFixed(2)} cada uno · {agotado ? 'Agotado' : `${servicio.stock} disponibles`}</span>
+                                </span>
+                              </label>
+                              {linea && (
+                                <label className="flex items-center gap-2 text-sm text-gray-600">
+                                  Cantidad
+                                  <input type="number" className="input-field w-24" min="1" max={Number(servicio.stock)} step="1" value={linea.quantity} onChange={(e) => cambiarCantidadAncillary(vuelo.id, servicio.ancillary_id, e.target.value)} />
+                                </label>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       <div>
@@ -358,9 +495,15 @@ const NuevaReserva = () => {
             <div className="border-b pb-2 space-y-1">{vuelosSeleccionados.length ? vuelosSeleccionados.map((v, i) => <div key={v.id} className="flex justify-between gap-2"><span className="text-gray-500">T{i + 1}: {v.origin_iata} → {v.destination_iata}</span><span className="font-medium">{v.flight_number}</span></div>) : <span className="text-gray-500">Aún no hay vuelos seleccionados</span>}</div>
             <div className="flex justify-between"><span className="text-gray-500">Pasajeros</span><span className="font-medium">{pasajeros.length}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Clase</span><span className="font-medium capitalize">{clase}</span></div>
+            {ancillariesSeleccionados.length > 0 && (
+              <div className="border-t pt-2 space-y-1">
+                <div className="flex justify-between"><span className="text-gray-500">Servicios adicionales</span><span className="font-medium">{ancillariesSeleccionados.reduce((total, linea) => total + Number(linea.quantity || 0), 0)} unidad(es)</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Subtotal servicios</span><span className="font-medium">${(totalAncillariesCentavos / 100).toFixed(2)}</span></div>
+              </div>
+            )}
             <div className="border-t pt-2 mt-2 flex justify-between text-base">
               <span className="font-semibold">Total estimado</span>
-              <span className="font-bold text-primary-700">${totalEstimado.toFixed(2)}</span>
+              <span className="font-bold text-primary-700">${totalEstimadoConAncillaries.toFixed(2)}</span>
             </div>
           </div>
           <button className="btn-primary w-full mt-6" onClick={guardar} disabled={guardando}>

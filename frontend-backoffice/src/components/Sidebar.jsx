@@ -36,7 +36,7 @@ const Sidebar = () => {
         { page: 'vuelos', path: '/vuelos', icon: FiSend, label: 'Vuelos' },
         { page: 'aeropuertos', path: '/aeropuertos', icon: FiMap, label: 'Aeropuertos' },
         { page: 'aeronaves', path: '/aeronaves', icon: FiCpu, label: 'Aeronaves' },
-        { page: 'checkin', path: '/checkin', icon: FiUserCheck, label: 'Check-in / Embarque' },
+        { page: 'checkin', path: '/checkin', icon: FiUserCheck, label: rol === 'operations' ? 'Manifiestos de vuelo' : 'Check-in / Embarque' },
         { page: 'operaciones', path: '/operaciones', icon: FiSettings, label: 'Operaciones' },
       ],
     },
@@ -75,14 +75,11 @@ const Sidebar = () => {
 
   return (
     <aside className="w-64 bg-white shadow-lg flex flex-col">
-      <div className="h-16 flex items-center px-6 border-b border-gray-200">
-        <div className="w-8 h-8 bg-gradient-to-br from-primary-600 to-primary-800 rounded-lg flex items-center justify-center">
-          <FiSend className="text-white" size={18} />
+      <div className="min-h-20 flex flex-col items-center justify-center px-4 py-2 border-b border-gray-200">
+        <div className="h-14 w-full overflow-hidden flex items-center justify-center rounded bg-[#f7f7f7]">
+          <img src="/logo-acajutla-airlines.png" alt="Acajutla Airlines" className="w-full h-auto max-w-none" />
         </div>
-        <div className="ml-2">
-          <h1 className="font-bold text-gray-800 text-sm">Acajutla Airlines</h1>
-          <p className="text-xs text-gray-500">Backoffice</p>
-        </div>
+        <p className="-mt-1 text-[10px] font-medium tracking-wide text-gray-500">BACKOFFICE</p>
       </div>
       <nav className="flex-1 overflow-y-auto py-4 px-3">
         {menu.map((grupo) => {

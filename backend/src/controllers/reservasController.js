@@ -22,7 +22,7 @@ const crearReserva = async (req, res) => {
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
-    const { customer_id, vuelos, pasajeros, time_limit_minutes = 30 } = req.body;
+    const { customer_id, vuelos, pasajeros, ancillaries = [], time_limit_minutes = 30 } = req.body;
 
     // Validaciones
     if (!customer_id) {
@@ -106,11 +106,63 @@ const crearReserva = async (req, res) => {
       tarifasPorVuelo.set(String(v.flight_id), { id: tarifa[0].id, precio: Number(tarifa[0].price), clase: clase.segmentCode, impuestos });
     }
 
+    if (!Array.isArray(ancillaries) || ancillaries.length > 100) {
+      throw Object.assign(new Error('La lista de servicios adicionales no es válida'), { statusCode: 400 });
+    }
+    const vuelosDeReserva = new Set(vuelos.map((vuelo) => String(vuelo.flight_id)));
+    const serviciosReservados = [];
+    const serviciosDuplicados = new Set();
+    let totalAncillariesCentavos = 0;
+    const ancillariesOrdenados = [...ancillaries].sort((a, b) =>
+      Number(a.flight_id) - Number(b.flight_id) || Number(a.ancillary_id) - Number(b.ancillary_id)
+    );
+    for (const linea of ancillariesOrdenados) {
+      const flightId = Number(linea.flight_id);
+      const ancillaryId = Number(linea.ancillary_id);
+      const cantidad = Number(linea.quantity ?? 1);
+      const clave = `${flightId}:${ancillaryId}`;
+      if (!Number.isInteger(flightId) || !Number.isInteger(ancillaryId) || !Number.isInteger(cantidad) || cantidad < 1 || cantidad > 100) {
+        throw Object.assign(new Error('Servicio o cantidad inválidos'), { statusCode: 400 });
+      }
+      if (!vuelosDeReserva.has(String(flightId))) {
+        throw Object.assign(new Error('Cada servicio debe corresponder a un vuelo seleccionado en la reserva'), { statusCode: 400 });
+      }
+      if (serviciosDuplicados.has(clave)) {
+        throw Object.assign(new Error('No repitas el mismo servicio para el mismo vuelo'), { statusCode: 400 });
+      }
+      serviciosDuplicados.add(clave);
+
+      const [disponibilidad] = await connection.query(
+        `SELECT fa.id, fa.stock, fa.price_override, a.base_price
+         FROM flight_ancillaries fa JOIN ancillaries a ON a.id = fa.ancillary_id
+         WHERE fa.flight_id = ? AND fa.ancillary_id = ? AND fa.active = 1 AND a.active = 1
+         FOR UPDATE`,
+        [flightId, ancillaryId]
+      );
+      if (!disponibilidad.length) {
+        throw Object.assign(new Error('Uno de los servicios ya no está disponible para ese vuelo'), { statusCode: 409 });
+      }
+      if (Number(disponibilidad[0].stock) < cantidad) {
+        throw Object.assign(new Error('No hay inventario suficiente para uno de los servicios seleccionados'), { statusCode: 409 });
+      }
+      const precioCentavos = centavos(disponibilidad[0].price_override ?? disponibilidad[0].base_price);
+      if (precioCentavos < 0) throw Object.assign(new Error('El precio del servicio no es válido'), { statusCode: 409 });
+      totalAncillariesCentavos += precioCentavos * cantidad;
+      serviciosReservados.push({
+        flight_id: flightId,
+        ancillary_id: ancillaryId,
+        cantidad,
+        precio: precioCentavos / 100,
+        inventario_id: disponibilidad[0].id
+      });
+    }
+
     // Sumar los mismos centavos que se persistirán en segmentos y tributos.
-    const estimated_total = pasajeros.reduce((total, pax) => total + vuelos.reduce((subtotal, v) => {
+    const totalVueloCentavos = pasajeros.reduce((total, pax) => total + vuelos.reduce((subtotal, v) => {
       const importes = importesPasajero(tarifasPorVuelo.get(String(v.flight_id)), pax.passenger_type || 'adult');
       return subtotal + importes.base + importes.impuestos.reduce((sum, line) => sum + line.amount, 0);
-    }, 0), 0) / 100;
+    }, 0), 0);
+    const estimated_total = (totalVueloCentavos + totalAncillariesCentavos) / 100;
 
     // Generar PNR único
     const pnr = await generarPNRUnico(connection);
@@ -177,6 +229,24 @@ const crearReserva = async (req, res) => {
       }
     }
 
+    // Reservar inventario junto con la reserva pendiente para incluir los
+    // conceptos adicionales en el total y en el DTE que se emita después.
+    for (const servicio of serviciosReservados) {
+      const [actualizacion] = await connection.query(
+        'UPDATE flight_ancillaries SET stock = stock - ? WHERE id = ? AND stock >= ?',
+        [servicio.cantidad, servicio.inventario_id, servicio.cantidad]
+      );
+      if (actualizacion.affectedRows !== 1) {
+        throw Object.assign(new Error('El inventario de un servicio cambió. Actualiza la disponibilidad e intenta de nuevo.'), { statusCode: 409 });
+      }
+      for (let unidad = 0; unidad < servicio.cantidad; unidad++) {
+        await connection.query(
+          "INSERT INTO reservation_ancillaries (reservation_id, passenger_id, flight_id, ancillary_id, price, status) VALUES (?, NULL, ?, ?, ?, 'active')",
+          [reservation_id, servicio.flight_id, servicio.ancillary_id, servicio.precio]
+        );
+      }
+    }
+
     await connection.commit();
 
     res.status(201).json({
@@ -193,6 +263,8 @@ const crearReserva = async (req, res) => {
   } catch (error) {
     if (connection) await connection.rollback();
     console.error('Error al crear reserva:', error);
+
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
     
     // Mensajes de error específicos
     if (error.code === 'ER_DUP_ENTRY') {
@@ -216,6 +288,12 @@ const consultarReserva = async (req, res) => {
     const reserva = await Reserva.obtenerDetalleCompleto(req.params.pnr);
     if (!reserva) return res.status(404).json({ error: 'Reserva no encontrada' });
     const expirada = Number(reserva.time_limit_expired) === 1;
+    if (req.usuario?.rol === 'operations') {
+      const { id, pnr, status, created_at } = reserva;
+      const pasajeros = (reserva.pasajeros || []).map(({ first_names, last_names, passenger_type }) => ({ first_names, last_names, passenger_type }));
+      const segmentos = (reserva.segmentos || []).map(({ flight_id, flight_number, fare_class, seat, departure_datetime, arrival_datetime, origin, destination }) => ({ flight_id, flight_number, fare_class, seat, departure_datetime, arrival_datetime, origin, destination }));
+      return res.json({ exito: true, datos: { id, pnr, status, created_at, expirada, pasajeros, segmentos } });
+    }
     res.json({ exito: true, datos: { ...reserva, expirada } });
   } catch (error) {
     console.error('Error al consultar reserva:', error);
@@ -226,7 +304,10 @@ const consultarReserva = async (req, res) => {
 const listarReservas = async (req, res) => {
   try {
     const reservas = await Reserva.listar(req.query);
-    res.json({ exito: true, total: reservas.length, datos: reservas });
+    const datos = req.usuario?.rol === 'operations'
+      ? reservas.map(({ id, pnr, status, created_at, total_passengers }) => ({ id, pnr, status, created_at, total_passengers }))
+      : reservas;
+    res.json({ exito: true, total: datos.length, datos });
   } catch (error) {
     console.error('Error al listar reservas:', error);
     res.status(500).json({ error: 'Error interno' });

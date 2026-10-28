@@ -13,8 +13,13 @@ require('dotenv').config();
     type ENUM('baggage','seat','meal','priority','other') NOT NULL,
     description VARCHAR(250) NULL,
     base_price DECIMAL(10,2) NOT NULL,
+    default_stock INT NOT NULL DEFAULT 0,
     active TINYINT(1) DEFAULT 1
   )`);
+  const [ancillaryColumns] = await pool.query('SHOW COLUMNS FROM ancillaries');
+  if (!ancillaryColumns.some((column) => column.Field === 'default_stock')) {
+    await pool.query('ALTER TABLE ancillaries ADD COLUMN default_stock INT NOT NULL DEFAULT 0 AFTER base_price');
+  }
   await pool.query(`CREATE TABLE IF NOT EXISTS flight_ancillaries (
     id INT AUTO_INCREMENT PRIMARY KEY,
     flight_id INT NOT NULL,
@@ -72,6 +77,13 @@ require('dotenv').config();
     ('PRIOR', 'Abordaje prioritario', 'priority', 'Embarque antes del grupo general', 15.00),
     ('SEAT', 'Selección de asiento', 'seat', 'Elección de asiento específico', 10.00),
     ('MEAL', 'Comida especial', 'meal', 'Menú vegetariano, infantil o médico', 12.00)`);
+  await pool.query(
+    `INSERT IGNORE INTO flight_ancillaries (flight_id, ancillary_id, stock, price_override, active)
+     SELECT f.id, a.id, a.default_stock, NULL, 1
+     FROM flights f CROSS JOIN ancillaries a
+     WHERE f.status = 'scheduled' AND f.departure_datetime > NOW()
+       AND a.active = 1 AND a.default_stock > 0`
+  );
   console.log('Migración comercial OK');
   process.exit(0);
 })().catch((e) => { console.error('Error:', e.message); process.exit(1); });

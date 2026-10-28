@@ -20,6 +20,7 @@ const Vuelos = () => {
   const [aeronaves, setAeronaves] = useState([]);
   const [instalaciones, setInstalaciones] = useState([]);
   const [guardando, setGuardando] = useState(false);
+  const [cargandoNumeroVuelo, setCargandoNumeroVuelo] = useState(false);
   const [form, setForm] = useState({ flight_number: '', origen_iata: '', destino_iata: '', aircraft_id: '', departure_datetime: '', arrival_datetime: '', base_price: '', gate_facility_id: '' });
   const [errorValidacion, setErrorValidacion] = useState('');
   const [modalReprog, setModalReprog] = useState(null);
@@ -53,13 +54,22 @@ const Vuelos = () => {
     setForm({ flight_number: '', origen_iata: '', destino_iata: '', aircraft_id: '', departure_datetime: '', arrival_datetime: '', base_price: '', gate_facility_id: '' });
     setErrorValidacion('');
     setModal(true);
+    setCargandoNumeroVuelo(true);
     try {
-      const res = await Promise.all([api.get('/aeropuertos?activos=1'), api.get('/vuelos/aeronaves'), api.get('/operaciones/infraestructura')]);
+      const res = await Promise.all([
+        api.get('/aeropuertos?activos=1'),
+        api.get('/vuelos/aeronaves'),
+        api.get('/operaciones/infraestructura'),
+        api.get('/vuelos/numero-siguiente')
+      ]);
       setAeropuertos(res[0].data.datos || []);
       setAeronaves(res[1].data.datos || []);
       setInstalaciones(res[2].data.datos || []);
+      setForm((actual) => Object.assign({}, actual, { flight_number: res[3].data.datos?.flight_number || '' }));
     } catch (e) {
-      toast.error('Error al cargar catálogos');
+      toast.error(e.response?.data?.error || 'No se pudo cargar el número de vuelo y los catálogos');
+    } finally {
+      setCargandoNumeroVuelo(false);
     }
   };
 
@@ -90,7 +100,7 @@ const Vuelos = () => {
   });
 
   const guardar = async () => {
-    if (!form.flight_number || !form.aircraft_id || !form.origen_iata || !form.destino_iata || !form.departure_datetime || !form.arrival_datetime || !form.base_price) {
+    if (cargandoNumeroVuelo || !form.flight_number || !form.aircraft_id || !form.origen_iata || !form.destino_iata || !form.departure_datetime || !form.arrival_datetime || !form.base_price) {
       return toast.error('Completa todos los campos obligatorios (*)');
     }
     if (form.origen_iata === form.destino_iata) {
@@ -104,18 +114,13 @@ const Vuelos = () => {
     }
     setGuardando(true);
     try {
-      await api.post('/vuelos', form);
-      toast.success('Vuelo programado correctamente');
+      const res = await api.post('/vuelos', form);
+      toast.success(`Vuelo ${res.data.datos?.flight_number || form.flight_number} programado correctamente`);
       setModal(false);
       cargar();
     } catch (e) {
       const data = e.response ? e.response.data : null;
-      if (e.response && e.response.status === 409 && data && data.conflicto) {
-        const salida = new Date(data.conflicto.departure_datetime).toLocaleString('es-SV');
-        toast.error('Ya existe ' + data.conflicto.flight_number + ' con salida el ' + salida + ' (vuelo #' + data.conflicto.id + '). Cambia la hora o el número de vuelo.', { duration: 7000 });
-      } else {
-        toast.error(data && data.error ? data.error : 'Error al crear el vuelo', { duration: 8000 });
-      }
+      toast.error(data && data.error ? data.error : 'Error al crear el vuelo', { duration: 8000 });
     } finally { setGuardando(false); }
   };
 
@@ -388,8 +393,9 @@ const Vuelos = () => {
               <button onClick={() => setModal(false)} className="text-gray-500 hover:text-gray-700"><FiX size={22} /></button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Número de vuelo *</label>
-                <input className="input-field" value={form.flight_number} onChange={(e) => setCampo('flight_number', e.target.value)} placeholder="AA-210" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Número de vuelo</label>
+                <input className="input-field bg-gray-100 text-gray-600 cursor-not-allowed" value={form.flight_number} readOnly aria-readonly="true" placeholder={cargandoNumeroVuelo ? 'Generando número...' : 'Se asigna automáticamente'} />
+                <p className="mt-1 text-xs text-gray-500">Asignado automáticamente y bloqueado para evitar duplicados.</p></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Aeronave *</label>
                 <SearchableSelect options={aeronaves.map((a) => {
                   const estados = { available: 'Disponible', in_flight: 'En vuelo', maintenance: 'Mantenimiento', out_of_service: 'Fuera de servicio' };
@@ -426,7 +432,7 @@ const Vuelos = () => {
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button className="btn-secondary" onClick={() => setModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={guardar} disabled={guardando || errorValidacion}>{guardando ? 'Guardando...' : 'Crear Vuelo'}</button>
+              <button className="btn-primary" onClick={guardar} disabled={guardando || cargandoNumeroVuelo || !form.flight_number || errorValidacion}>{guardando ? 'Guardando...' : 'Crear Vuelo'}</button>
             </div>
           </div>
         </div>

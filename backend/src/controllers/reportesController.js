@@ -26,6 +26,13 @@ const dashboard = async (req, res) => {
     const [mant] = await pool.query(
       "SELECT COUNT(*) AS total FROM aircraft WHERE status IN ('maintenance','out_of_service')"
     );
+    const datosOperativos = {
+      vuelosHoy,
+      pax24: pax24[0].total,
+      ocupacionPromedio: ocup[0].promedio || 0,
+      alertasMantenimiento: mant[0].total,
+    };
+    if (req.usuario.rol === 'operations') return res.json({ exito: true, datos: datosOperativos });
     const [ventasPorCanal] = await pool.query(
       "SELECT r.sales_channel AS canal, COALESCE(SUM(p.amount),0) AS monto FROM payments p JOIN reservations r ON r.id = p.reservation_id WHERE p.status = 'approved' AND p.type = 'payment' AND DATE(CONVERT_TZ(p.payment_date, 'UTC', 'America/El_Salvador')) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador')) GROUP BY r.sales_channel ORDER BY monto DESC"
     );
@@ -48,10 +55,7 @@ const dashboard = async (req, res) => {
     res.json({
       exito: true,
       datos: {
-        vuelosHoy: vuelosHoy,
-        pax24: pax24[0].total,
-        ocupacionPromedio: ocup[0].promedio || 0,
-        alertasMantenimiento: mant[0].total,
+        ...datosOperativos,
         ventasPorCanal: ventasPorCanal,
         ventasTotal: ventasTotal[0].total,
         dte: dte[0],

@@ -6,31 +6,45 @@ import toast from 'react-hot-toast';
 const Auditoria = () => {
   const [logs, setLogs] = useState([]);
   const [stats, setStats] = useState(null);
+  const [modulos, setModulos] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState('');
   const [filtros, setFiltros] = useState({ modulo: '', resultado: '', usuario: '' });
 
-  const cargar = async () => {
+  const cargar = async (filtrosAplicados = filtros) => {
     setCargando(true);
+    setErrorCarga('');
     try {
       const params = {};
-      if (filtros.modulo) params.modulo = filtros.modulo;
-      if (filtros.resultado) params.resultado = filtros.resultado;
-      if (filtros.usuario) params.usuario = filtros.usuario;
+      if (filtrosAplicados.modulo) params.modulo = filtrosAplicados.modulo;
+      if (filtrosAplicados.resultado) params.resultado = filtrosAplicados.resultado;
+      if (filtrosAplicados.usuario.trim()) params.usuario = filtrosAplicados.usuario.trim();
       params.limite = 200;
-      const [rLogs, rStats] = await Promise.all([
+      const [rLogsResult, rStatsResult] = await Promise.allSettled([
         api.get('/auditoria', { params: params }),
         api.get('/auditoria/estadisticas', { params: { dias: 7 } })
       ]);
-      setLogs(rLogs.data.datos || []);
-      setStats(rStats.data.datos || null);
+      if (rLogsResult.status === 'rejected') throw rLogsResult.reason;
+      setLogs(rLogsResult.value.data.datos || []);
+      if (rStatsResult.status === 'fulfilled') setStats(rStatsResult.value.data.datos || null);
+      else console.error('Error al cargar estadísticas de auditoría:', rStatsResult.reason);
     } catch (e) {
-      toast.error('Error al cargar la bitácora');
+      console.error('Error al cargar auditoría:', e);
+      const mensaje = e.response?.data?.error || 'Error al cargar la bitácora';
+      setLogs([]);
+      setErrorCarga(mensaje);
+      toast.error(mensaje);
     } finally {
       setCargando(false);
     }
   };
 
-  useEffect(() => { cargar(); }, []);
+  useEffect(() => {
+    cargar();
+    api.get('/auditoria/modulos')
+      .then((response) => setModulos(response.data.datos || []))
+      .catch((error) => console.error('Error al cargar módulos de auditoría:', error));
+  }, []);
 
   const t = stats && stats.totales ? stats.totales : { total: 0, exitos: 0, fallos: 0, usuarios_activos: 0 };
 
@@ -66,24 +80,20 @@ const Auditoria = () => {
       </div>
 
       <div className="card p-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <form className="grid grid-cols-1 md:grid-cols-5 gap-3" onSubmit={(e) => { e.preventDefault(); cargar(); }}>
           <select className="input-field" value={filtros.modulo} onChange={(e) => setFiltros(Object.assign({}, filtros, { modulo: e.target.value }))}>
             <option value="">Todos los módulos</option>
-            <option value="auth">auth</option>
-            <option value="reservas">reservas</option>
-            <option value="vuelos">vuelos</option>
-            <option value="pagos">pagos</option>
-            <option value="dte">dte</option>
-            <option value="clientes">clientes</option>
+            {modulos.map((modulo) => <option key={modulo} value={modulo}>{modulo}</option>)}
           </select>
           <select className="input-field" value={filtros.resultado} onChange={(e) => setFiltros(Object.assign({}, filtros, { resultado: e.target.value }))}>
             <option value="">Todos los resultados</option>
             <option value="exito">Éxito</option>
             <option value="fallo">Fallo</option>
           </select>
-          <input className="input-field" placeholder="Buscar usuario..." value={filtros.usuario} onChange={(e) => setFiltros(Object.assign({}, filtros, { usuario: e.target.value }))} />
-          <button className="btn-primary" onClick={cargar}>Filtrar</button>
-        </div>
+          <input type="search" className="input-field" placeholder="Buscar usuario..." value={filtros.usuario} onChange={(e) => setFiltros(Object.assign({}, filtros, { usuario: e.target.value }))} />
+          <button type="submit" className="btn-primary" disabled={cargando}>{cargando ? 'Filtrando…' : 'Filtrar'}</button>
+          <button type="button" className="btn-secondary" disabled={cargando} onClick={() => { const vacios = { modulo: '', resultado: '', usuario: '' }; setFiltros(vacios); cargar(vacios); }}>Limpiar</button>
+        </form>
       </div>
 
       <div className="card overflow-hidden">
@@ -103,6 +113,8 @@ const Auditoria = () => {
             <tbody className="divide-y divide-gray-100">
               {cargando ? (
                 <tr><td colSpan="7" className="text-center py-8 text-gray-500">Cargando bitácora...</td></tr>
+              ) : errorCarga ? (
+                <tr><td colSpan="7" className="text-center py-8 text-red-600">{errorCarga}</td></tr>
               ) : logs.length === 0 ? (
                 <tr><td colSpan="7" className="text-center py-8 text-gray-500">Sin eventos registrados</td></tr>
               ) : logs.map((l) => (

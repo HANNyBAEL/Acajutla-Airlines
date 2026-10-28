@@ -6,6 +6,7 @@ const { auditar } = require('../middleware/audit');
 
 router.get('/buscar', controller.buscarVuelos);
 router.get('/itinerarios', controller.buscarItinerarios);
+router.get('/numero-siguiente', verificarToken, verificarRol('admin', 'operations'), controller.obtenerNumeroVueloSiguiente);
 router.get('/aeronaves', verificarToken, verificarRol('admin', 'operations'), controller.listarAeronaves);
 router.get('/', verificarToken, verificarRol('admin', 'operations', 'cashier', 'auditor', 'corporate_agent'), controller.listarVuelos);
 router.post('/', verificarToken, verificarRol('admin', 'operations'), auditar('CREAR_VUELO', 'vuelos'), controller.crearVuelo);

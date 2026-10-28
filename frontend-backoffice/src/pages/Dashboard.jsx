@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { roleOf } from '../utils/roles';
 import { FiSend, FiUsers, FiPercent, FiDollarSign, FiAlertTriangle, FiRefreshCw, FiTool } from 'react-icons/fi';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -7,6 +9,8 @@ const COLORES = { scheduled: '#3b82f6', confirmed: '#22c55e', in_progress: '#f59
 const ETIQUETAS = { scheduled: 'Programado', confirmed: 'Confirmado', in_progress: 'En curso', delayed: 'Retrasado', completed: 'Finalizado', cancelled: 'Cancelado' };
 
 const Dashboard = () => {
+  const { usuario } = useAuth();
+  const esOperaciones = roleOf(usuario) === 'operations';
   const [datos, setDatos] = useState(null);
   const [cargando, setCargando] = useState(true);
 
@@ -34,10 +38,10 @@ const Dashboard = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
-        <p className="text-gray-500 mt-1">Indicadores operativos, comerciales y fiscales en tiempo real</p>
+        <p className="text-gray-500 mt-1">{esOperaciones ? 'Indicadores operativos en tiempo real' : 'Indicadores operativos, comerciales y fiscales en tiempo real'}</p>
       </div>
 
-      {Number(datos.contingenciaPendiente24h || 0) > 0 && (
+      {!esOperaciones && Number(datos.contingenciaPendiente24h || 0) > 0 && (
         <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-lg flex items-center space-x-3">
           <FiAlertTriangle size={22} />
           <p className="text-sm font-medium">CRÍTICO: {datos.contingenciaPendiente24h} DTE(s) pendientes de transmisión con más de 24 horas.</p>
@@ -70,7 +74,7 @@ const Dashboard = () => {
             <div className="bg-purple-500 text-white p-3 rounded-lg"><FiPercent size={22} /></div>
           </div>
         </div>
-        <div className="card p-5">
+        {!esOperaciones && <div className="card p-5">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Ventas brutas hoy</p>
@@ -79,7 +83,7 @@ const Dashboard = () => {
             </div>
             <div className="bg-emerald-600 text-white p-3 rounded-lg"><FiDollarSign size={22} /></div>
           </div>
-        </div>
+        </div>}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -100,7 +104,7 @@ const Dashboard = () => {
           )}
         </div>
 
-        <div className="card p-5">
+        {!esOperaciones && <div className="card p-5">
           <h3 className="font-semibold text-gray-800 mb-3">Salud fiscal (DTE hoy)</h3>
           <p className={'text-4xl font-bold ' + colorSalud}>{salud}%</p>
           <p className="text-sm text-gray-500 mt-1">Aceptados: {aceptados} · Rechazados: {rechazados} · Pendientes: {Number(dte.pendientes || 0)} · Contingencia: {Number(dte.contingencia || 0)}</p>
@@ -110,9 +114,10 @@ const Dashboard = () => {
           <div className="mt-2 flex items-center space-x-2 text-sm text-gray-600">
             <FiTool /><span>Aeronaves en mantenimiento o fuera de servicio: {datos.alertasMantenimiento || 0}</span>
           </div>
-        </div>
+        </div>}
+        {esOperaciones && <div className="card p-5"><h3 className="font-semibold text-gray-800 mb-3">Mantenimiento</h3><div className="flex items-center space-x-2 text-sm text-gray-600"><FiTool /><span>Aeronaves en mantenimiento o fuera de servicio: {datos.alertasMantenimiento || 0}</span></div></div>}
 
-        <div className="card p-5">
+        {!esOperaciones && <div className="card p-5">
           <h3 className="font-semibold text-gray-800 mb-3">Ventas por canal (hoy)</h3>
           {canales.length === 0 ? (
             <p className="text-sm text-gray-500">Sin ventas registradas hoy.</p>
@@ -126,7 +131,7 @@ const Dashboard = () => {
               ))}
             </ul>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

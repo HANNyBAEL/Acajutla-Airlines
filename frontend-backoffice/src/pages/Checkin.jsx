@@ -5,6 +5,9 @@ import { FiSearch, FiUserCheck, FiLogIn, FiX, FiPrinter } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { confirmarAccion } from '../utils/confirm';
 import { fechaActualSV } from '../utils/fechaServidor';
+import { useAuth } from '../context/AuthContext';
+import { roleOf } from '../utils/roles';
+import Manifiestos from './Manifiestos';
 
 const ESTADO_PAX = {
   pending: ['Pendiente', 'bg-gray-100 text-gray-700'],
@@ -13,7 +16,7 @@ const ESTADO_PAX = {
   no_show: ['No Show', 'bg-red-100 text-red-700'],
 };
 
-const Checkin = () => {
+const CheckinGestion = () => {
   const [tab, setTab] = useState('pnr');
   const [pnr, setPnr] = useState('');
   const [datos, setDatos] = useState(null);
@@ -285,6 +288,10 @@ const Checkin = () => {
       )}
     </div>
   );
+};
+const Checkin = () => {
+  const { usuario } = useAuth();
+  return roleOf(usuario) === 'operations' ? <Manifiestos /> : <CheckinGestion />;
 };
 export default Checkin;
 

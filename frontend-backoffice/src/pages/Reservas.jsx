@@ -16,7 +16,8 @@ const ESTADOS = {
 
 const Reservas = () => {
   const { usuario } = useAuth();
-  const puedeCancelar = ['admin', 'operations', 'cashier'].includes(roleOf(usuario));
+  const esOperaciones = roleOf(usuario) === 'operations';
+  const puedeCancelar = ['admin', 'cashier'].includes(roleOf(usuario));
   const [reservas, setReservas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [texto, setTexto] = useState('');
@@ -110,7 +111,7 @@ const Reservas = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-800">Reservas</h1>
-        <p className="text-gray-500 mt-1">Búsqueda escrita por PNR, nombre, documento, correo o cualquier dato</p>
+        <p className="text-gray-500 mt-1">{esOperaciones ? 'Consulta de reservas para coordinación de vuelos' : 'Búsqueda escrita por PNR, nombre, documento, correo o cualquier dato'}</p>
       </div>
 
       <div className="card p-4 space-y-3">
@@ -119,7 +120,7 @@ const Reservas = () => {
             <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               className="input-field pl-10"
-              placeholder="Escribe PNR, nombre, apellido, documento o correo..."
+              placeholder={esOperaciones ? 'Escribe el PNR...' : 'Escribe PNR, nombre, apellido, documento o correo...'}
               value={texto}
               onChange={(e) => setTexto(e.target.value)}
             />
@@ -150,18 +151,18 @@ const Reservas = () => {
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">PNR</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Cliente</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Documento</th>
+              {!esOperaciones && <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Cliente</th>}
+              {!esOperaciones && <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Documento</th>}
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Creada</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Total</th>
+              {!esOperaciones && <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Total</th>}
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {cargando ? (
-              <tr><td colSpan="6" className="text-center py-8 text-gray-500">Cargando...</td></tr>
+              <tr><td colSpan={esOperaciones ? 3 : 6} className="text-center py-8 text-gray-500">Cargando...</td></tr>
             ) : filtradas.length === 0 ? (
-              <tr><td colSpan="6" className="text-center py-8 text-gray-500">No se encontraron reservas con esos criterios</td></tr>
+              <tr><td colSpan={esOperaciones ? 3 : 6} className="text-center py-8 text-gray-500">No se encontraron reservas con esos criterios</td></tr>
             ) : filtradas.map((r) => (
               <tr
                 key={r.id}
@@ -169,10 +170,10 @@ const Reservas = () => {
                 onClick={() => verDetalle(r)}
               >
                 <td className="px-6 py-4 font-mono font-bold text-primary-700">{r.pnr}</td>
-                <td className="px-6 py-4 text-sm font-medium text-gray-800">{nombreDe(r) || '—'}</td>
-                <td className="px-6 py-4 text-sm text-gray-600">{docDe(r) || '—'}</td>
+                {!esOperaciones && <td className="px-6 py-4 text-sm font-medium text-gray-800">{nombreDe(r) || '—'}</td>}
+                {!esOperaciones && <td className="px-6 py-4 text-sm text-gray-600">{docDe(r) || '—'}</td>}
                 <td className="px-6 py-4 text-sm text-gray-600">{formatearFechaDb(r.created_at)}</td>
-                <td className="px-6 py-4 text-sm font-semibold text-gray-800">${Number(r.estimated_total || 0).toFixed(2)}</td>
+                {!esOperaciones && <td className="px-6 py-4 text-sm font-semibold text-gray-800">${Number(r.estimated_total || 0).toFixed(2)}</td>}
                 <td className="px-6 py-4">
                   <span className={'px-3 py-1 rounded-full text-xs font-medium ' + badge(r.status)[1]}>{badge(r.status)[0]}</span>
                 </td>
@@ -223,13 +224,13 @@ const Reservas = () => {
                   {/* Información General */}
                   <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 space-y-1">
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Información General</h4>
-                    <InfoFila icon={FiUser} label="Cliente" value={nombreDe(reservaDetalle)} />
-                    <InfoFila icon={FiFileText} label="Documento" value={docDe(reservaDetalle)} />
-                    <InfoFila
+                    {!esOperaciones && <InfoFila icon={FiUser} label="Cliente" value={nombreDe(reservaDetalle)} />}
+                    {!esOperaciones && <InfoFila icon={FiFileText} label="Documento" value={docDe(reservaDetalle)} />}
+                    {!esOperaciones && <InfoFila
                       icon={FiDollarSign}
                       label="Total"
                       value={reservaDetalle?.estimated_total ? `$${Number(reservaDetalle.estimated_total).toFixed(2)} USD` : '—'}
-                    />
+                    />}
                     <InfoFila
                       icon={FiCalendar}
                       label="Fecha de creación"
@@ -250,7 +251,7 @@ const Reservas = () => {
                           <div key={i} className="p-3 bg-white rounded-lg border border-gray-200 shadow-sm flex items-center justify-between">
                             <div>
                               <p className="font-semibold text-sm text-gray-800">{p.first_names} {p.last_names}</p>
-                              <p className="text-xs text-gray-500">{p.document_type || 'Doc'}: {p.document_number}</p>
+                              {!esOperaciones && <p className="text-xs text-gray-500">{p.document_type || 'Doc'}: {p.document_number}</p>}
                             </div>
                             <span className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 text-xs font-medium uppercase">
                               {p.passenger_type || 'Adulto'}
