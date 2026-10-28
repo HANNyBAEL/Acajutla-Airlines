@@ -6,7 +6,7 @@ import { FiSearch, FiUserPlus, FiTrash2, FiCheckCircle, FiX, FiShoppingBag } fro
 import toast from 'react-hot-toast';
 import { fechaActualSV } from '../utils/fechaServidor';
 const nacionalidades = ['SV', 'US', 'GT', 'HN', 'NI', 'CR', 'PA', 'MX'];
-const MAP_DOC = { DUI: '13', NIT: '36', Passport: '3', '13': '13', '36': '36', '3': '3' };
+const MAP_DOC = { DUI: '13', NIT: '36', Passport: '3', PASSPORT: '3', Pasaporte: '3', PASAPORTE: '3', '13': '13', '36': '36', '3': '3' };
 const pasajeroVacio = () => ({
   passenger_type: 'adult', first_names: '', last_names: '',
   document_type: '13', document_number: '', birth_date: '', nationality: 'SV', asientos: {},
@@ -23,6 +23,16 @@ const tipoPorEdad = (birth) => {
   if (e < 2) return 'infant';
   if (e < 12) return 'child';
   return 'adult';
+};
+const edadActual = (birth) => {
+  const text = String(birth || '').slice(0, 10);
+  const hoy = fechaActualSV();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || text > hoy) return null;
+  const [y, m, d] = text.split('-').map(Number);
+  const validacion = new Date(Date.UTC(y, m - 1, d));
+  if (validacion.getUTCFullYear() !== y || validacion.getUTCMonth() !== m - 1 || validacion.getUTCDate() !== d) return null;
+  const [hy, hm, hd] = hoy.split('-').map(Number);
+  return hy - y - (hm < m || (hm === m && hd < d) ? 1 : 0);
 };
 const puedeOcuparSalida = (pasajero) => {
   const nacimiento = String(pasajero.birth_date || '').slice(0, 10);
@@ -70,6 +80,19 @@ const NuevaReserva = () => {
   const [asientosError, setAsientosError] = useState(false);
   const [revisionAsientos, setRevisionAsientos] = useState(0);
   const [estadoCorreo, setEstadoCorreo] = useState(null);
+
+  const vuelosSeleccionados = trayectos.map((t) => t.vuelos.find((v) => String(v.id) === String(t.vueloId))).filter(Boolean);
+  const paisAeropuerto = (iata) => {
+    const aeropuerto = aeropuertos.find((a) => String(a.code || a.iata_code || '').toUpperCase() === String(iata || '').toUpperCase());
+    return String(aeropuerto?.country_code || '').trim().toUpperCase();
+  };
+  const requierePasaporte = vuelosSeleccionados.some((vuelo) => {
+    const origen = String(vuelo.origin_country_code || paisAeropuerto(vuelo.origin_iata)).trim().toUpperCase();
+    const destino = String(vuelo.destination_country_code || paisAeropuerto(vuelo.destination_iata)).trim().toUpperCase();
+    const corredorRegional = (origen === 'SV' && ['GT', 'HN', 'NI'].includes(destino))
+      || (destino === 'SV' && ['GT', 'HN', 'NI'].includes(origen));
+    return !(origen === 'SV' && destino === 'SV') && !corredorRegional;
+  });
 
   useEffect(() => {
     api.get('/aeropuertos?activos=1')
@@ -128,6 +151,13 @@ const NuevaReserva = () => {
       .finally(() => { if (vigente) setAsientosCargando(false); });
     return () => { vigente = false; };
   }, [claveVuelosSeleccionados, revisionAsientos]);
+
+  useEffect(() => {
+    if (!requierePasaporte) return;
+    setPasajeros((actuales) => actuales.map((pasajero) => String(pasajero.document_type) === '3'
+      ? pasajero
+      : Object.assign({}, pasajero, { document_type: '3', document_number: '' })));
+  }, [requierePasaporte]);
 
   const seleccionarAsiento = (indice, flightId, asiento) => {
     setPasajeros((actuales) => actuales.map((pasajero, i) => i === indice
@@ -201,7 +231,12 @@ const NuevaReserva = () => {
       const np = Object.assign({}, p, { [campo]: valor });
       if (campo === 'birth_date') {
         const t = tipoPorEdad(valor);
+        const edad = edadActual(valor);
         if (t) np.passenger_type = t;
+        if (edad !== null && edad < 18 && ['13', 'DUI'].includes(String(np.document_type || '').toUpperCase())) {
+          np.document_type = '3';
+          np.document_number = '';
+        }
       }
       return np;
     }));
@@ -211,13 +246,20 @@ const NuevaReserva = () => {
     setClienteSel(c);
     setClienteId(c ? c.id : '');
     if (c && autoRellenar) {
+      const birthDate = c.birth_date ? String(c.birth_date).slice(0, 10) : '';
+      let documentType = MAP_DOC[c.document_type] || '13';
+      let documentNumber = c.document_number || '';
+      if (requierePasaporte || (edadActual(birthDate) !== null && edadActual(birthDate) < 18 && ['13', 'DUI'].includes(String(documentType).toUpperCase()))) {
+        documentType = '3';
+        documentNumber = '';
+      }
       setPasajeros((prev) => prev.map((p, idx) => idx === 0 ? Object.assign({}, p, {
         first_names: c.first_names || '',
         last_names: c.last_names || '',
-        document_type: MAP_DOC[c.document_type] || '13',
-        document_number: c.document_number || '',
-        birth_date: c.birth_date ? String(c.birth_date).slice(0, 10) : '',
-        passenger_type: c.birth_date ? (tipoPorEdad(c.birth_date) || 'adult') : 'adult',
+        document_type: documentType,
+        document_number: documentNumber,
+        birth_date: birthDate,
+        passenger_type: birthDate ? (tipoPorEdad(birthDate) || 'adult') : 'adult',
       }) : p));
     }
   };
@@ -261,7 +303,6 @@ const NuevaReserva = () => {
     } finally { setGuardandoCliente(false); }
   };
 
-  const vuelosSeleccionados = trayectos.map((t) => t.vuelos.find((v) => v.id === t.vueloId)).filter(Boolean);
   const vuelosSinCupo = vuelosSeleccionados.filter((vuelo) => pasajeros.length > Number(vuelo.available_seats || 0));
   const totalEstimado = pasajeros.reduce((sum, pax) => {
     const porcentaje = pax.passenger_type === 'child' ? 75 : pax.passenger_type === 'infant' ? 10 : 100;
@@ -483,9 +524,20 @@ const NuevaReserva = () => {
                   </select>
                   <input className="input-field" placeholder="Nombres" value={p.first_names} onChange={(e) => setPax(i, 'first_names', e.target.value)} />
                   <input className="input-field" placeholder="Apellidos" value={p.last_names} onChange={(e) => setPax(i, 'last_names', e.target.value)} />
-                  <select className="input-field" value={p.document_type} onChange={(e) => setPax(i, 'document_type', e.target.value)}>
-                    <option value="13">DUI (CAT-022: 13)</option><option value="36">NIT (CAT-022: 36)</option><option value="3">Pasaporte (CAT-022: 3)</option>
-                  </select>
+                  <div>
+                    <select className="input-field disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed" value={p.document_type} disabled={requierePasaporte} onChange={(e) => setPax(i, 'document_type', e.target.value)}>
+                      <option value="13" disabled={requierePasaporte || (edadActual(p.birth_date) !== null && edadActual(p.birth_date) < 18)}>DUI (CAT-022: 13)</option>
+                      {!requierePasaporte && <option value="36">NIT (CAT-022: 36)</option>}
+                      <option value="3">Pasaporte (CAT-022: 3)</option>
+                    </select>
+                    {requierePasaporte
+                      ? <p className="text-[11px] text-blue-700 mt-1">Este itinerario requiere pasaporte.</p>
+                      : edadActual(p.birth_date) !== null && edadActual(p.birth_date) < 18
+                        ? <p className="text-[11px] text-amber-700 mt-1">Los menores de 18 años no pueden viajar registrados con DUI.</p>
+                        : ['GT', 'HN', 'NI'].some((pais) => vuelosSeleccionados.some((vuelo) => vuelo.origin_country_code === 'SV' && vuelo.destination_country_code === pais))
+                          ? <p className="text-[11px] text-green-700 mt-1">En rutas desde El Salvador a Guatemala, Honduras o Nicaragua se acepta DUI.</p>
+                          : null}
+                  </div>
                   <input className="input-field" placeholder="N° documento" value={p.document_number} onChange={(e) => setPax(i, 'document_number', e.target.value)} />
                   <div>
                     <input type="date" className="input-field" value={p.birth_date} onChange={(e) => setPax(i, 'birth_date', e.target.value)} />

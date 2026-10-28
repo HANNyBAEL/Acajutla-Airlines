@@ -33,15 +33,23 @@ const FlightSegment = {
   validarDisponibilidad: async (flight_id, fare_class, connection = pool) => {
     const [rows] = await connection.query(
       `SELECT f.flight_number, f.status, f.departure_datetime, f.base_price, at.total_capacity,
+              COALESCE(NULLIF(TRIM(co.code), ''), NULLIF(TRIM(ao.country_code), '')) AS origin_country_code,
+              COALESCE(NULLIF(TRIM(cd.code), ''), NULLIF(TRIM(ad.country_code), '')) AS destination_country_code,
               (f.departure_datetime <= CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador')) AS ya_salio,
               (SELECT COUNT(*) FROM flight_segments fs JOIN reservations rx ON rx.id = fs.reservation_id
                 WHERE fs.flight_id = f.id AND rx.status IN ${ESTADOS_ACTIVOS}) AS occupied_seats
-       FROM flights f JOIN aircraft ac ON f.aircraft_id = ac.id JOIN aircraft_types at ON at.id = ac.type_id
+       FROM flights f
+       JOIN routes rt ON rt.id = f.route_id
+       JOIN airports ao ON ao.id = rt.origin_id
+       JOIN airports ad ON ad.id = rt.destination_id
+       LEFT JOIN countries co ON co.id = ao.country_id
+       LEFT JOIN countries cd ON cd.id = ad.country_id
+       JOIN aircraft ac ON f.aircraft_id = ac.id JOIN aircraft_types at ON at.id = ac.type_id
        WHERE f.id = ? FOR UPDATE`,
       [flight_id]
     );
     if (!rows[0]) throw new Error('Vuelo no encontrado');
-    const { flight_number, status, total_capacity, occupied_seats } = rows[0];
+    const { flight_number, status, total_capacity, occupied_seats, origin_country_code, destination_country_code } = rows[0];
     const available_seats = total_capacity - occupied_seats;
     const yaSalio = Number(rows[0].ya_salio) === 1;
     const vigente = !yaSalio && ['scheduled', 'confirmed'].includes(status);
@@ -51,7 +59,7 @@ const FlightSegment = {
         ? 'El vuelo ' + flight_number + ' ya despegó; no se pueden vender más asientos'
         : 'El vuelo ' + flight_number + ' no admite ventas (estado: ' + status + ')';
     }
-    return { disponible: vigente && available_seats > 0, available_seats, total_capacity, flight_number, motivo };
+    return { disponible: vigente && available_seats > 0, available_seats, total_capacity, flight_number, motivo, origin_country_code, destination_country_code };
   },
 
   validarAsiento: async (flight_id, seat, connection = pool) => {

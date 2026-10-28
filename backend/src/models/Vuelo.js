@@ -7,7 +7,9 @@ const Vuelo = {
              ff.id AS fare_id, ff.price AS sale_price, ff.price AS price, fc.code AS fare_class,
              at.model AS aircraft_model, at.total_capacity,
              ao.iata_code AS origin_iata, ao.name AS origin_name,
+             COALESCE(NULLIF(TRIM(co.code), ''), NULLIF(TRIM(ao.country_code), '')) AS origin_country_code,
              ad.iata_code AS destination_iata, ad.name AS destination_name,
+             COALESCE(NULLIF(TRIM(cd.code), ''), NULLIF(TRIM(ad.country_code), '')) AS destination_country_code,
              (at.total_capacity - COALESCE(
                (SELECT COUNT(*) FROM flight_segments fs
                 JOIN reservations r ON r.id = fs.reservation_id
@@ -17,6 +19,8 @@ const Vuelo = {
       JOIN routes rt ON f.route_id = rt.id
       JOIN airports ao ON rt.origin_id = ao.id
       JOIN airports ad ON rt.destination_id = ad.id
+      LEFT JOIN countries co ON co.id = ao.country_id
+      LEFT JOIN countries cd ON cd.id = ad.country_id
       JOIN aircraft ac ON f.aircraft_id = ac.id
       JOIN aircraft_types at ON ac.type_id = at.id
       JOIN flight_fares ff ON ff.flight_id = f.id AND ff.active = 1

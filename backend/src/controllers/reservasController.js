@@ -6,7 +6,7 @@ const pool = require('../config/db');
 const { obtenerImpuestos, calcularPrecioServicio } = require('../services/taxService');
 const { resolverClase } = require('../utils/fareClass');
 const { centavos } = require('../utils/money');
-const { tipoPorNacimiento } = require('../utils/passengerAge');
+const { edadEnFecha, tipoPorNacimiento } = require('../utils/passengerAge');
 const { crearMapaAsientos, errorAsientoPasajero } = require('../utils/asientos');
 const { cancelarServiciosReserva } = require('../services/reservationInventoryService');
 
@@ -15,6 +15,8 @@ const importesPasajero = (tarifa, tipo) => {
   const aplicar = monto => Math.round(centavos(monto) * porcentaje / 100);
   return { base: aplicar(tarifa.precio), impuestos: tarifa.impuestos.lines.map(line => ({ ...line, amount: aplicar(line.amount), taxable_amount: aplicar(line.taxable_amount) })) };
 };
+const esDui = (tipo) => ['13', 'DUI'].includes(String(tipo || '').trim().toUpperCase());
+const esPasaporte = (tipo) => ['3', 'PASSPORT', 'PASAPORTE'].includes(String(tipo || '').trim().toUpperCase());
 
 const crearReserva = async (req, res) => {
   let connection;
@@ -38,10 +40,14 @@ const crearReserva = async (req, res) => {
       return res.status(400).json({ error: 'Debe agregar al menos un pasajero' });
     }
     for (const pax of pasajeros) {
+      const edad = edadEnFecha(pax?.birth_date);
       const tipo = tipoPorNacimiento(pax?.birth_date);
       if (!tipo || tipo !== (pax.passenger_type || 'adult')) {
         await connection.rollback();
         return res.status(400).json({ error: 'Fecha de nacimiento inválida o tipo de pasajero incompatible con su edad actual' });
+      }
+      if (edad < 18 && esDui(pax.document_type)) {
+        throw Object.assign(new Error('Los pasajeros menores de 18 años no pueden registrarse con DUI; indique pasaporte u otro documento permitido.'), { statusCode: 400 });
       }
     }
 
@@ -53,8 +59,14 @@ const crearReserva = async (req, res) => {
     }
     const asientosPorVuelo = new Map();
     const numeroVueloPorId = new Map();
+    const paisesPorTrayecto = [];
     for (const vuelo of [...vuelos].sort((a, b) => Number(a.flight_id) - Number(b.flight_id))) {
       const disponibilidad = await FlightSegment.validarDisponibilidad(vuelo.flight_id, vuelo.fare_class || 'economy', connection);
+      paisesPorTrayecto.push({
+        origen: String(disponibilidad.origin_country_code || '').trim().toUpperCase(),
+        destino: String(disponibilidad.destination_country_code || '').trim().toUpperCase(),
+        numero: disponibilidad.flight_number
+      });
       if (!disponibilidad.disponible) {
         await connection.rollback();
         return res.status(409).json({
@@ -116,6 +128,20 @@ const crearReserva = async (req, res) => {
       }
       asientosPorVuelo.set(String(vuelo.flight_id), asientos);
       numeroVueloPorId.set(String(vuelo.flight_id), disponibilidad.flight_number);
+    }
+
+    const paisesConDuiPermitido = new Set(['GT', 'HN', 'NI']);
+    const requierePasaporte = paisesPorTrayecto.some(({ origen, destino }) => {
+      const vueloDomesticoSv = origen === 'SV' && destino === 'SV';
+      const corredorRegional = (origen === 'SV' && paisesConDuiPermitido.has(destino))
+        || (destino === 'SV' && paisesConDuiPermitido.has(origen));
+      return !vueloDomesticoSv && !corredorRegional;
+    });
+    if (requierePasaporte) {
+      const pasajeroSinPasaporte = pasajeros.find((pax) => !esPasaporte(pax.document_type));
+      if (pasajeroSinPasaporte) {
+        throw Object.assign(new Error('Este itinerario requiere pasaporte. El requisito aplica a los vuelos internacionales que no son entre El Salvador y Guatemala, Honduras o Nicaragua.'), { statusCode: 400 });
+      }
     }
 
     // Resolver y bloquear la tarifa neta vigente de cada vuelo/clase. El total
