@@ -6,8 +6,11 @@ Sistema de gestión de vuelos con una API Node.js y un backoffice React.
 
 - `backend/`: API, lógica de negocio, migraciones y pruebas de regresión.
 - `frontend-backoffice/`: aplicación administrativa React/Vite.
+- `Pagina Web/Acajutla-Airlines-main/`: sitio público PHP para búsqueda y reserva de vuelos; su checkout usa el flujo compartido de pagos del backend.
 - `Leyes/`: documentación legal y funcional de referencia.
 - `backend/docs/`: manuales, plan de pruebas y documentación técnica.
+
+El sitio público se aloja aparte del backoffice de Render. Para preparar el hosting PHP y conectarlo al backend, consulta [guía de despliegue](backend/docs/DEPLOY_RENDER.md) y [checkout web](backend/docs/CHECKOUT_WEB.md).
 
 ## Comprobación local
 

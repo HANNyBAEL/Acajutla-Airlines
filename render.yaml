@@ -38,6 +38,8 @@ services:
         value: Acajutla Airlines
       - key: CORS_ORIGIN
         sync: false
+      - key: WEB_CHECKOUT_SHARED_SECRET
+        sync: false
   - type: static
     name: acajutla-airlines-backoffice
     rootDir: frontend-backoffice
