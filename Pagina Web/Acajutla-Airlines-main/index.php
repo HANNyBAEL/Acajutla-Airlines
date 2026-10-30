@@ -3519,13 +3519,11 @@ const Pago = {
     if(!mVenc){
       errores.push('Vencimiento inválido (MM/AA, mes 01-12).');
     } else {
-      // Ni vencida ni a más de 12 meses hacia adelante (mes incluido).
+      // Rechazar tarjetas vencidas; no limitar con cuánta anticipación vencen.
       const fechaVenc = new Date(2000 + parseInt(mVenc[2],10), parseInt(mVenc[1],10) - 1, 1);
       const hoy = new Date();
       const mesActual = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-      const limite12Meses = new Date(hoy.getFullYear(), hoy.getMonth() + 12, 1);
       if(fechaVenc < mesActual) errores.push('La tarjeta está vencida.');
-      else if(fechaVenc > limite12Meses) errores.push('El vencimiento no puede ser mayor a 12 meses.');
     }
     if(!/^\d{3,4}$/.test(cvv)) errores.push('CVV inválido.');
     return {errores, detalle:{tarjeta_terminacion: numero.slice(-4)}};
