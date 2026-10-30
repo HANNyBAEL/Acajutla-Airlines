@@ -217,8 +217,14 @@ const CarruselFechas = {
     if(!cont || !this.anchor) return;
     const b = Estado.busqueda;
     const esRegreso = Estado.modoResultados==='REGRESO';
-    const origenId = esRegreso ? b.destino.id : b.origen.id;
-    const destinoId = esRegreso ? b.origen.id : b.destino.id;
+    const origen = esRegreso ? b.destino : b.origen;
+    const destino = esRegreso ? b.origen : b.destino;
+    if(!origen?.id || !destino?.id){
+      cont.innerHTML = '<div class="carrusel-fechas"><span style="font-size:.82rem;color:#889">Selecciona primero el origen y el destino para consultar fechas.</span></div>';
+      return;
+    }
+    const origenId = origen.id;
+    const destinoId = destino.id;
     const minima = esRegreso ? (b.fechaIda || Util.hoyISO()) : Util.hoyISO();
     const seleccionada = esRegreso ? b.fechaRegreso : b.fechaIda;
 
@@ -322,8 +328,16 @@ const ResultadosVuelos = {
   async cargar(){
     const b = Estado.busqueda;
     const esRegreso = Estado.modoResultados==='REGRESO';
-    const origenId = esRegreso ? b.destino.id : b.origen.id;
-    const destinoId = esRegreso ? b.origen.id : b.destino.id;
+    const origen = esRegreso ? b.destino : b.origen;
+    const destino = esRegreso ? b.origen : b.destino;
+    if(!origen?.id || !destino?.id){
+      this.vuelosCrudos = [];
+      const cont = document.getElementById('listaVuelos');
+      if(cont) cont.innerHTML = '<div class="estado-vacio"><div class="icono">✈️</div>Selecciona origen y destino para buscar vuelos.</div>';
+      return;
+    }
+    const origenId = origen.id;
+    const destinoId = destino.id;
     const vuelos = await Api.buscarVuelos({origenId, destinoId, fecha: esRegreso?b.fechaRegreso:b.fechaIda});
     this.vuelosCrudos = vuelos;
     this.aplicarFiltros();

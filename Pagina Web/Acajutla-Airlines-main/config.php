@@ -1,14 +1,23 @@
 <?php
 
-define('MODO_DESARROLLO', true);
+$localConfigPath = __DIR__ . '/config.local.php';
+if (is_file($localConfigPath)) {
+    require_once $localConfigPath;
+}
 
-$DB_HOST = getenv('DB_HOST') ?: 'mysql-10cc1541-henrymenjivar0311-9c2c.a.aivencloud.com';
-$DB_PORT = (int)(getenv('DB_PORT') ?: 12456);
-$DB_USER = getenv('DB_USER') ?: 'avnadmin';
-$DB_PASS = getenv('DB_PASS') ?: '';
-$DB_NAME = getenv('DB_NAME') ?: 'defaultdb';
+$envConfig = static function ($name, $fallback = '') {
+    $value = getenv($name);
+    return ($value === false || $value === '') ? $fallback : $value;
+};
 
-$DB_CA_CERT = __DIR__ . '/ca.pem';
+define('MODO_DESARROLLO', strtolower((string)$envConfig('APP_ENV', 'development')) !== 'production');
+
+$DB_HOST = (string)$envConfig('DB_HOST', $DB_HOST ?? '');
+$DB_PORT = (int)$envConfig('DB_PORT', $DB_PORT ?? 3306);
+$DB_USER = (string)$envConfig('DB_USER', $DB_USER ?? '');
+$DB_PASS = (string)$envConfig('DB_PASS', $DB_PASS ?? '');
+$DB_NAME = (string)$envConfig('DB_NAME', $DB_NAME ?? '');
+$DB_CA_CERT = (string)$envConfig('DB_CA_CERT', $DB_CA_CERT ?? (__DIR__ . '/ca.pem'));
 
 function registrarErrorInterno($mensaje)
 {
@@ -29,18 +38,11 @@ function obtenerConexionDB()
     }
 
     if (!file_exists($DB_CA_CERT)) {
-        registrarErrorInterno('No se encontró ca.pem.');
+        registrarErrorInterno('No se encontró el certificado CA de MySQL.');
         return null;
     }
 
-    mysqli_ssl_set(
-        $conexion,
-        null,
-        null,
-        $DB_CA_CERT,
-        null,
-        null
-    );
+    mysqli_ssl_set($conexion, null, null, $DB_CA_CERT, null, null);
 
     $conectado = @mysqli_real_connect(
         $conexion,
@@ -54,9 +56,7 @@ function obtenerConexionDB()
     );
 
     if (!$conectado) {
-        registrarErrorInterno(
-            'Fallo de conexión: ' . mysqli_connect_error()
-        );
+        registrarErrorInterno('Fallo de conexión: ' . mysqli_connect_error());
         return null;
     }
 
