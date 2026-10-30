@@ -7,8 +7,9 @@ RUN apt-get update \
 
 COPY . /var/www/html/
 
-RUN a2enmod rewrite \
+RUN (getent group 1000 > /dev/null || groupadd --gid 1000 render-secrets) \
     && usermod -a -G 1000 www-data \
+    && a2enmod rewrite \
     && sed -i 's/Listen 80/Listen 10000/' /etc/apache2/ports.conf \
     && sed -i 's#<VirtualHost \*:80>#<VirtualHost *:10000>#' /etc/apache2/sites-available/000-default.conf \
     && echo "ServerName localhost" >> /etc/apache2/apache2.conf
