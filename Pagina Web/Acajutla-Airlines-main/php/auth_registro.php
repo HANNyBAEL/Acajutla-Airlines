@@ -18,8 +18,9 @@
  *   5) COMMIT. Si algo falla, ROLLBACK completo (nunca queda un cliente
  *      sin su cuenta o viceversa).
  *
- * El formulario captura el número de DUI y lo guarda con document_type
- * '13'. No captura nacionalidad, fecha de nacimiento ni dirección, por
+ * El formulario captura el número de DUI y guarda document_type como
+ * 'DUI', que es el valor aceptado por la columna customers.document_type.
+ * No captura nacionalidad, fecha de nacimiento ni dirección, por
  * lo que esas columnas no se incluyen en el INSERT.
  *
  * NOTA: users.username no tiene campo propio en el formulario de
@@ -106,10 +107,11 @@ if($yaExiste){
 
 mysqli_begin_transaction($conexion);
 try{
-    // document_type por defecto es '13' (DUI según catálogo CAT-022 de El Salvador)
+    // La columna customers.document_type usa etiquetas legibles como 'DUI';
+    // los códigos del catálogo fiscal se aplican después al crear el DTE.
     $stmtCust = mysqli_prepare($conexion,
         "INSERT INTO customers (first_names, last_names, document_type, document_number, email, phone, registration_date, status)
-         VALUES (?, ?, '13', ?, ?, ?, NOW(), 'active')"
+         VALUES (?, ?, 'DUI', ?, ?, ?, NOW(), 'active')"
     );
     if(!$stmtCust) throw new Exception('No se pudo preparar la inserción del cliente: ' . mysqli_error($conexion));
     mysqli_stmt_bind_param($stmtCust, 'sssss', $nombre, $apellido, $documento, $correo, $telefono);
