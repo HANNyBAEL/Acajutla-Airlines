@@ -4,6 +4,20 @@ const AuditLog = require('../models/AuditLog');
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 
+const crearDetalleAuditoriaAuth = (req, inicio, status, actor = {}, extra = {}) => ({
+  usuario: {
+    id: actor.id || req.usuario?.id || null,
+    nombre: actor.username || req.usuario?.usuario || req.usuario?.username || 'anonimo',
+    rol: actor.role || req.usuario?.rol || req.usuario?.role || null
+  },
+  metodo: req.method,
+  ruta: req.path,
+  status,
+  duracion_ms: Math.round((Number(process.hrtime.bigint() - inicio) / 1e6) * 100) / 100,
+  user_agent: String(req.headers['user-agent'] || '').slice(0, 500),
+  ...extra
+});
+
 const ROLES_BACKOFFICE = ROLES_VALIDOS.filter((role) => role !== 'customer');
 const buscarDuplicadoCuenta = async ({ username, email }) => {
   const [rows] = await pool.query(
@@ -42,13 +56,27 @@ const validarCuenta = ({ username, email, role, password }, incluirPassword) => 
 };
 
 const login = async (req, res) => {
+  const inicio = process.hrtime.bigint();
   try {
     const { usuario, password } = req.body;
-    if (!usuario || !password) return res.status(400).json({ error: 'Usuario y contraseña son requeridos' });
+    if (!usuario || !password) {
+      const error = 'Usuario y contraseña son requeridos';
+      await AuditLog.registrar({
+        usuario_nombre: usuario || 'desconocido', accion: 'LOGIN', modulo: 'auth', ip: req.ip,
+        user_agent: req.headers['user-agent'], resultado: 'fallo',
+        detalle: crearDetalleAuditoriaAuth(req, inicio, 400, { username: usuario }, { error })
+      });
+      return res.status(400).json({ error });
+    }
     const ip = req.ip;
     const userAgent = req.headers['user-agent'];
     const resultado = await AuthService.login(usuario, password, ip, userAgent);
-    await AuditLog.registrar({ usuario_id: resultado.usuarioId || null, usuario_nombre: usuario, accion: 'LOGIN', modulo: 'auth', ip, user_agent: userAgent, resultado: 'exito' });
+    await AuditLog.registrar({
+      usuario_id: resultado.usuario?.id || null,
+      usuario_nombre: resultado.usuario?.username || usuario,
+      accion: 'LOGIN', modulo: 'auth', ip, user_agent: userAgent, resultado: 'exito',
+      detalle: crearDetalleAuditoriaAuth(req, inicio, 200, resultado.usuario || { username: usuario }, { requiere_mfa: Boolean(resultado.requiereMFA) })
+    });
     if (resultado.requiereMFA) return res.json({
       exito: true,
       requiereMFA: true,
@@ -58,20 +86,42 @@ const login = async (req, res) => {
     });
     res.json({ exito: true, datos: resultado });
   } catch (error) {
-    await AuditLog.registrar({ usuario_nombre: req.body.usuario || 'desconocido', accion: 'LOGIN', modulo: 'auth', ip: req.ip, resultado: 'fallo', detalle: { error: error.message } });
     const status = error.message.includes('bloqueada') ? 423 : 401;
+    await AuditLog.registrar({
+      usuario_nombre: req.body.usuario || 'desconocido', accion: 'LOGIN', modulo: 'auth', ip: req.ip,
+      user_agent: req.headers['user-agent'], resultado: 'fallo',
+      detalle: crearDetalleAuditoriaAuth(req, inicio, status, { username: req.body.usuario }, { error: error.message })
+    });
     res.status(status).json({ error: error.message });
   }
 };
 
 const verificarMFA = async (req, res) => {
+  const inicio = process.hrtime.bigint();
   try {
     const { usuarioId, codigo } = req.body;
-    if (!usuarioId || !codigo) return res.status(400).json({ error: 'usuarioId y codigo son requeridos' });
+    if (!usuarioId || !codigo) {
+      const error = 'usuarioId y codigo son requeridos';
+      await AuditLog.registrar({
+        usuario_id: usuarioId || null, usuario_nombre: usuarioId ? `usuario:${usuarioId}` : 'desconocido',
+        accion: 'MFA_VERIFICADO', modulo: 'auth', ip: req.ip, user_agent: req.headers['user-agent'], resultado: 'fallo',
+        detalle: crearDetalleAuditoriaAuth(req, inicio, 400, { id: usuarioId || null }, { error })
+      });
+      return res.status(400).json({ error });
+    }
     const resultado = await AuthService.verificarMFA(usuarioId, codigo);
-    await AuditLog.registrar({ usuario_id: usuarioId, accion: 'MFA_VERIFICADO', modulo: 'auth', ip: req.ip, resultado: 'exito' });
+    await AuditLog.registrar({
+      usuario_id: usuarioId, usuario_nombre: resultado.usuario?.username || `usuario:${usuarioId}`,
+      accion: 'MFA_VERIFICADO', modulo: 'auth', ip: req.ip, user_agent: req.headers['user-agent'], resultado: 'exito',
+      detalle: crearDetalleAuditoriaAuth(req, inicio, 200, resultado.usuario || { id: usuarioId })
+    });
     res.json({ exito: true, datos: resultado });
   } catch (error) {
+    await AuditLog.registrar({
+      usuario_id: req.body.usuarioId || null, usuario_nombre: req.body.usuarioId ? `usuario:${req.body.usuarioId}` : 'desconocido',
+      accion: 'MFA_VERIFICADO', modulo: 'auth', ip: req.ip, user_agent: req.headers['user-agent'], resultado: 'fallo',
+      detalle: crearDetalleAuditoriaAuth(req, inicio, 401, { id: req.body.usuarioId || null }, { error: error.message })
+    });
     res.status(401).json({ error: error.message });
   }
 };
@@ -88,11 +138,21 @@ const refreshToken = async (req, res) => {
 };
 
 const logout = async (req, res) => {
+  const inicio = process.hrtime.bigint();
   try {
     await AuthService.logout(req.usuario.id);
-    await AuditLog.registrar({ usuario_id: req.usuario.id, accion: 'LOGOUT', modulo: 'auth', ip: req.ip, resultado: 'exito' });
+    await AuditLog.registrar({
+      usuario_id: req.usuario.id, usuario_nombre: req.usuario.usuario, accion: 'LOGOUT', modulo: 'auth',
+      ip: req.ip, user_agent: req.headers['user-agent'], resultado: 'exito',
+      detalle: crearDetalleAuditoriaAuth(req, inicio, 200)
+    });
     res.json({ exito: true, mensaje: 'Sesión cerrada' });
   } catch (error) {
+    await AuditLog.registrar({
+      usuario_id: req.usuario?.id || null, usuario_nombre: req.usuario?.usuario || 'anonimo', accion: 'LOGOUT', modulo: 'auth',
+      ip: req.ip, user_agent: req.headers['user-agent'], resultado: 'fallo',
+      detalle: crearDetalleAuditoriaAuth(req, inicio, 500, {}, { error: error.message })
+    });
     res.status(500).json({ error: 'Error al cerrar sesión' });
   }
 };

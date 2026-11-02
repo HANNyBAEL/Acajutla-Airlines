@@ -7,7 +7,7 @@ const AuditLog = {
       await pool.query(
         `INSERT INTO audit_logs (user_id, user_name, action, module, resource_id, details, ip, user_agent, result, timestamp)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [usuario_id, usuario_nombre, accion, modulo, recurso_id, detalle ? JSON.stringify(detalle) : null, ip, user_agent, resultado]
+        [usuario_id, usuario_nombre, accion, modulo, recurso_id, detalle ? JSON.stringify(detalle) : null, ip, user_agent == null ? null : String(user_agent).slice(0, 500), resultado]
       );
     } catch (error) {
       console.error('❌ [AuditLog] Error al registrar:', error.message);
