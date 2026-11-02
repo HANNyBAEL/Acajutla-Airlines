@@ -503,11 +503,11 @@ try{
 
         // Validación de formato en backend (no confiar solo en el frontend),
         // mismo criterio que Validar.documentoValido() en index.php: DUI
-        // exige exactamente 8 dígitos + guion + 1 dígito; el resto usa la
-        // regla genérica ya establecida en el proyecto (alfanumérico 5-20).
+        // exige exactamente 8 dígitos + guion + 1 dígito; los demás documentos
+        // admiten de 5 a 20 dígitos numéricos.
         $formatoValido = ($tipoDocumentoFrontend === 'DUI')
             ? preg_match('/^\d{8}-\d$/', $documento)
-            : preg_match('/^[A-Za-z0-9-]{5,20}$/', $documento);
+            : preg_match('/^\d{5,20}$/', $documento);
         if(!$formatoValido){
             throw new Exception('Formato de documento inválido para ' . $tipoDocumentoFrontend . ': ' . $documento);
         }

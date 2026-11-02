@@ -5,6 +5,7 @@ import { roleOf } from '../utils/roles';
 import { FiPlus, FiSearch, FiX, FiUser, FiMail, FiPhone, FiFileText, FiCalendar, FiHash } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { confirmarAccion } from '../utils/confirm';
+import { filtrarNumeroDocumento, longitudMaximaDocumento } from '../utils/documentNumber';
 
 const Clientes = () => {
   const { usuario } = useAuth();
@@ -41,7 +42,7 @@ const Clientes = () => {
       first_names: cliente.first_names || '',
       last_names: cliente.last_names || '',
       document_type: cliente.document_type || 'DUI',
-      document_number: cliente.document_number || '',
+      document_number: filtrarNumeroDocumento(cliente.document_number, cliente.document_type || 'DUI'),
       birth_date: cliente.birth_date ? String(cliente.birth_date).slice(0, 10) : '',
       email: cliente.email || '',
       phone: cliente.phone || ''
@@ -49,7 +50,12 @@ const Clientes = () => {
     setModal(true);
   };
 
-  const setCampo = (campo, valor) => setForm((f) => Object.assign({}, f, { [campo]: valor }));
+  const setCampo = (campo, valor) => setForm((f) => {
+    const actualizado = Object.assign({}, f, { [campo]: valor });
+    if (campo === 'document_type') actualizado.document_number = filtrarNumeroDocumento(f.document_number, valor);
+    if (campo === 'document_number') actualizado.document_number = filtrarNumeroDocumento(valor, f.document_type);
+    return actualizado;
+  });
 
   const guardar = async () => {
     if (!form.first_names || !form.last_names || !form.birth_date) return toast.error('Nombres, apellidos y fecha de nacimiento son obligatorios');
@@ -221,7 +227,7 @@ const Clientes = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Número de Documento</label>
-                <input className="input-field" value={form.document_number} onChange={(e) => setCampo('document_number', e.target.value)} placeholder="12345678-9" />
+                <input type="text" inputMode="numeric" maxLength={longitudMaximaDocumento(form.document_type)} className="input-field" value={form.document_number} onChange={(e) => setCampo('document_number', e.target.value)} placeholder={form.document_type === 'DUI' ? '12345678-9' : 'Solo números'} />
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de nacimiento *</label>

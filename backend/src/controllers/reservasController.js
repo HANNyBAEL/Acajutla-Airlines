@@ -9,6 +9,7 @@ const { centavos } = require('../utils/money');
 const { edadEnFecha, tipoPorNacimiento } = require('../utils/passengerAge');
 const { crearMapaAsientos, errorAsientoPasajero } = require('../utils/asientos');
 const { cancelarServiciosReserva } = require('../services/reservationInventoryService');
+const { documentoNumericoValido, normalizarNumeroDocumento } = require('../utils/documentNumber');
 
 const importesPasajero = (tarifa, tipo) => {
   const porcentaje = tipo === 'child' ? 75 : tipo === 'infant' ? 10 : 100;
@@ -42,6 +43,9 @@ const crearReserva = async (req, res) => {
     for (const pax of pasajeros) {
       const edad = edadEnFecha(pax?.birth_date);
       const tipo = tipoPorNacimiento(pax?.birth_date);
+      if (!documentoNumericoValido(pax?.document_number, pax?.document_type)) {
+        throw Object.assign(new Error('El número de DUI, NIT o pasaporte debe contener solo números y tener un formato válido.'), { statusCode: 400 });
+      }
       if (!tipo || tipo !== (pax.passenger_type || 'adult')) {
         await connection.rollback();
         return res.status(400).json({ error: 'Fecha de nacimiento inválida o tipo de pasajero incompatible con su edad actual' });
@@ -268,7 +272,7 @@ const crearReserva = async (req, res) => {
           pax.first_names,
           pax.last_names,
           pax.document_type,
-          pax.document_number,
+          normalizarNumeroDocumento(pax.document_number, pax.document_type),
           pax.birth_date || null,
           pax.nationality || 'SV',
           pax.email || null,

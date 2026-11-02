@@ -1,4 +1,5 @@
 const paymentWorkflowService = require('../services/paymentWorkflowService');
+const { documentoNumericoValido, normalizarNumeroDocumento } = require('../utils/documentNumber');
 
 const procesarPago = async (req, res) => {
   const body = req.body || {};
@@ -37,7 +38,14 @@ const procesarPago = async (req, res) => {
   if (typeof receptorRecibido.nombre === 'string' && receptorRecibido.nombre.length <= 250) receptor.nombre = receptorRecibido.nombre;
   if (typeof receptorRecibido.correo === 'string' && receptorRecibido.correo.length <= 150) receptor.correo = receptorRecibido.correo;
   if (['13', '36', '3'].includes(String(receptorRecibido.tipoDocumento))) receptor.tipoDocumento = String(receptorRecibido.tipoDocumento);
-  if (typeof receptorRecibido.numDocumento === 'string' && receptorRecibido.numDocumento.length <= 20) receptor.numDocumento = receptorRecibido.numDocumento;
+  if (typeof receptorRecibido.numDocumento === 'string' && receptorRecibido.numDocumento.length <= 20) {
+    if (receptor.tipoDocumento && !documentoNumericoValido(receptorRecibido.numDocumento, receptor.tipoDocumento)) {
+      return res.status(400).json({ error: 'El documento debe contener solo números y tener un formato válido para su tipo' });
+    }
+    receptor.numDocumento = receptor.tipoDocumento
+      ? normalizarNumeroDocumento(receptorRecibido.numDocumento, receptor.tipoDocumento)
+      : receptorRecibido.numDocumento;
+  }
 
   try {
     const resultado = await paymentWorkflowService.procesarPagoCompleto({

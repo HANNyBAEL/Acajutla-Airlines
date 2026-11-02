@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { documentoNumericoValido, normalizarNumeroDocumento } = require('../utils/documentNumber');
 
 const listarClientes = async (req, res) => {
   try {
@@ -19,6 +20,10 @@ const crearCliente = async (req, res) => {
     if (!first_names || !last_names || !birth_date) {
       return res.status(400).json({ error: 'first_names, last_names y birth_date son requeridos' });
     }
+    if (document_number && !documentoNumericoValido(document_number, document_type)) {
+      return res.status(400).json({ error: 'El documento debe contener solo números y tener un formato válido para su tipo' });
+    }
+    const numeroDocumento = document_number ? normalizarNumeroDocumento(document_number, document_type) : null;
     const fechaNacimiento = new Date(birth_date + 'T00:00:00');
     if (Number.isNaN(fechaNacimiento.getTime()) || fechaNacimiento > new Date()) {
       return res.status(400).json({ error: 'birth_date debe ser una fecha válida que no sea futura' });
@@ -26,7 +31,7 @@ const crearCliente = async (req, res) => {
     const [result] = await pool.query(
       `INSERT INTO customers (first_names, last_names, document_type, document_number, birth_date, email, phone, status, registration_date)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', NOW())`,
-      [first_names, last_names, document_type, document_number || null, birth_date, email || null, phone || null]
+      [first_names, last_names, document_type, numeroDocumento, birth_date, email || null, phone || null]
     );
     res.status(201).json({ exito: true, datos: { id: result.insertId } });
   } catch (error) {
@@ -44,6 +49,10 @@ const actualizarCliente = async (req, res) => {
     if (!id || !first_names || !last_names || !birth_date) {
       return res.status(400).json({ error: 'first_names, last_names y birth_date son requeridos' });
     }
+    if (document_number && !documentoNumericoValido(document_number, document_type)) {
+      return res.status(400).json({ error: 'El documento debe contener solo números y tener un formato válido para su tipo' });
+    }
+    const numeroDocumento = document_number ? normalizarNumeroDocumento(document_number, document_type) : null;
     const fechaNacimiento = new Date(birth_date + 'T00:00:00');
     if (Number.isNaN(fechaNacimiento.getTime()) || fechaNacimiento > new Date()) {
       return res.status(400).json({ error: 'birth_date debe ser una fecha válida que no sea futura' });
@@ -51,7 +60,7 @@ const actualizarCliente = async (req, res) => {
     const [result] = await pool.query(
       `UPDATE customers SET first_names = ?, last_names = ?, document_type = ?, document_number = ?,
        birth_date = ?, email = ?, phone = ? WHERE id = ?`,
-      [first_names, last_names, document_type, document_number || null, birth_date, email || null, phone || null, id]
+      [first_names, last_names, document_type, numeroDocumento, birth_date, email || null, phone || null, id]
     );
     if (!result.affectedRows) return res.status(404).json({ error: 'Cliente no encontrado' });
     res.json({ exito: true, datos: { id } });

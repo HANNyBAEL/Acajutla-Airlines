@@ -5,8 +5,9 @@ import SearchableSelect from '../components/SearchableSelect';
 import { FiSearch, FiUserPlus, FiTrash2, FiCheckCircle, FiX, FiShoppingBag } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { fechaActualSV } from '../utils/fechaServidor';
+import { filtrarNumeroDocumento, longitudMaximaDocumento, tipoDocumentoCanonico } from '../utils/documentNumber';
 const nacionalidades = ['SV', 'US', 'GT', 'HN', 'NI', 'CR', 'PA', 'MX'];
-const MAP_DOC = { DUI: '13', NIT: '36', Passport: '3', PASSPORT: '3', Pasaporte: '3', PASAPORTE: '3', '13': '13', '36': '36', '3': '3' };
+const MAP_DOC = { DUI: '13', NIT: '36', PASAPORTE: '3' };
 const pasajeroVacio = () => ({
   passenger_type: 'adult', first_names: '', last_names: '',
   document_type: '13', document_number: '', birth_date: '', nationality: 'SV', asientos: {},
@@ -258,6 +259,8 @@ const NuevaReserva = () => {
     setPasajeros((prev) => prev.map((p, idx) => {
       if (idx !== i) return p;
       const np = Object.assign({}, p, { [campo]: valor });
+      if (campo === 'document_type') np.document_number = filtrarNumeroDocumento(p.document_number, valor);
+      if (campo === 'document_number') np.document_number = filtrarNumeroDocumento(valor, p.document_type);
       if (campo === 'birth_date') {
         const t = tipoPorEdad(valor);
         const edad = edadActual(valor);
@@ -276,9 +279,15 @@ const NuevaReserva = () => {
     setClienteId(c ? c.id : '');
     if (c && autoRellenar) {
       const birthDate = c.birth_date ? String(c.birth_date).slice(0, 10) : '';
-      let documentType = MAP_DOC[c.document_type] || '13';
-      let documentNumber = c.document_number || '';
-      if (requierePasaporte || (edadActual(birthDate) !== null && edadActual(birthDate) < 18 && ['13', 'DUI'].includes(String(documentType).toUpperCase()))) {
+      const tipoDocumentoCliente = tipoDocumentoCanonico(c.document_type);
+      let documentType = MAP_DOC[tipoDocumentoCliente] || '13';
+      let documentNumber = filtrarNumeroDocumento(c.document_number, documentType);
+      if (requierePasaporte) {
+        documentType = '3';
+        documentNumber = tipoDocumentoCliente === 'PASAPORTE'
+          ? filtrarNumeroDocumento(c.document_number, documentType)
+          : '';
+      } else if (edadActual(birthDate) !== null && edadActual(birthDate) < 18 && tipoDocumentoCliente === 'DUI') {
         documentType = '3';
         documentNumber = '';
       }
@@ -309,7 +318,12 @@ const NuevaReserva = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clase]);
 
-  const setCampoCliente = (campo, valor) => setClienteForm((f) => Object.assign({}, f, { [campo]: valor }));
+  const setCampoCliente = (campo, valor) => setClienteForm((f) => {
+    const actualizado = Object.assign({}, f, { [campo]: valor });
+    if (campo === 'document_type') actualizado.document_number = filtrarNumeroDocumento(f.document_number, valor);
+    if (campo === 'document_number') actualizado.document_number = filtrarNumeroDocumento(valor, f.document_type);
+    return actualizado;
+  });
 
   const abrirModalNuevoCliente = () => {
     setClienteForm({ first_names: '', last_names: '', document_type: 'DUI', document_number: '', birth_date: '', email: '', phone: '' });
@@ -567,7 +581,7 @@ const NuevaReserva = () => {
                           ? <p className="text-[11px] text-green-700 mt-1">En rutas desde El Salvador a Guatemala, Honduras o Nicaragua se acepta DUI.</p>
                           : null}
                   </div>
-                  <input className="input-field" placeholder="N° documento" value={p.document_number} onChange={(e) => setPax(i, 'document_number', e.target.value)} />
+                  <input type="text" inputMode="numeric" maxLength={longitudMaximaDocumento(p.document_type)} className="input-field" placeholder="N° documento · solo números" value={p.document_number} onChange={(e) => setPax(i, 'document_number', e.target.value)} />
                   <div>
                     <input type="date" className="input-field" value={p.birth_date} onChange={(e) => setPax(i, 'birth_date', e.target.value)} />
                     <p className="text-[11px] text-gray-500 mt-1">Fecha de nacimiento: define tipo de pasajero y valida filas de salida de emergencia (RN-OP-03).</p>
@@ -723,7 +737,7 @@ const NuevaReserva = () => {
                   <option value="DUI">DUI</option><option value="NIT">NIT</option><option value="Passport">Pasaporte</option>
                 </select></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Número de Documento *</label>
-                <input className="input-field" value={clienteForm.document_number} onChange={(e) => setCampoCliente('document_number', e.target.value)} placeholder="12345678-9" /></div>
+                <input type="text" inputMode="numeric" maxLength={longitudMaximaDocumento(clienteForm.document_type)} className="input-field" value={clienteForm.document_number} onChange={(e) => setCampoCliente('document_number', e.target.value)} placeholder={clienteForm.document_type === 'DUI' ? '12345678-9' : 'Solo números'} /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha de nacimiento *</label>
                 <input type="date" className="input-field" value={clienteForm.birth_date} max={fechaActualSV()} onChange={(e) => setCampoCliente('birth_date', e.target.value)} /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Email</label>

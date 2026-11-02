@@ -6,6 +6,14 @@ import { FiUsers, FiUser, FiTag, FiMap, FiSettings, FiActivity, FiEdit2, FiTrash
 import toast from 'react-hot-toast';
 import { confirmarAccion } from '../utils/confirm';
 
+const normalizarLicencia = (valor) => String(valor || '').trim().toUpperCase();
+const fechaActualElSalvador = () => {
+  const partes = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/El_Salvador', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date()).map(({ type, value }) => [type, value]));
+  return `${partes.year}-${partes.month}-${partes.day}`;
+};
+
 const KPICard = ({ title, value, icon: Icon, colorClass = "text-primary-600 bg-primary-50" }) => (
   <div className="card p-4 flex items-center space-x-4">
     <div className={`p-3 rounded-full ${colorClass}`}>
@@ -44,6 +52,7 @@ const Operaciones = () => {
   const [drawerConfig, setDrawerConfig] = useState(null);
   
   const [modalNuevoTripulante, setModalNuevoTripulante] = useState(false);
+  const [creandoCrew, setCreandoCrew] = useState(false);
   const [modalAsignarTripulacion, setModalAsignarTripulacion] = useState(false);
   const [modalNuevaClase, setModalNuevaClase] = useState(false);
   const [modalAsignarTarifa, setModalAsignarTarifa] = useState(false);
@@ -55,6 +64,24 @@ const Operaciones = () => {
       <div className="text-sm text-gray-900 mt-1">{valor || '-'}</div>
     </div>
   );
+
+  const validarLicencia = (formulario, idIgnorado = null) => {
+    if (formulario.license_expiry && formulario.license_expiry < fechaActualElSalvador()) {
+      toast.error('La fecha de vencimiento de la licencia no puede ser anterior a hoy');
+      return false;
+    }
+    const tipo = normalizarLicencia(formulario.license_type);
+    const numero = normalizarLicencia(formulario.license_number);
+    if (tipo && numero && crew.some((tripulante) => (
+      String(tripulante.id) !== String(idIgnorado)
+      && normalizarLicencia(tripulante.license_type) === tipo
+      && normalizarLicencia(tripulante.license_number) === numero
+    ))) {
+      toast.error('Ya existe otro tripulante con ese tipo y número de licencia');
+      return false;
+    }
+    return true;
+  };
 
   const cargarBase = () => {
     api.get('/operaciones/tripulacion').then((r) => setCrew(r.data.datos || [])).catch(() => {});
@@ -75,13 +102,18 @@ const Operaciones = () => {
   }, [modalAsignarTripulacion]);
 
   const crearTripulante = async () => {
-    if (!fCrew.full_name) return toast.error('Nombre obligatorio');
+    if (!String(fCrew.full_name || '').trim()) return toast.error('Nombre obligatorio');
+    if (!validarLicencia(fCrew)) return;
+    if (creandoCrew) return;
+    setCreandoCrew(true);
     try {
       await api.post('/operaciones/tripulacion', fCrew);
       toast.success('Tripulante creado');
       setFCrew({ full_name: '', role_operativo: 'pilot', license_type: '', license_number: '', license_expiry: '' });
+      setModalNuevoTripulante(false);
       cargarBase();
     } catch (e) { toast.error(e.response && e.response.data ? e.response.data.error : 'Error'); }
+    finally { setCreandoCrew(false); }
   };
 
   const editarTripulante = (c) => {
@@ -98,7 +130,8 @@ const Operaciones = () => {
   };
 
   const guardarTripulante = async () => {
-    if (!fCrewEdit.full_name) return toast.error('Nombre obligatorio');
+    if (!String(fCrewEdit.full_name || '').trim()) return toast.error('Nombre obligatorio');
+    if (!validarLicencia(fCrewEdit, crewEditando?.id)) return;
     setGuardandoCrew(true);
     try {
       await api.put('/operaciones/tripulacion/' + crewEditando.id, fCrewEdit);
@@ -404,7 +437,7 @@ const Operaciones = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Vencimiento licencia</label>
-                    <input type="date" className="input-field" value={fCrewEdit.license_expiry} onChange={(e) => setFCrewEdit(Object.assign({}, fCrewEdit, { license_expiry: e.target.value }))} />
+                    <input type="date" min={fechaActualElSalvador()} className="input-field" value={fCrewEdit.license_expiry} onChange={(e) => setFCrewEdit(Object.assign({}, fCrewEdit, { license_expiry: e.target.value }))} />
                   </div>
                   <label className="flex items-center space-x-2 text-sm text-gray-700">
                     <input type="checkbox" checked={fCrewEdit.active} onChange={(e) => setFCrewEdit(Object.assign({}, fCrewEdit, { active: e.target.checked }))} />
@@ -640,12 +673,12 @@ const Operaciones = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Vencimiento licencia</label>
-                    <input type="date" className="input-field" value={fCrew.license_expiry} onChange={(e) => setFCrew(Object.assign({}, fCrew, { license_expiry: e.target.value }))} />
+                    <input type="date" min={fechaActualElSalvador()} className="input-field" value={fCrew.license_expiry} onChange={(e) => setFCrew(Object.assign({}, fCrew, { license_expiry: e.target.value }))} />
                   </div>
                 </div>
                 <div className="flex justify-end space-x-2 mt-6">
                   <button className="btn-secondary" onClick={() => setModalNuevoTripulante(false)}>Cancelar</button>
-                  <button className="btn-primary" onClick={crearTripulante}>Crear</button>
+                  <button className="btn-primary" onClick={crearTripulante} disabled={creandoCrew}>{creandoCrew ? 'Creando…' : 'Crear'}</button>
                 </div>
               </div>
             </div>

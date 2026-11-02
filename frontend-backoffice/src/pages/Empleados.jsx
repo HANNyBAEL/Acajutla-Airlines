@@ -4,6 +4,7 @@ import { FiPlus, FiSearch, FiX, FiUserCheck, FiUserX, FiEdit2, FiMail, FiPhone, 
 import toast from 'react-hot-toast';
 import { confirmarAccion } from '../utils/confirm';
 import { ROLE_DEFINITIONS, ROLE_ORDER, STAFF_ROLE_ORDER } from '../utils/roles';
+import { filtrarNumeroDocumento, longitudMaximaDocumento } from '../utils/documentNumber';
 
 const KPICard = ({ title, value, icon: Icon, colorClass }) => (
   <div className="card p-4 flex items-center space-x-4">
@@ -206,7 +207,7 @@ const Empleados = () => {
       first_names: emp.first_names || '',
       last_names: emp.last_names || '',
       document_type: emp.document_type || 'DUI',
-      document_number: emp.document_number || '',
+      document_number: filtrarNumeroDocumento(emp.document_number, emp.document_type || 'DUI'),
       position: emp.position || '',
       email: emp.email || '',
       phone: emp.phone || '',
@@ -219,7 +220,12 @@ const Empleados = () => {
     setModal(true);
   };
 
-  const setCampo = (campo, valor) => setForm((f) => Object.assign({}, f, { [campo]: valor }));
+  const setCampo = (campo, valor) => setForm((f) => {
+    const actualizado = Object.assign({}, f, { [campo]: valor });
+    if (campo === 'document_type') actualizado.document_number = filtrarNumeroDocumento(f.document_number, valor);
+    if (campo === 'document_number') actualizado.document_number = filtrarNumeroDocumento(valor, f.document_type);
+    return actualizado;
+  });
 
   const guardar = async () => {
     if (!form.first_names || !form.last_names || !form.document_number) {
@@ -433,7 +439,7 @@ const Empleados = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Número de documento *</label>
-                <input className="input-field" value={form.document_number} onChange={(e) => setCampo('document_number', e.target.value)} placeholder="Ej. 12345678-9" />
+                <input type="text" inputMode="numeric" maxLength={longitudMaximaDocumento(form.document_type)} className="input-field" value={form.document_number} onChange={(e) => setCampo('document_number', e.target.value)} placeholder={form.document_type === 'DUI' ? 'Ej. 12345678-9' : 'Solo números'} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cargo</label>

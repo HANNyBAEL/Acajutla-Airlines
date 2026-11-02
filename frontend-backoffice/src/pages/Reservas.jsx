@@ -114,35 +114,54 @@ const Reservas = () => {
         <p className="text-gray-500 mt-1">{esOperaciones ? 'Consulta de reservas para coordinación de vuelos' : 'Búsqueda escrita por PNR, nombre, documento, correo o cualquier dato'}</p>
       </div>
 
-      <div className="card p-4 space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <div className="md:col-span-2 relative">
-            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              className="input-field pl-10"
-              placeholder={esOperaciones ? 'Escribe el PNR...' : 'Escribe PNR, nombre, apellido, documento o correo...'}
-              value={texto}
-              onChange={(e) => setTexto(e.target.value)}
-            />
+      <div className="card space-y-4 p-5">
+        <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-semibold text-gray-800">Buscar reservas</h2>
+            <p className="mt-1 text-sm text-gray-500">Filtra por datos, estado o fecha de creación.</p>
           </div>
-          <select className="input-field" value={estado} onChange={(e) => setEstado(e.target.value)}>
-            <option value="">Todos los estados</option>
-            <option value="pending">Pendiente</option>
-            <option value="confirmed">Confirmada</option>
-            <option value="paid">Pagada</option>
-            <option value="cancelled">Cancelada</option>
-            <option value="completed">Finalizada</option>
-          </select>
-          <div className="flex space-x-2">
-            <input type="date" className="input-field" value={desde} onChange={(e) => setDesde(e.target.value)} />
-            <input type="date" className="input-field" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <p className="whitespace-nowrap rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-500">
+              Mostrando <span className="font-semibold text-gray-700">{filtradas.length}</span> de <span className="font-semibold text-gray-700">{reservas.length}</span>
+            </p>
+            <button type="button" className="btn-secondary inline-flex items-center justify-center gap-2 whitespace-nowrap" onClick={limpiar}>
+              <FiX /><span>Limpiar filtros</span>
+            </button>
           </div>
         </div>
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">Mostrando {filtradas.length} de {reservas.length} reservas</p>
-          <button className="btn-secondary flex items-center space-x-2" onClick={limpiar}>
-            <FiX /><span>Limpiar filtros</span>
-          </button>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+          <label className="block min-w-0 xl:col-span-5">
+            <span className="mb-1 block text-xs font-medium text-gray-500">{esOperaciones ? 'Buscar por PNR' : 'Buscar por reserva o cliente'}</span>
+            <div className="relative">
+              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                className="input-field min-h-[46px] pl-10"
+                placeholder={esOperaciones ? 'Escribe el PNR...' : 'PNR, nombre, apellido, documento o correo...'}
+                value={texto}
+                onChange={(e) => setTexto(e.target.value)}
+              />
+            </div>
+          </label>
+          <label className="block min-w-0 xl:col-span-3">
+            <span className="mb-1 block text-xs font-medium text-gray-500">Estado</span>
+            <select className="input-field min-h-[46px]" value={estado} onChange={(e) => setEstado(e.target.value)}>
+              <option value="">Todos los estados</option>
+              <option value="pending">Pendiente</option>
+              <option value="confirmed">Confirmada</option>
+              <option value="paid">Pagada</option>
+              <option value="cancelled">Cancelada</option>
+              <option value="completed">Finalizada</option>
+            </select>
+          </label>
+          <label className="block min-w-0 xl:col-span-2">
+            <span className="mb-1 block text-xs font-medium text-gray-500">Desde</span>
+            <input type="date" aria-label="Fecha desde" className="input-field min-h-[46px] min-w-0" value={desde} onChange={(e) => setDesde(e.target.value)} />
+          </label>
+          <label className="block min-w-0 xl:col-span-2">
+            <span className="mb-1 block text-xs font-medium text-gray-500">Hasta</span>
+            <input type="date" aria-label="Fecha hasta" className="input-field min-h-[46px] min-w-0" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+          </label>
         </div>
       </div>
 

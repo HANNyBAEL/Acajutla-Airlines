@@ -4,6 +4,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import Paginacion, { paginar } from '../components/Paginacion';
 import { FiAlertTriangle, FiXCircle, FiRefreshCw, FiPlus, FiX, FiSearch } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { filtrarNumeroDocumento, longitudMaximaDocumento } from '../utils/documentNumber';
 
 const CAT005 = [
   { c: 1, d: 'No disponibilidad de sistema del MH' },
@@ -18,6 +19,12 @@ const CAT024 = [
   { c: 3, d: 'Otro' }
 ];
 const CAT022 = [ { c: '13', d: 'DUI' }, { c: '36', d: 'NIT' }, { c: '3', d: 'Pasaporte' } ];
+const actualizarDocumentoPersona = (setFormulario, campoPersona, campo, valor) => setFormulario((prev) => {
+  const persona = Object.assign({}, prev[campoPersona], { [campo]: valor });
+  if (campo === 'tipoDoc') persona.numDoc = filtrarNumeroDocumento(prev[campoPersona].numDoc, valor);
+  if (campo === 'numDoc') persona.numDoc = filtrarNumeroDocumento(valor, prev[campoPersona].tipoDoc);
+  return Object.assign({}, prev, { [campoPersona]: persona });
+});
 const TIPOS_DTE = { '01': 'FE', '03': 'CCFE', '04': 'NRE', '05': 'NCE', '06': 'NDE', '07': 'CRE', '08': 'CLE', '09': 'DCLE', '11': 'FEXE', '14': 'FSEE', '15': 'CDE' };
 const leerJsonDte = (dte) => {
   try { return typeof dte?.full_json === 'string' ? JSON.parse(dte.full_json) : (dte?.full_json || {}); }
@@ -403,10 +410,10 @@ const ContingenciaDTE = () => {
               )}
               <div className="col-span-2"><label className="block text-xs font-medium text-gray-700 mb-1">Nombre del responsable *</label><input className="input-field" value={formEvento.responsable.nombre} onChange={(e) => setFormEvento(Object.assign({}, formEvento, { responsable: Object.assign({}, formEvento.responsable, { nombre: e.target.value }) }))} /></div>
               <div><label className="block text-xs font-medium text-gray-700 mb-1">Tipo doc *</label>
-                <select className="input-field" value={formEvento.responsable.tipoDoc} onChange={(e) => setFormEvento(Object.assign({}, formEvento, { responsable: Object.assign({}, formEvento.responsable, { tipoDoc: e.target.value }) }))}>
+                <select className="input-field" value={formEvento.responsable.tipoDoc} onChange={(e) => actualizarDocumentoPersona(setFormEvento, 'responsable', 'tipoDoc', e.target.value)}>
                   {CAT022.map((t) => <option key={t.c} value={t.c}>{t.d}</option>)}
                 </select></div>
-              <div><label className="block text-xs font-medium text-gray-700 mb-1">N° doc *</label><input className="input-field" value={formEvento.responsable.numDoc} onChange={(e) => setFormEvento(Object.assign({}, formEvento, { responsable: Object.assign({}, formEvento.responsable, { numDoc: e.target.value }) }))} /></div>
+              <div><label className="block text-xs font-medium text-gray-700 mb-1">N° doc *</label><input type="text" inputMode="numeric" maxLength={longitudMaximaDocumento(formEvento.responsable.tipoDoc)} className="input-field" value={formEvento.responsable.numDoc} onChange={(e) => actualizarDocumentoPersona(setFormEvento, 'responsable', 'numDoc', e.target.value)} /></div>
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button className="btn-secondary" onClick={() => setModalEvento(false)}>Cancelar</button>
@@ -572,16 +579,16 @@ const ContingenciaDTE = () => {
               })()}
               <div className="col-span-2"><label className="block text-xs font-medium text-gray-700 mb-1">Nombre de quien realiza *</label><input className="input-field" value={formInv.responsable.nombre} onChange={(e) => setFormInv(Object.assign({}, formInv, { responsable: Object.assign({}, formInv.responsable, { nombre: e.target.value }) }))} /></div>
               <div><label className="block text-xs font-medium text-gray-700 mb-1">Tipo doc *</label>
-                <select className="input-field" value={formInv.responsable.tipoDoc} onChange={(e) => setFormInv(Object.assign({}, formInv, { responsable: Object.assign({}, formInv.responsable, { tipoDoc: e.target.value }) }))}>
+                <select className="input-field" value={formInv.responsable.tipoDoc} onChange={(e) => actualizarDocumentoPersona(setFormInv, 'responsable', 'tipoDoc', e.target.value)}>
                   {CAT022.map((t) => <option key={t.c} value={t.c}>{t.d}</option>)}
                 </select></div>
-              <div><label className="block text-xs font-medium text-gray-700 mb-1">N° doc *</label><input className="input-field" value={formInv.responsable.numDoc} onChange={(e) => setFormInv(Object.assign({}, formInv, { responsable: Object.assign({}, formInv.responsable, { numDoc: e.target.value }) }))} /></div>
+              <div><label className="block text-xs font-medium text-gray-700 mb-1">N° doc *</label><input type="text" inputMode="numeric" maxLength={longitudMaximaDocumento(formInv.responsable.tipoDoc)} className="input-field" value={formInv.responsable.numDoc} onChange={(e) => actualizarDocumentoPersona(setFormInv, 'responsable', 'numDoc', e.target.value)} /></div>
               <div className="col-span-2"><label className="block text-xs font-medium text-gray-700 mb-1">Nombre de quien solicita *</label><input className="input-field" value={formInv.solicitante.nombre} onChange={(e) => setFormInv(Object.assign({}, formInv, { solicitante: Object.assign({}, formInv.solicitante, { nombre: e.target.value }) }))} /></div>
               <div><label className="block text-xs font-medium text-gray-700 mb-1">Tipo doc *</label>
-                <select className="input-field" value={formInv.solicitante.tipoDoc} onChange={(e) => setFormInv(Object.assign({}, formInv, { solicitante: Object.assign({}, formInv.solicitante, { tipoDoc: e.target.value }) }))}>
+                <select className="input-field" value={formInv.solicitante.tipoDoc} onChange={(e) => actualizarDocumentoPersona(setFormInv, 'solicitante', 'tipoDoc', e.target.value)}>
                   {CAT022.map((t) => <option key={t.c} value={t.c}>{t.d}</option>)}
                 </select></div>
-              <div><label className="block text-xs font-medium text-gray-700 mb-1">N° doc *</label><input className="input-field" value={formInv.solicitante.numDoc} onChange={(e) => setFormInv(Object.assign({}, formInv, { solicitante: Object.assign({}, formInv.solicitante, { numDoc: e.target.value }) }))} /></div>
+              <div><label className="block text-xs font-medium text-gray-700 mb-1">N° doc *</label><input type="text" inputMode="numeric" maxLength={longitudMaximaDocumento(formInv.solicitante.tipoDoc)} className="input-field" value={formInv.solicitante.numDoc} onChange={(e) => actualizarDocumentoPersona(setFormInv, 'solicitante', 'numDoc', e.target.value)} /></div>
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button className="btn-secondary" onClick={() => setModalInvalidar(null)}>Cancelar</button>

@@ -6,6 +6,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import Paginacion, { paginar } from '../components/Paginacion';
 import { FiFileText, FiCheckCircle, FiXCircle, FiClock, FiPlus, FiEye, FiX, FiSearch } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { documentoNumericoValido, filtrarNumeroDocumento } from '../utils/documentNumber';
 
 const ETIQUETAS_DTE = { '01': 'FE', '03': 'CCFE', '05': 'NCE', '06': 'NDE', '11': 'FEXE', '14': 'FSEE' };
 const normalizarBusqueda = (valor) => String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
@@ -37,6 +38,7 @@ const DTE = () => {
 
   const emitir = async () => {
     if (!form.reservation_id) return toast.error('Seleccione una reserva pagada');
+    if (form.tipo_dte === '03' && !documentoNumericoValido(form.nit, 'NIT')) return toast.error('El NIT debe contener entre 9 y 14 dígitos, sin letras ni símbolos');
     setEmitiendo(true);
     try {
       const payload = { reservation_id: Number(form.reservation_id), tipo_dte: form.tipo_dte, requiere_deduccion_fiscal: form.tipo_dte === '01' && form.requiere_deduccion_fiscal };
@@ -198,7 +200,7 @@ const DTE = () => {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">NIT receptor *</label>
-                      <input className="input-field" value={form.nit} onChange={(e) => setForm(Object.assign({}, form, { nit: e.target.value }))} placeholder="06149999999999" />
+                      <input type="text" inputMode="numeric" maxLength={14} className="input-field" value={form.nit} onChange={(e) => setForm((prev) => Object.assign({}, prev, { nit: filtrarNumeroDocumento(e.target.value, 'NIT') }))} placeholder="06149999999999" />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">NRC</label>

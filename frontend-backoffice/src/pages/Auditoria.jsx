@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import api from '../services/api';
 import { FiShield, FiRefreshCw, FiCheckCircle, FiXCircle, FiActivity, FiEye, FiX } from 'react-icons/fi';
 import toast from 'react-hot-toast';
@@ -178,17 +179,17 @@ const Auditoria = () => {
         </div>
       </div>
 
-      {detalleSeleccionado && (() => {
+      {detalleSeleccionado && createPortal((() => {
         const detalle = leerDetalle(detalleSeleccionado.details);
         const eventoCompleto = Object.assign({}, detalleSeleccionado, { details: detalle });
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setDetalleSeleccionado(null); }}>
-            <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-              <div className="flex items-center justify-between border-b p-5">
-                <div><h2 className="text-xl font-bold text-gray-800">Detalle del evento</h2><p className="text-sm text-gray-500">{detalleSeleccionado.action} · {new Date(detalleSeleccionado.timestamp).toLocaleString('es-SV')}</p></div>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black bg-opacity-50 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setDetalleSeleccionado(null); }}>
+            <div className="my-auto flex max-h-[calc(100vh-2rem)] min-h-0 w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="titulo-detalle-evento">
+              <div className="flex shrink-0 items-center justify-between gap-4 border-b p-5">
+                <div className="min-w-0"><h2 id="titulo-detalle-evento" className="text-xl font-bold text-gray-800">Detalle del evento</h2><p className="break-words text-sm text-gray-500">{detalleSeleccionado.action} · {new Date(detalleSeleccionado.timestamp).toLocaleString('es-SV')}</p></div>
                 <button type="button" aria-label="Cerrar detalle" onClick={() => setDetalleSeleccionado(null)} className="text-gray-500 hover:text-gray-700"><FiX size={22} /></button>
               </div>
-              <div className="overflow-y-auto p-5">
+              <div className="min-h-0 flex-1 overflow-y-auto p-5">
                 <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">Usuario / rol</p><p className="font-medium">{detalleSeleccionado.user_name || 'anónimo'} · {detalle.usuario?.rol || detalleSeleccionado.usuario_rol || '—'}</p><p className="mt-1 break-all text-xs text-gray-500">ID: {detalleSeleccionado.user_id || '—'}</p></div>
                   <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">Resultado HTTP</p><p className="font-medium">{detalle.status || '—'} · {detalleSeleccionado.result}</p></div>
@@ -198,12 +199,12 @@ const Auditoria = () => {
                 <div className="mb-4 rounded-lg bg-gray-50 p-3"><p className="mb-1 text-xs font-semibold uppercase text-gray-500">Módulo</p><p className="text-sm">{detalleSeleccionado.module || '—'}</p></div>
                 <div className="mb-4 rounded-lg bg-gray-50 p-3"><p className="mb-1 text-xs font-semibold uppercase text-gray-500">Ruta y navegador</p><p className="break-all text-sm">{detalle.metodo || '—'} {detalle.ruta || '—'}{detalle.ruta_controlador ? ` · ${detalle.ruta_controlador}` : ''}</p><p className="mt-1 break-all text-xs text-gray-500">{detalleSeleccionado.user_agent || detalle.user_agent || 'Navegador no registrado'}</p></div>
                 <h3 className="mb-2 font-semibold text-gray-800">Todos los datos del evento</h3>
-                <pre className="max-h-[45vh] overflow-auto rounded-lg bg-gray-900 p-4 text-xs text-gray-100">{JSON.stringify(eventoCompleto, null, 2)}</pre>
+                <pre className="max-h-[40vh] overflow-auto rounded-lg bg-gray-900 p-4 text-xs text-gray-100">{JSON.stringify(eventoCompleto, null, 2)}</pre>
               </div>
             </div>
           </div>
         );
-      })()}
+      })(), document.body)}
     </div>
   );
 };

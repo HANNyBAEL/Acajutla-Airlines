@@ -7,6 +7,9 @@ const emitir = async (req, res) => {
   try {
     const { reservation_id, tipo_dte, receptor, requiere_deduccion_fiscal } = req.body;
     if (!reservation_id || !tipo_dte) return res.status(400).json({ error: 'reservation_id y tipo_dte son obligatorios' });
+    if (tipo_dte === '03' && receptor?.nit != null && !/^\d{9,14}$/.test(String(receptor.nit))) {
+      return res.status(400).json({ error: 'El NIT debe contener entre 9 y 14 dígitos, sin letras ni símbolos' });
+    }
     const r = await DTEService.emitirDTE({ reservation_id, tipo_dte, receptor, requiereDeduccionFiscal: requiere_deduccion_fiscal === true });
     const esRechazado = r.estado === 'rejected';
     const statusHttp = esRechazado ? 422 : 201;

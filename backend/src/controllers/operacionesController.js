@@ -1,4 +1,35 @@
 const pool = require('../config/db');
+const { fechaElSalvador } = require('../utils/fechaElSalvador');
+
+const normalizarLicencia = (valor) => String(valor || '').trim().toUpperCase();
+
+const fechaLicenciaValida = (valor) => {
+  if (!valor) return true;
+  const fecha = String(valor).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return false;
+  const fechaUtc = new Date(`${fecha}T00:00:00.000Z`);
+  return !Number.isNaN(fechaUtc.getTime())
+    && fechaUtc.toISOString().slice(0, 10) === fecha
+    && fecha >= fechaElSalvador();
+};
+
+const licenciaYaRegistrada = async (tipo, numero, excluirId = null) => {
+  if (!tipo || !numero) return false;
+  const condiciones = [
+    'UPPER(TRIM(license_type)) = ?',
+    'UPPER(TRIM(license_number)) = ?'
+  ];
+  const valores = [tipo, numero];
+  if (excluirId != null) {
+    condiciones.push('id <> ?');
+    valores.push(excluirId);
+  }
+  const [rows] = await pool.query(
+    `SELECT id FROM crew_members WHERE ${condiciones.join(' AND ')} LIMIT 1`,
+    valores
+  );
+  return rows.length > 0;
+};
 
 const getParam = async (key, def) => {
   const [r] = await pool.query('SELECT param_value FROM config_params WHERE param_key = ?', [key]);
@@ -20,9 +51,13 @@ const crearTripulante = async (req, res) => {
   try {
     const { full_name, role_operativo, license_type, license_number, license_expiry, qualifications } = req.body;
     if (!full_name || !role_operativo) return res.status(400).json({ error: 'Nombre y rol operativo son obligatorios' });
+    const tipoLicencia = normalizarLicencia(license_type);
+    const numeroLicencia = normalizarLicencia(license_number);
+    if (!fechaLicenciaValida(license_expiry)) return res.status(400).json({ error: 'La fecha de vencimiento de la licencia no puede ser anterior a hoy' });
+    if (await licenciaYaRegistrada(tipoLicencia, numeroLicencia)) return res.status(409).json({ error: 'Ya existe un tripulante con ese tipo y número de licencia' });
     const [r] = await pool.query(
       'INSERT INTO crew_members (full_name, role_operativo, license_type, license_number, license_expiry, qualifications) VALUES (?,?,?,?,?,?)',
-      [full_name, role_operativo, license_type || null, license_number || null, license_expiry || null, qualifications ? JSON.stringify(qualifications) : null]
+      [full_name, role_operativo, tipoLicencia || null, numeroLicencia || null, license_expiry || null, qualifications ? JSON.stringify(qualifications) : null]
     );
     res.status(201).json({ exito: true, datos: { id: r.insertId } });
   } catch (e) { res.status(500).json({ error: 'Error interno' }); }
@@ -32,12 +67,16 @@ const actualizarTripulante = async (req, res) => {
   try {
     const { full_name, role_operativo, license_type, license_number, license_expiry, qualifications, active } = req.body;
     if (!full_name || !role_operativo) return res.status(400).json({ error: 'Nombre y rol operativo son obligatorios' });
+    const tipoLicencia = normalizarLicencia(license_type);
+    const numeroLicencia = normalizarLicencia(license_number);
+    if (!fechaLicenciaValida(license_expiry)) return res.status(400).json({ error: 'La fecha de vencimiento de la licencia no puede ser anterior a hoy' });
     const [existe] = await pool.query('SELECT id FROM crew_members WHERE id = ?', [req.params.id]);
     if (!existe.length) return res.status(404).json({ error: 'Tripulante no encontrado' });
+    if (await licenciaYaRegistrada(tipoLicencia, numeroLicencia, req.params.id)) return res.status(409).json({ error: 'Ya existe otro tripulante con ese tipo y número de licencia' });
     await pool.query(
       'UPDATE crew_members SET full_name = ?, role_operativo = ?, license_type = ?, license_number = ?, license_expiry = ?, qualifications = ?, active = ? WHERE id = ?',
       [
-        full_name, role_operativo, license_type || null, license_number || null, license_expiry || null,
+        full_name, role_operativo, tipoLicencia || null, numeroLicencia || null, license_expiry || null,
         qualifications ? JSON.stringify(qualifications) : null, active !== undefined ? (active ? 1 : 0) : 1, req.params.id
       ]
     );

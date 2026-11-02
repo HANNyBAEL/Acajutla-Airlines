@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { CONFIG, fmtFecha, fmtHora, uuidV4 } = require('./dteService');
 const fiscalCompliance = require('./fiscalCompliance');
 const { validarOrigenFacturaElSalvador } = require('./validarOrigenFacturaService');
+const { documentoNumericoValido } = require('../utils/documentNumber');
 
 const FECHAS_EVENTO_DTE = new Set(['03', '04', '05', '06', '07', '08', '09', '15']);
 const TIPOS_INVALIDACION = new Set([1, 2, 3]);
@@ -43,6 +44,9 @@ const fechaHoraFormulario = (fecha, hora) => {
 const validarPersonaEvento = (persona, etiqueta) => {
   if (typeof persona?.nombre !== 'string' || typeof persona?.numDoc !== 'string' || !persona.nombre.trim() || !persona.numDoc.trim() || !TIPOS_DOCUMENTO_PERSONA.has(String(persona?.tipoDoc))) {
     throw new Error(`Complete nombre, tipo y número de documento de ${etiqueta}`);
+  }
+  if (!documentoNumericoValido(persona.numDoc, persona.tipoDoc)) {
+    throw new Error(`El documento de ${etiqueta} debe contener solo números y tener un formato válido`);
   }
   if (persona.nombre.trim().length > 100 || persona.numDoc.trim().length > 20) throw new Error(`Los datos de ${etiqueta} exceden la longitud permitida`);
 };

@@ -183,7 +183,7 @@ const Comercial = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-800">Gestión Comercial</h1>
-        <p className="text-gray-500 mt-1">{puedeVerReportes ? 'Servicios adicionales y reportes (Q32–Q36)' : 'Servicios adicionales'}</p>
+        <p className="text-gray-500 mt-1">{puedeVerReportes ? 'Servicios adicionales y reportes' : 'Servicios adicionales'}</p>
       </div>
       <div className="flex flex-wrap gap-2">
         {tabs.map((t) => (

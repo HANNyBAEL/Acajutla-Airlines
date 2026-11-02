@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 const { ROLES_VALIDOS } = require('../models/Usuario');
+const { documentoNumericoValido, normalizarNumeroDocumento } = require('../utils/documentNumber');
 const ROLES_EMPLEADO = ROLES_VALIDOS.filter((role) => role !== 'customer');
 
 const listar = async (req, res) => {
@@ -49,6 +50,11 @@ const crear = async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ error: 'first_names, last_names y document_number son obligatorios' });
     }
+    if (!documentoNumericoValido(document_number, document_type || 'DUI')) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'El documento debe contener solo números y tener un formato válido para su tipo' });
+    }
+    const numeroDocumento = normalizarNumeroDocumento(document_number, document_type || 'DUI');
     if ([username, password, role].some(Boolean) && !([username, password, role].every(Boolean))) {
       await connection.rollback();
       return res.status(400).json({ error: 'Para crear una cuenta debes indicar usuario, contraseña y rol' });
@@ -65,7 +71,7 @@ const crear = async (req, res) => {
     const [rEmp] = await connection.query(
       `INSERT INTO employees (first_names, last_names, document_type, document_number, position, email, phone, hire_date, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', 'America/El_Salvador')), 'active')`,
-      [first_names, last_names, document_type || 'DUI', document_number, position || null, email || null, phone || null]
+      [first_names, last_names, document_type || 'DUI', numeroDocumento, position || null, email || null, phone || null]
     );
 
     let userId = null;
@@ -121,6 +127,11 @@ const actualizar = async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ error: 'first_names, last_names y document_number son obligatorios' });
     }
+    if (!documentoNumericoValido(document_number, document_type || 'DUI')) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'El documento debe contener solo números y tener un formato válido para su tipo' });
+    }
+    const numeroDocumento = normalizarNumeroDocumento(document_number, document_type || 'DUI');
 
     if (role && !ROLES_EMPLEADO.includes(role)) {
       await connection.rollback();
@@ -162,7 +173,7 @@ const actualizar = async (req, res) => {
         first_names,
         last_names,
         document_type || 'DUI',
-        document_number,
+        numeroDocumento,
         position || null,
         email || null,
         phone || null,

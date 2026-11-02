@@ -1508,13 +1508,12 @@ const Validar = {
   // Formato final exigido según el tipo de documento:
   // - DUI: EXACTAMENTE 8 dígitos + guion + 1 dígito (9 dígitos en total),
   //   el mismo formato oficial que ya usa el mapeo document_type=13.
-  // - PASAPORTE / CARNET_MENOR: estrictamente letras y números (sin puntos,
-  //   guiones, espacios ni símbolos), de 5 a 20 caracteres.
+  // - PASAPORTE / CARNET_MENOR: solo números, de 5 a 20 dígitos.
   documentoValido(v, tipoDocumento){
     if(tipoDocumento === 'DUI'){
       return /^\d{8}-\d$/.test(v||'');
     }
-    return /^[A-Za-z0-9]{5,20}$/.test(v||'');
+    return /^\d{5,20}$/.test(v||'');
   },
   correoValido(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v||''); },
   soloTexto(v){ return /^[A-Za-zÁÉÍÓÚÑáéíóúñ\s']{2,60}$/.test(v||''); },
@@ -1537,7 +1536,7 @@ const Validar = {
     if(!Validar.soloTexto(p.apellidos)) err.apellidos='Ingresa apellidos válidos.';
     if(!Validar.requerido(p.tipoDocumento)) err.tipoDocumento='Selecciona un tipo de documento.';
     if(!Validar.documentoValido(p.numeroDocumento, p.tipoDocumento)){
-      err.numeroDocumento = p.tipoDocumento==='DUI' ? 'El DUI debe tener el formato 12345678-9.' : 'Documento inválido (5-20 caracteres, solo letras y números).';
+      err.numeroDocumento = p.tipoDocumento==='DUI' ? 'El DUI debe tener el formato 12345678-9.' : 'Documento inválido: ingresa entre 5 y 20 dígitos numéricos.';
     }
     if(!Validar.requerido(p.nacionalidad)) err.nacionalidad='Ingresa la nacionalidad.';
     if(!Validar.requerido(p.fechaNacimiento)) err.fechaNacimiento='Selecciona la fecha de nacimiento.';
@@ -3160,8 +3159,7 @@ const Pasajeros = {
   // verificador) — formato oficial del DUI de El Salvador, el mismo que ya
   // usa el proyecto como ejemplo (MOCK.clientes: '01234567-8'). El usuario
   // solo escribe/pega números; el guion se inserta automáticamente.
-  // PASAPORTE / CARNET_MENOR: solo letras y números (sin puntos, guiones,
-  // espacios ni emojis), máximo 20 caracteres — se filtra en vivo.
+  // PASAPORTE / CARNET_MENOR: solo números, máximo 20 dígitos — se filtra en vivo.
   formatearDocumento(input){
     const contenedor = input.closest('.pasajero-form');
     const selectTipo = contenedor ? contenedor.querySelector('select[data-f="tipoDocumento"]') : null;
@@ -3171,7 +3169,7 @@ const Pasajeros = {
       if(digitos.length > 8) digitos = digitos.slice(0,8) + '-' + digitos.slice(8);
       input.value = digitos;
     } else {
-      input.value = input.value.replace(/[^A-Za-z0-9]/g,'').slice(0,20);
+      input.value = input.value.replace(/\D/g,'').slice(0,20);
     }
   },
 
