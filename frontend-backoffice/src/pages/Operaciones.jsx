@@ -65,6 +65,14 @@ const Operaciones = () => {
     api.get('/operaciones/config').then((r) => setConfig(r.data.datos || [])).catch(() => {});
   };
   useEffect(() => { cargarBase(); }, []);
+  useEffect(() => {
+    if (!modalAsignarTripulacion) return undefined;
+    const cerrarConEscape = (event) => {
+      if (event.key === 'Escape') setModalAsignarTripulacion(false);
+    };
+    window.addEventListener('keydown', cerrarConEscape);
+    return () => window.removeEventListener('keydown', cerrarConEscape);
+  }, [modalAsignarTripulacion]);
 
   const crearTripulante = async () => {
     if (!fCrew.full_name) return toast.error('Nombre obligatorio');
@@ -144,12 +152,22 @@ const Operaciones = () => {
 
   const asignar = async () => {
     if (!fAsig.flight_id || !fAsig.crew_member_id) return toast.error('Selecciona vuelo y tripulante');
+    const flightId = fAsig.flight_id;
     try {
       await api.post('/operaciones/tripulacion/asignar', fAsig);
-      toast.success('Tripulación asignada');
-      const r = await api.get('/operaciones/tripulacion/vuelo/' + fAsig.flight_id);
+    } catch (e) {
+      toast.error(e.response && e.response.data ? e.response.data.error : 'Error');
+      return;
+    }
+    toast.success('Tripulación asignada');
+    setModalAsignarTripulacion(false);
+    setFAsig((prev) => Object.assign({}, prev, { crew_member_id: '', duty_start: '', duty_end: '' }));
+    try {
+      const r = await api.get('/operaciones/tripulacion/vuelo/' + flightId);
       setCrewVuelo(r.data.datos || []);
-    } catch (e) { toast.error(e.response && e.response.data ? e.response.data.error : 'Error'); }
+    } catch (e) {
+      toast.error('Asignación guardada, pero no se pudo actualizar la lista');
+    }
   };
 
   const verCrewVuelo = async (fid) => {
@@ -634,11 +652,11 @@ const Operaciones = () => {
           )}
 
           {modalAsignarTripulacion && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setModalAsignarTripulacion(false); }}>
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-bold text-gray-800">Asignar a Vuelo</h2>
-                  <button onClick={() => setModalAsignarTripulacion(false)} className="text-gray-500 hover:text-gray-700"><FiX size={22} /></button>
+                  <button type="button" aria-label="Cerrar ventana" onClick={() => setModalAsignarTripulacion(false)} className="text-gray-500 hover:text-gray-700"><FiX size={22} /></button>
                 </div>
                 <div className="grid grid-cols-1 gap-3">
                   <div>
@@ -659,8 +677,8 @@ const Operaciones = () => {
                   </div>
                 </div>
                 <div className="flex justify-end space-x-2 mt-6">
-                  <button className="btn-secondary" onClick={() => setModalAsignarTripulacion(false)}>Cancelar</button>
-                  <button className="btn-primary" onClick={asignar}>Asignar</button>
+                  <button type="button" className="btn-secondary" onClick={() => setModalAsignarTripulacion(false)}>Cancelar</button>
+                  <button type="button" className="btn-primary" onClick={asignar}>Asignar</button>
                 </div>
               </div>
             </div>
