@@ -175,6 +175,7 @@ const crearReserva = async (req, res) => {
       tarifasPorVuelo.set(String(v.flight_id), { id: tarifa[0].id, precio: Number(tarifa[0].price), clase: clase.segmentCode, impuestos });
     }
 
+    const pasajerosConAsiento = pasajeros.filter((pasajero) => String(pasajero.passenger_type || 'adult') !== 'infant').length;
     if (!Array.isArray(ancillaries) || ancillaries.length > 100) {
       throw Object.assign(new Error('La lista de servicios adicionales no es válida'), { statusCode: 400 });
     }
@@ -202,7 +203,7 @@ const crearReserva = async (req, res) => {
       serviciosDuplicados.add(clave);
 
       const [disponibilidad] = await connection.query(
-        `SELECT fa.id, fa.stock, fa.price_override, a.base_price, a.iva_incluido
+        `SELECT fa.id, fa.stock, fa.price_override, a.base_price, a.iva_incluido, a.type
          FROM flight_ancillaries fa JOIN ancillaries a ON a.id = fa.ancillary_id
          WHERE fa.flight_id = ? AND fa.ancillary_id = ? AND fa.active = 1 AND a.active = 1
          FOR UPDATE`,
@@ -213,6 +214,9 @@ const crearReserva = async (req, res) => {
       }
       if (Number(disponibilidad[0].stock) < cantidad) {
         throw Object.assign(new Error('No hay inventario suficiente para uno de los servicios seleccionados'), { statusCode: 409 });
+      }
+      if (disponibilidad[0].type === 'seat' && cantidad > pasajerosConAsiento) {
+        throw Object.assign(new Error('La selección de asiento no puede superar la cantidad de pasajeros que requieren asiento'), { statusCode: 400 });
       }
       const precioBase = disponibilidad[0].price_override ?? disponibilidad[0].base_price;
       const importe = await calcularPrecioServicio(flightId, precioBase, Number(disponibilidad[0].iva_incluido) === 1, connection);

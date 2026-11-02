@@ -82,6 +82,7 @@ const NuevaReserva = () => {
   const [estadoCorreo, setEstadoCorreo] = useState(null);
 
   const vuelosSeleccionados = trayectos.map((t) => t.vuelos.find((v) => String(v.id) === String(t.vueloId))).filter(Boolean);
+  const pasajerosConAsiento = pasajeros.filter((pasajero) => pasajero.passenger_type !== 'infant').length;
   const paisAeropuerto = (iata) => {
     const aeropuerto = aeropuertos.find((a) => String(a.code || a.iata_code || '').toUpperCase() === String(iata || '').toUpperCase());
     return String(aeropuerto?.country_code || '').trim().toUpperCase();
@@ -131,6 +132,28 @@ const NuevaReserva = () => {
 
     return () => { vigente = false; };
   }, [claveVuelosSeleccionados]);
+
+  useEffect(() => {
+    setAncillariesSeleccionados((actuales) => {
+      let cambio = false;
+      const ajustadas = actuales.flatMap((linea) => {
+        const servicio = (ancillariesPorVuelo[String(linea.flight_id)] || [])
+          .find((item) => String(item.ancillary_id) === String(linea.ancillary_id));
+        if (!servicio) return [linea];
+        const maximo = servicio.type === 'seat'
+          ? Math.min(Number(servicio.stock), pasajerosConAsiento)
+          : Number(servicio.stock);
+        if (maximo < 1) {
+          cambio = true;
+          return [];
+        }
+        const quantity = Math.min(Number(linea.quantity) || 1, maximo);
+        if (quantity !== Number(linea.quantity)) cambio = true;
+        return [quantity === Number(linea.quantity) ? linea : Object.assign({}, linea, { quantity })];
+      });
+      return cambio ? ajustadas : actuales;
+    });
+  }, [pasajerosConAsiento, ancillariesPorVuelo]);
 
   useEffect(() => {
     let vigente = true;
@@ -185,9 +208,16 @@ const NuevaReserva = () => {
   };
 
   const cambiarCantidadAncillary = (flightId, ancillaryId, quantity) => {
+    const servicio = (ancillariesPorVuelo[String(flightId)] || [])
+      .find((item) => String(item.ancillary_id) === String(ancillaryId));
+    const maximo = servicio?.type === 'seat'
+      ? Math.min(Number(servicio.stock), pasajerosConAsiento)
+      : Number(servicio?.stock || 1);
+    const valor = Number(quantity);
+    const cantidad = Math.min(maximo, Math.max(1, Number.isFinite(valor) ? Math.floor(valor) : 1));
     setAncillariesSeleccionados((actuales) => actuales.map((linea) =>
       String(linea.flight_id) === String(flightId) && String(linea.ancillary_id) === String(ancillaryId)
-        ? Object.assign({}, linea, { quantity: Number(quantity) })
+        ? Object.assign({}, linea, { quantity: cantidad })
         : linea
     ));
   };
@@ -618,19 +648,24 @@ const NuevaReserva = () => {
                         {servicios.map((servicio) => {
                           const linea = ancillariesSeleccionados.find((item) => String(item.flight_id) === String(vuelo.id) && String(item.ancillary_id) === String(servicio.ancillary_id));
                           const agotado = Number(servicio.stock) <= 0;
+                          const maxCantidad = servicio.type === 'seat'
+                            ? Math.min(Number(servicio.stock), pasajerosConAsiento)
+                            : Number(servicio.stock);
+                          const sinPasajerosConAsiento = servicio.type === 'seat' && pasajerosConAsiento === 0;
                           return (
                             <div key={servicio.ancillary_id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                              <label className={'flex min-w-0 flex-1 items-start gap-3 ' + (agotado ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}>
-                                <input type="checkbox" className="mt-1" checked={Boolean(linea)} disabled={agotado} onChange={(e) => cambiarAncillarySeleccionado(vuelo.id, servicio, e.target.checked)} />
+                              <label className={'flex min-w-0 flex-1 items-start gap-3 ' + (agotado || sinPasajerosConAsiento ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}>
+                                <input type="checkbox" className="mt-1" checked={Boolean(linea)} disabled={agotado || sinPasajerosConAsiento} onChange={(e) => cambiarAncillarySeleccionado(vuelo.id, servicio, e.target.checked)} />
                                 <span className="min-w-0">
                                   <span className="block font-medium text-gray-800">{servicio.code} · {servicio.name}</span>
                                   <span className="block text-xs text-gray-500">${Number(servicio.precio_con_impuestos ?? servicio.precio_final).toFixed(2)} cada uno, impuestos incluidos · {agotado ? 'Agotado' : `${servicio.stock} disponibles`}</span>
+                                  {servicio.type === 'seat' && <span className="block text-xs text-blue-700">Una selección por pasajero que requiere asiento; el check-in se completa por pasajero.{sinPasajerosConAsiento ? ' No hay pasajeros que requieran asiento.' : ''}</span>}
                                 </span>
                               </label>
                               {linea && (
                                 <label className="flex items-center gap-2 text-sm text-gray-600">
-                                  Cantidad
-                                  <input type="number" className="input-field w-24" min="1" max={Number(servicio.stock)} step="1" value={linea.quantity} onChange={(e) => cambiarCantidadAncillary(vuelo.id, servicio.ancillary_id, e.target.value)} />
+                                  {servicio.type === 'seat' ? 'Pasajeros' : 'Cantidad'}
+                                  <input type="number" className="input-field w-24" min="1" max={maxCantidad} step="1" value={linea.quantity} onChange={(e) => cambiarCantidadAncillary(vuelo.id, servicio.ancillary_id, e.target.value)} />
                                 </label>
                               )}
                             </div>

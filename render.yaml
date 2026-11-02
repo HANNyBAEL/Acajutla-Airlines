@@ -40,8 +40,9 @@ services:
         sync: false
       - key: WEB_CHECKOUT_SHARED_SECRET
         sync: false
-  - type: static
+  - type: web
     name: acajutla-airlines-backoffice
+    runtime: static
     rootDir: frontend-backoffice
     buildCommand: npm install && npm run build
     staticPublishPath: dist
