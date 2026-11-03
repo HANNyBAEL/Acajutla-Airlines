@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
 import SearchableSelect from '../components/SearchableSelect';
+import { useAuth } from '../context/AuthContext';
+import { roleOf } from '../utils/roles';
 import { FiShield, FiCheck, FiAlertTriangle } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -39,6 +41,11 @@ const fechaDteIso = (fecha) => {
 };
 
 const CumplimientoFiscal = () => {
+  const { usuario } = useAuth();
+  const rol = roleOf(usuario);
+  const puedeAplicar = rol === 'admin';
+  const puedeGenerarRetorno = ['admin', 'cashier'].includes(rol);
+  const puedeValidar = ['admin', 'cashier', 'auditor'].includes(rol);
   const [dtes, setDtes] = useState([]);
   const [sel, setSel] = useState([]);
   const [monto, setMonto] = useState('');
@@ -72,6 +79,7 @@ const CumplimientoFiscal = () => {
   const cambiarDteInvalidacion = (uuid) => { setUuidInv(uuid); setResultado(null); };
 
   const aplicar = async () => {
+    if (!puedeAplicar) return toast.error('Solo administración puede aplicar cumplimiento a DTEs');
     setAplicando(true);
     try {
       const r = await api.post('/fiscal/aplicar', {});
@@ -95,6 +103,7 @@ const CumplimientoFiscal = () => {
   };
 
   const enviarRetorno = async () => {
+    if (!puedeGenerarRetorno) return toast.error('Tu rol no puede generar eventos de retorno');
     if (!sel.length) return toast.error('Seleccione DTE(s)');
     const montoTexto = String(monto).trim();
     if (!/^\d+(\.\d{1,2})?$/.test(montoTexto) || Number(montoTexto) <= 0) return toast.error('Ingrese un monto mayor a cero con máximo dos decimales');
@@ -120,6 +129,7 @@ const CumplimientoFiscal = () => {
   };
 
   const validar = async () => {
+    if (!puedeValidar) return toast.error('Tu rol no puede validar plazos de invalidación');
     if (!uuidInv || !fechaEv) return toast.error('Seleccione DTE y fecha del evento');
     if (fechaEv > fechaLocalIso()) return toast.error('La fecha del evento no puede estar en el futuro');
     const fechaEmision = fechaDteIso(dteInvalidacion?.emission_date);
@@ -138,13 +148,16 @@ const CumplimientoFiscal = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-800">Cumplimiento Fiscal</h1>
-          <p className="text-gray-500 mt-1">Firma, sello, redondeos, pagos, Evento de Retorno y plazos de invalidación</p>
+          <p className="text-gray-500 mt-1">
+            {rol === 'auditor' ? 'Consulta de plazos de invalidación de DTEs' : rol === 'cashier' ? 'Devoluciones y validación de plazos de invalidación' : 'Firma, sello, redondeos, pagos, Evento de Retorno y plazos de invalidación'}
+          </p>
         </div>
-        <button className="btn-primary flex items-center space-x-2" onClick={aplicar} disabled={aplicando}>
+        {puedeAplicar && <button className="btn-primary flex items-center space-x-2" onClick={aplicar} disabled={aplicando}>
           <FiShield /><span>{aplicando ? 'Aplicando...' : 'Aplicar cumplimiento a DTEs'}</span>
-        </button>
+        </button>}
       </div>
 
+      {puedeGenerarRetorno && <>
       <div className="card p-6 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
@@ -184,8 +197,9 @@ const CumplimientoFiscal = () => {
           </div>
         </div>
       </div>
+      </>}
 
-      <div className="card p-6 space-y-4">
+      {puedeValidar && <div className="card p-6 space-y-4">
         <h2 className="text-lg font-semibold text-gray-800">Verificador de plazo de invalidación</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <SearchableSelect value={uuidInv} onChange={cambiarDteInvalidacion} placeholder="Buscar por UUID, control, PNR o cliente..."
@@ -202,7 +216,7 @@ const CumplimientoFiscal = () => {
             {resultado.ok ? <FiCheck /> : <FiAlertTriangle />}<span className="text-sm">{resultado.mensaje}</span>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 };

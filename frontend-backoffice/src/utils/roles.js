@@ -12,7 +12,7 @@ export const ROLE_DEFINITIONS = {
   cashier: {
     label: 'Cajero',
     responsibility: 'Atiende reservas, clientes, cobros, reembolsos y documentos fiscales.',
-    access: 'Reservas, clientes, pagos, DTE, notas y lista de espera',
+    access: 'Reservas, clientes, pagos, DTE, notas, eventos de retorno y validación de plazos fiscales',
   },
   airport_staff: {
     label: 'Personal aeroportuario',
@@ -27,7 +27,7 @@ export const ROLE_DEFINITIONS = {
   auditor: {
     label: 'Auditor',
     responsibility: 'Consulta registros, indicadores y cumplimiento para labores de revisión.',
-    access: 'Reportes, auditoría y consultas de reservas, vuelos, pagos y DTE',
+    access: 'Reportes, auditoría y consultas de reservas, vuelos, pagos, DTE y plazos de invalidación',
   },
 };
 

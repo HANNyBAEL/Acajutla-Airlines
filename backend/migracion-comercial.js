@@ -6,6 +6,34 @@ require('dotenv').config();
     user: process.env.DB_USER, password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME, ssl: { rejectUnauthorized: false }
   });
+  await pool.query(`CREATE TABLE IF NOT EXISTS waitlist (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    flight_id INT NOT NULL,
+    passenger_name VARCHAR(150) NOT NULL,
+    passenger_email VARCHAR(120) NULL,
+    passenger_doc VARCHAR(30) NULL,
+    doc_type VARCHAR(20) NULL,
+    requested_class VARCHAR(10) NULL,
+    position INT NOT NULL DEFAULT 0,
+    status ENUM('waiting','offered','confirmed','notified','converted','expired','cancelled') NOT NULL DEFAULT 'waiting',
+    notes VARCHAR(250) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    notified_at DATETIME NULL,
+    KEY wl_flight (flight_id), KEY wl_status (status)
+  )`);
+  const [waitlistColumns] = await pool.query('SHOW COLUMNS FROM waitlist');
+  const existingWaitlistColumns = new Set(waitlistColumns.map((column) => column.Field));
+  const missingWaitlistColumns = [
+    ['passenger_email', 'VARCHAR(120) NULL'],
+    ['passenger_doc', 'VARCHAR(30) NULL'],
+    ['doc_type', 'VARCHAR(20) NULL'],
+    ['requested_class', 'VARCHAR(10) NULL'],
+    ['position', 'INT NOT NULL DEFAULT 0'],
+    ['notified_at', 'DATETIME NULL'],
+  ];
+  for (const [name, definition] of missingWaitlistColumns) {
+    if (!existingWaitlistColumns.has(name)) await pool.query(`ALTER TABLE waitlist ADD COLUMN ${name} ${definition}`);
+  }
   await pool.query(`CREATE TABLE IF NOT EXISTS ancillaries (
     id INT AUTO_INCREMENT PRIMARY KEY,
     code VARCHAR(20) NOT NULL UNIQUE,

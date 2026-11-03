@@ -2,6 +2,93 @@ const pool = require('../config/db');
 const { fechaElSalvador } = require('../utils/fechaElSalvador');
 const { calcularPrecioServicio } = require('../services/taxService');
 
+// ---------- LISTA DE ESPERA ----------
+const listarWaitlist = async (req, res) => {
+  try {
+    const { flight_id: flightId, status } = req.query;
+    const estados = ['waiting', 'offered', 'confirmed', 'notified', 'converted', 'expired', 'cancelled'];
+    if (status && !estados.includes(status)) return res.status(400).json({ error: 'Estado de lista de espera inválido' });
+    let sql = `SELECT w.id, w.flight_id, w.passenger_name, w.passenger_email,
+                      w.requested_class, w.position, w.status, w.created_at, w.notified_at,
+                      f.flight_number, r.route_code
+               FROM waitlist w
+               JOIN flights f ON f.id = w.flight_id
+               LEFT JOIN routes r ON r.id = f.route_id
+               WHERE 1 = 1`;
+    const params = [];
+    if (flightId) { sql += ' AND w.flight_id = ?'; params.push(flightId); }
+    if (status) { sql += ' AND w.status = ?'; params.push(status); }
+    sql += ' ORDER BY w.flight_id, w.position, w.id';
+    const [rows] = await pool.query(sql, params);
+    res.json({ exito: true, datos: rows });
+  } catch (e) {
+    console.error('Error al cargar la lista de espera:', e);
+    res.status(500).json({ error: 'No se pudo cargar la lista de espera' });
+  }
+};
+
+const agregarWaitlist = async (req, res) => {
+  let connection;
+  try {
+    const flightId = Number(req.body.flight_id);
+    const passengerName = typeof req.body.passenger_name === 'string' ? req.body.passenger_name.trim() : '';
+    const passengerEmail = typeof req.body.passenger_email === 'string' ? req.body.passenger_email.trim() : '';
+    const requestedClass = typeof req.body.requested_class === 'string' ? req.body.requested_class.trim().toUpperCase() : '';
+    if (!Number.isSafeInteger(flightId) || flightId < 1 || !passengerName) {
+      return res.status(400).json({ error: 'Selecciona un vuelo e ingresa el nombre del pasajero' });
+    }
+    if (passengerName.length > 150) return res.status(400).json({ error: 'El nombre no puede superar 150 caracteres' });
+    if (passengerEmail && (passengerEmail.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(passengerEmail))) {
+      return res.status(400).json({ error: 'Ingresa un correo válido de hasta 120 caracteres' });
+    }
+    if (requestedClass && !/^[A-Z0-9_-]{1,10}$/.test(requestedClass)) {
+      return res.status(400).json({ error: 'La clase solicitada no es válida' });
+    }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [flights] = await connection.query(
+      `SELECT f.id, f.flight_number, f.status, at.total_capacity
+       FROM flights f
+       JOIN aircraft ac ON ac.id = f.aircraft_id
+       JOIN aircraft_types at ON at.id = ac.type_id
+       WHERE f.id = ? FOR UPDATE`, [flightId]
+    );
+    if (!flights.length) throw Object.assign(new Error('Vuelo no encontrado'), { statusCode: 404 });
+    if (flights[0].status !== 'scheduled') throw Object.assign(new Error('Solo se aceptan solicitudes para vuelos programados'), { statusCode: 409 });
+
+    const [ocupacion] = await connection.query(
+      `SELECT COUNT(DISTINCT fs.passenger_id) AS ocupados
+       FROM flight_segments fs
+       JOIN reservations r ON r.id = fs.reservation_id
+       WHERE fs.flight_id = ? AND r.status IN ('pending', 'confirmed', 'paid')`, [flightId]
+    );
+    const disponibles = Math.max(0, Number(flights[0].total_capacity) - Number(ocupacion[0]?.ocupados || 0));
+    if (disponibles > 0) throw Object.assign(new Error(`El vuelo todavía tiene ${disponibles} asientos disponibles`), { statusCode: 409 });
+
+    const [posiciones] = await connection.query('SELECT COALESCE(MAX(position), 0) AS ultima FROM waitlist WHERE flight_id = ?', [flightId]);
+    const position = Number(posiciones[0].ultima || 0) + 1;
+    const [insertado] = await connection.query(
+      `INSERT INTO waitlist (flight_id, passenger_name, passenger_email, requested_class, position, status)
+       VALUES (?, ?, ?, ?, ?, 'waiting')`,
+      [flightId, passengerName, passengerEmail || null, requestedClass || null, position]
+    );
+    await connection.commit();
+    res.status(201).json({
+      exito: true,
+      datos: { id: insertado.insertId, position, flight_number: flights[0].flight_number },
+      mensaje: `Pasajero agregado a la lista de espera en posición #${position}`,
+    });
+  } catch (e) {
+    if (connection) await connection.rollback();
+    const status = e.statusCode || 500;
+    if (status >= 500) console.error('Error al agregar pasajero a la lista de espera:', e);
+    res.status(status).json({ error: status < 500 ? e.message : 'No se pudo agregar el pasajero a la lista de espera' });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
 // ---------- ANCILLARIES ----------
 const listarAncillaries = async (req, res) => {
   try {
@@ -306,6 +393,7 @@ const reporteConciliacion = async (req, res) => {
 };
 
 module.exports = {
+  listarWaitlist, agregarWaitlist,
   listarAncillaries, crearAncillary, actualizarAncillary, asignarAncillaryVuelo, ancillariesDeVuelo, agregarAncillaryReserva, ancillariesDeReserva,
   reservasParaAncillaries, vuelosDeReservaAncillaries,
   kpi, reporteOcupacion, reporteAncillaries, reporteCanales, reporteConciliacion

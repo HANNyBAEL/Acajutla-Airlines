@@ -3,7 +3,7 @@ import Select from 'react-select';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { roleOf } from '../utils/roles';
-import { FiShoppingBag, FiBarChart2, FiActivity, FiToggleRight, FiToggleLeft, FiX, FiEdit2 } from 'react-icons/fi';
+import { FiShoppingBag, FiUsers, FiBarChart2, FiActivity, FiToggleRight, FiToggleLeft, FiX, FiEdit2 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const Comercial = () => {
@@ -13,8 +13,11 @@ const Comercial = () => {
   const esOperaciones = rol === 'operations';
   const puedeConfigurar = ['admin', 'operations'].includes(rol);
   const puedeVerReportes = ['admin', 'operations'].includes(rol);
-  const [tab, setTab] = useState(puedeVerReportes ? 'reportes' : 'ancillaries');
+  const [tab, setTab] = useState(puedeVerReportes ? 'reportes' : esAgenteCorporativo ? 'waitlist' : 'ancillaries');
   const [kpi, setKpi] = useState(null);
+  const [waitlist, setWaitlist] = useState([]);
+  const [cargandoWaitlist, setCargandoWaitlist] = useState(false);
+  const [errorWaitlist, setErrorWaitlist] = useState('');
   const [ancillaries, setAncillaries] = useState([]);
   const [vuelos, setVuelos] = useState([]);
   const [reservas, setReservas] = useState([]);
@@ -30,18 +33,33 @@ const Comercial = () => {
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [fAnc, setFAnc] = useState({ code: '', name: '', type: 'baggage', description: '', base_price: '', default_stock: 0, iva_incluido: false });
+  const [fWl, setFWl] = useState({ flight_id: '', passenger_name: '', passenger_email: '', requested_class: '' });
+  const [guardandoWaitlist, setGuardandoWaitlist] = useState(false);
   const [fFa, setFFa] = useState({ flight_id: '', ancillary_id: '', stock: '', price_override: '' });
   const [fRa, setFRa] = useState({ reservation_id: '', flight_id: '', ancillary_id: '', quantity: 1 });
   const [paginaAnc, setPaginaAnc] = useState(1);
   const [modalAncillary, setModalAncillary] = useState(false);
+  const [modalWaitlist, setModalWaitlist] = useState(false);
   const [modalAsignarVuelo, setModalAsignarVuelo] = useState(false);
   const [modalVenderReserva, setModalVenderReserva] = useState(false);
   const [drawerAncillary, setDrawerAncillary] = useState(null);
   const [editandoAncId, setEditandoAncId] = useState(null);
   const itemsPorPagina = 40;
 
+  const cargarWaitlist = async () => {
+    setCargandoWaitlist(true);
+    setErrorWaitlist('');
+    try {
+      const r = await api.get('/comercial/waitlist');
+      setWaitlist(r.data.datos || []);
+    } catch (e) {
+      setErrorWaitlist(e.response?.data?.error || 'No se pudo cargar la lista de espera');
+    } finally { setCargandoWaitlist(false); }
+  };
+
   const cargarBase = () => {
     api.get('/vuelos').then((r) => setVuelos(r.data.datos || [])).catch(() => {});
+    if (esAgenteCorporativo) cargarWaitlist();
     if (!esAgenteCorporativo) api.get('/comercial/ancillaries').then((r) => setAncillaries(r.data.datos || [])).catch(() => {});
     if (puedeVerReportes) api.get('/comercial/kpi').then((r) => setKpi(r.data.datos)).catch(() => {});
     if (!esAgenteCorporativo && !esOperaciones) api.get('/comercial/reservas-para-ancillaries').then((r) => setReservas(r.data.datos || [])).catch((e) => {
@@ -54,6 +72,20 @@ const Comercial = () => {
     cargarBase();
     if (puedeVerReportes) cargarReportes();
   }, []);
+
+  const addWaitlist = async () => {
+    if (!fWl.flight_id || !fWl.passenger_name.trim()) return toast.error('Selecciona un vuelo e ingresa el nombre del pasajero');
+    setGuardandoWaitlist(true);
+    try {
+      const r = await api.post('/comercial/waitlist', Object.assign({}, fWl, { passenger_name: fWl.passenger_name.trim() }));
+      toast.success(r.data.mensaje || 'Pasajero agregado a la lista de espera');
+      setFWl({ flight_id: '', passenger_name: '', passenger_email: '', requested_class: '' });
+      setModalWaitlist(false);
+      await cargarWaitlist();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'No se pudo agregar el pasajero a la lista de espera');
+    } finally { setGuardandoWaitlist(false); }
+  };
 
   const cargarReportes = () => {
     if (!puedeVerReportes) return;
@@ -168,6 +200,7 @@ const Comercial = () => {
   };
 
   const tabs = [
+    ...(esAgenteCorporativo ? [{ id: 'waitlist', label: 'Lista de Espera', icon: FiUsers }] : []),
     ...(!esAgenteCorporativo ? [
       { id: 'ancillaries', label: 'Servicios Adicionales', icon: FiShoppingBag },
       ...(puedeVerReportes ? [{ id: 'reportes', label: 'Dashboard & Reportes', icon: FiBarChart2 }] : []),
@@ -178,12 +211,16 @@ const Comercial = () => {
       <div className={color} style={{ width: Math.min(100, (value / (max || 1)) * 100) + '%' }}></div>
     </div>
   );
+  const etiquetasEstadoWaitlist = {
+    waiting: 'En espera', offered: 'Oferta enviada', notified: 'Notificado', confirmed: 'Confirmado',
+    converted: 'Convertido', expired: 'Vencido', cancelled: 'Cancelado',
+  };
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-800">Gestión Comercial</h1>
-        <p className="text-gray-500 mt-1">{puedeVerReportes ? 'Servicios adicionales y reportes' : 'Servicios adicionales'}</p>
+        <p className="text-gray-500 mt-1">{esAgenteCorporativo ? 'Solicitudes de pasajeros corporativos' : puedeVerReportes ? 'Servicios adicionales y reportes' : 'Servicios adicionales'}</p>
       </div>
       <div className="flex flex-wrap gap-2">
         {tabs.map((t) => (
@@ -192,6 +229,81 @@ const Comercial = () => {
           </button>
         ))}
       </div>
+
+      {tab === 'waitlist' && esAgenteCorporativo && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-gray-800">Pasajeros en Lista de Espera</h2>
+              <p className="text-sm text-gray-500 mt-1">Consulta y registra solicitudes para vuelos completos.</p>
+            </div>
+            <div className="flex gap-2">
+              <button className="btn-secondary" onClick={cargarWaitlist} disabled={cargandoWaitlist}>Actualizar</button>
+              <button className="btn-primary" onClick={() => setModalWaitlist(true)}>+ Agregar pasajero</button>
+            </div>
+          </div>
+
+          {modalWaitlist && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg p-6 max-w-xl w-full">
+                <h3 className="text-lg font-bold mb-4">Agregar pasajero a Lista de Espera</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                  <Select
+                    className="w-full text-sm md:col-span-2"
+                    value={fWl.flight_id ? { value: fWl.flight_id, label: vuelos.find(v => String(v.id) === String(fWl.flight_id))?.flight_number } : null}
+                    onChange={(s) => setFWl(Object.assign({}, fWl, { flight_id: s ? s.value : '' }))}
+                    options={vuelos.filter((v) => v.status === 'scheduled').map((v) => ({ value: v.id, label: `${v.flight_number}${v.route_code ? ` · ${v.route_code}` : ''}` }))}
+                    isClearable
+                    placeholder="-- Seleccionar vuelo programado --"
+                    noOptionsMessage={() => 'No hay vuelos programados disponibles'}
+                    menuPortalTarget={document.body}
+                    styles={{ menuPortal: base => ({ ...base, zIndex: 9999 }) }}
+                  />
+                  <input className="input-field" placeholder="Nombre del pasajero" maxLength="150" value={fWl.passenger_name} onChange={(e) => setFWl(Object.assign({}, fWl, { passenger_name: e.target.value }))} />
+                  <input className="input-field" type="email" placeholder="Correo de contacto (opcional)" maxLength="120" value={fWl.passenger_email} onChange={(e) => setFWl(Object.assign({}, fWl, { passenger_email: e.target.value }))} />
+                  <input className="input-field md:col-span-2" placeholder="Clase solicitada (opcional)" maxLength="10" value={fWl.requested_class} onChange={(e) => setFWl(Object.assign({}, fWl, { requested_class: e.target.value }))} />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button className="btn-secondary" onClick={() => setModalWaitlist(false)} disabled={guardandoWaitlist}>Cancelar</button>
+                  <button className="btn-primary" onClick={addWaitlist} disabled={guardandoWaitlist}>{guardandoWaitlist ? 'Guardando...' : 'Agregar'}</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="card overflow-x-auto">
+            {cargandoWaitlist ? <p className="p-6 text-sm text-gray-500">Cargando solicitudes...</p> : errorWaitlist ? (
+              <div className="p-6 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-red-600">{errorWaitlist}</p>
+                <button className="btn-secondary" onClick={cargarWaitlist}>Reintentar</button>
+              </div>
+            ) : (
+              <table className="w-full min-w-[680px]">
+                <thead className="bg-gray-50 border-b"><tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Posición</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Vuelo</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Pasajero</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Contacto</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Clase</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Estado</th>
+                </tr></thead>
+                <tbody className="divide-y">
+                  {waitlist.length === 0 ? <tr><td colSpan="6" className="px-4 py-6 text-sm text-gray-500">No hay pasajeros en lista de espera.</td></tr> : waitlist.map((w) => (
+                    <tr key={w.id}>
+                      <td className="px-4 py-3 text-sm font-mono">#{w.position}</td>
+                      <td className="px-4 py-3 text-sm">{w.flight_number}{w.route_code ? <span className="block text-xs text-gray-500">{w.route_code}</span> : null}</td>
+                      <td className="px-4 py-3 text-sm">{w.passenger_name}</td>
+                      <td className="px-4 py-3 text-sm">{w.passenger_email || '—'}</td>
+                      <td className="px-4 py-3 text-sm">{w.requested_class || '—'}</td>
+                      <td className="px-4 py-3 text-sm"><span className={'px-2 py-1 rounded text-xs ' + (w.status === 'waiting' ? 'bg-yellow-100 text-yellow-800' : w.status === 'confirmed' || w.status === 'converted' ? 'bg-green-100 text-green-800' : w.status === 'cancelled' || w.status === 'expired' ? 'bg-gray-100 text-gray-600' : 'bg-blue-100 text-blue-800')}>{etiquetasEstadoWaitlist[w.status] || w.status}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
 
       {tab === 'ancillaries' && (
         <div className="space-y-8">
